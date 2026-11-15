@@ -47,9 +47,15 @@
 # number of made-up files, each some tens of thousands of bytes, compressed three ways and
 # decompressed seven.
 #
+# The image files (src/stb_image_write.rs) are compared with stb (https://github.com/nothings/stb),
+# whose checkout goes in $STB; compare/dump_stb_image_write.c is built against its
+# stb_image_write.h, without contraction of a multiply and an add (its JPEG writer works in
+# floats). Dump: stb_image_write, with a tenth of [blocks] as the number of made-up images,
+# each written as .png, .bmp and .jpg.
+#
 # Without the ISPC compiler the bc7e dumps and bc6h_pack are left out, without $BCDEC bc2 and
-# the BC6H dumps, without $ISPCTC bc6h_pack, without $BC6HENC bc6h_enc, and without $MINIZ
-# miniz; the script says so and fails.
+# the BC6H dumps, without $ISPCTC bc6h_pack, without $BC6HENC bc6h_enc, without $MINIZ miniz,
+# and without $STB stb_image_write; the script says so and fails.
 set -u
 if [ $# -lt 1 ]; then
     echo "usage: $0 <folder with bc7enc_rdo's sources> [blocks] [seeds] [dumps]" >&2
@@ -59,7 +65,7 @@ here=$(cd "$(dirname "$0")/.." && pwd)
 source=$1
 blocks=${2:-200000}
 seeds=${3:-3}
-dumps=${4:-bc7decomp unpack bc1 bc345 bc7enc bc7block ert rdo bc7e_presets bc7e_settings rdo_bc7e bc2 bc6h_unpack bc6h_pack bc6h_enc miniz}
+dumps=${4:-bc7decomp unpack bc1 bc345 bc7enc bc7block ert rdo bc7e_presets bc7e_settings rdo_bc7e bc2 bc6h_unpack bc6h_pack bc6h_enc miniz stb_image_write}
 tmp=${TMPDIR:-/tmp}/rustbcx-compare
 mkdir -p "$tmp" || exit 2
 
@@ -72,6 +78,7 @@ built_bc2=0
 built_bc6h=0
 built_bc6h_enc=0
 built_miniz=0
+built_stbiw=0
 built_bc6h_pack=0
 bad=0
 # (ert.h uses the fixed-width integer types without including their header; no contraction of
@@ -111,6 +118,19 @@ for what in $dumps; do
         fi
         reference=$tmp/dump-miniz
         count=$((blocks / 100))
+        ;;
+    stb_image_write)
+        if [ "$built_stbiw" -eq 0 ]; then
+            if [ -z "${STB:-}" ] || [ ! -f "$STB/stb_image_write.h" ]; then
+                echo "$what: NOT COMPARED, no stb (put its checkout in \$STB)"
+                bad=$((bad + 1))
+                continue
+            fi
+            ${CC:-cc} -O2 -ffp-contract=off -I "$STB" "$here/compare/dump_stb_image_write.c" -lm -o "$tmp/dump-stb-image-write" || exit 2
+            built_stbiw=1
+        fi
+        reference=$tmp/dump-stb-image-write
+        count=$((blocks / 10))
         ;;
     bc6h_enc)
         if [ "$built_bc6h_enc" -eq 0 ]; then

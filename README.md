@@ -67,6 +67,7 @@ The ports, each checked byte for byte against its original:
 | `bc6h` (packing) | Intel's [ISPC Texture Compressor](https://github.com/GameTechDev/ISPCTextureCompressor), `kernel.ispc` | HDR pixels to unsigned BC6H, five profiles |
 | `bc6h_enc` | [bc6h_enc](https://github.com/0xc0de/bc6h_enc), which is DirectXTex's BC6H encoder as one file | HDR pixels to signed or unsigned BC6H, the thorough and slow way |
 | `miniz` | Rich Geldreich's [miniz](https://github.com/richgel999/miniz): its compressor, its decompressor and its checksums | zlib and deflate, both ways, for `.ktx2` files with ZLIB supercompression |
+| `stb_image_write` | Sean Barrett's [stb](https://github.com/nothings/stb), `stb_image_write.h` | Images of 8 bits a channel to `.png`, `.bmp` and `.jpg` files |
 
 And around them, the crate's own code, which has no original to match:
 
@@ -287,11 +288,11 @@ through this crate, and confirms that the results match byte for byte:
 
 ```text
 ISPC=<the ispc compiler> BCDEC=<checkout of bcdec> ISPCTC=<checkout of ISPCTextureCompressor> \
-    BC6HENC=<checkout of bc6h_enc> MINIZ=<checkout of miniz> \
+    BC6HENC=<checkout of bc6h_enc> MINIZ=<checkout of miniz> STB=<checkout of stb> \
     compare/compare.sh <checkout of bc7enc_rdo> [blocks] [seeds] [dumps]
 ```
 
-It needs a C++ compiler; the [ISPC compiler](https://github.com/ispc/ispc/releases) for the two
+It needs a C and a C++ compiler; the [ISPC compiler](https://github.com/ispc/ispc/releases) for the two
 ISPC originals; and the folders named above. What it cannot build it says it has not compared,
 and fails.
 
@@ -311,6 +312,7 @@ and fails.
 | `bc6h_pack` | Intel's `kernel.ispc`, strict build | HDR pixels packed with each of the five profiles |
 | `bc6h_enc` | bc6h_enc, built with `BC6H_SSE_INTRINSICS` | HDR pixels of both signs packed as signed and as unsigned BC6H |
 | `miniz` | miniz | Made-up files compressed at every level, with every strategy and with made-up flags, in one go and in pieces with flushes between; each stream decompressed whole, into too little room, damaged, cut short and with bytes after it |
+| `stb_image_write` | stb's `stb_image_write.h` | Made-up images of one to four channels written as `.png` with made-up compression levels and filters, as `.bmp`, and as `.jpg` with made-up qualities, some upside down and some with rows further apart than they are wide; and made-up data through its zlib compressor |
 
 The two ISPC originals pack several blocks at once in the lanes of a vector register; the ports
 pack them one after another with the same arithmetic in the same order. Built for SSE2 without
@@ -334,10 +336,11 @@ These comparisons were run on Linux (x86-64), the C++ built with gcc and the ISP
 | `bc6h_pack` | 240,000 blocks through each of the five profiles |
 | `bc6h_enc` | 60,000 blocks, each as signed and as unsigned; the C++ built by gcc and by clang |
 | `miniz` | 30,000 files, 800 megabytes in all, each compressed two or three ways and decompressed seven |
+| `stb_image_write` | 9,000 images, 32 million pixels, each as three files; the C built by gcc and by clang at several optimisation levels |
 
-`cargo test` needs neither a C++ compiler nor ISPC. Among its tests, eight run made-up blocks,
+`cargo test` needs neither a C++ compiler nor ISPC. Among its tests, nine run made-up blocks,
 images and files through the ports and compare their hashes with ones recorded from the
-originals: the seven in `tests/*_golden.rs` and one in `src/bc7enc.rs`.
+originals: the eight in `tests/*_golden.rs` and one in `src/bc7enc.rs`.
 
 The files have their own check. `compare/files.sh` writes textures of every format and shape
 (plain, texture array, cube map, array of cube maps, volume texture) as `.dds`, `.ktx` and
@@ -387,8 +390,8 @@ machine and made-up pixels.
 - **`.ktx2` supercompression: zlib only, so far.** Zstandard is not written or read yet.
   BasisLZ, the third scheme the format has, cannot hold these formats at all: it is the
   packing of Basis Universal's own ETC1S format.
-- **Images come in as pixels.** The crate does not read `.png`, `.jpg` or `.exr` files: use an
-  image crate for that and hand over the pixels.
+- **Images come in as pixels.** The crate writes `.png`, `.bmp` and `.jpg` files but does not
+  read them yet, and has no `.exr`: use an image crate for that and hand over the pixels.
 - **x86's float-to-int rules are built in.** Where an original turns a float that does not fit
   into an int, the ports give what x86 gives, on every processor, so the blocks are the same
   everywhere. The originals themselves would differ on other processors.
@@ -404,13 +407,19 @@ Rust:
   as [bc7e](https://github.com/BinomialLLC/bc7e)).
 - BC6H unpacking is by Sergii Kudlai, from [bcdec](https://github.com/iOrange/bcdec).
 - BC6H packing is by Intel Corporation, Copyright 2017, from the
-  [ISPC Texture Compressor](https://github.com/GameTechDev/ISPCTextureCompressor).
+  [ISPC Texture Compressor](https://github.com/GameTechDev/ISPCTextureCompressor), and for
+  `bc6h_enc` by Microsoft (DirectXTex), made into one file by Alexander Samusev as
+  [bc6h_enc](https://github.com/0xc0de/bc6h_enc).
+- zlib is by Rich Geldreich and others, from [miniz](https://github.com/richgel999/miniz).
+- The `.png`, `.bmp` and `.jpg` writers are by Sean Barrett and others, from
+  [stb](https://github.com/nothings/stb); the JPEG writer is after Jon Olick's `jo_jpeg.cpp`.
 
 rustbcx is available under the Apache License 2.0, the licence of `bc7e.ispc`: see
 [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE). The other originals are under the MIT licence, or
 MIT or public domain at your choice; their notices are kept in
-[`LICENSE-bc7enc_rdo.txt`](LICENSE-bc7enc_rdo.txt), [`LICENSE-bcdec.txt`](LICENSE-bcdec.txt) and
-[`LICENSE-ispc-texcomp.txt`](LICENSE-ispc-texcomp.txt).
+[`LICENSE-bc7enc_rdo.txt`](LICENSE-bc7enc_rdo.txt), [`LICENSE-bcdec.txt`](LICENSE-bcdec.txt),
+[`LICENSE-ispc-texcomp.txt`](LICENSE-ispc-texcomp.txt), [`LICENSE-bc6h_enc.txt`](LICENSE-bc6h_enc.txt),
+[`LICENSE-miniz.txt`](LICENSE-miniz.txt) and [`LICENSE-stb.txt`](LICENSE-stb.txt).
 
 Bug reports and contributions are welcome. If you find a block that this crate packs or
 unpacks differently from the originals, please open an issue: that is exactly the kind of bug

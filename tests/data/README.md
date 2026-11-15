@@ -61,5 +61,13 @@ the same. To make it again:
     ref="${TMPDIR:-/tmp}/rustbcx-compare/dump-miniz"
     { "$ref" miniz 3 120; "$ref" miniz 8 120; } > tests/data/miniz_expected.txt
 
+`stb_image_write_expected.txt` is what stb_image_write.h makes of made-up images, as
+`compare/dump_stb_image_write.c` prints it; `tests/stb_image_write_golden.rs` checks that the
+port prints the same. To make it again:
+
+    STB=<checkout of stb> compare/compare.sh <checkout of bc7enc_rdo> 3000 1 "stb_image_write"
+    ref="${TMPDIR:-/tmp}/rustbcx-compare/dump-stb-image-write"
+    { "$ref" stb_image_write 5 400; "$ref" stb_image_write 12 400; } > tests/data/stb_image_write_expected.txt
+
 No texture from anywhere is in this repository: every block the tests and the comparison pack
 is made up from a seed.

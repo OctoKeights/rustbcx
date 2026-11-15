@@ -81,6 +81,20 @@ Version 2.0 (see LICENSE).
    all its input and all its room at once. What they compute is kept: the same compressed
    bytes as the original as it builds by default, and the same streams taken and refused.
 
+7. stb, by Sean Barrett and others (https://github.com/nothings/stb): the PNG, BMP and JPEG
+   writers of its stb_image_write.h, with the zlib compressor the PNG writer uses
+   (src/stb_image_write.rs, src/stb_image_write_tables.rs). Its JPEG writer is based on Jon
+   Olick's jo_jpeg.cpp, which is in the public domain.
+
+    Copyright (c) 2017 Sean Barrett
+
+   That file is offered by its author under the MIT licence or as public domain
+   (unlicense.org), whichever the user prefers; that notice is kept in LICENSE-stb.txt. It
+   is changed here in that it is translated from C to Rust: its three settings are a value
+   handed to each call where the original has globals, each writer gives back the bytes of
+   the file, and its TGA and HDR writers are left out. What it computes is kept: the same
+   files as the original built without fused multiply-add.
+
 What is around the ports is the crate's own: mip levels and the HDR image (in src/image.rs),
 float_to_half (in src/bc6h.rs), src/bc2.rs (BC2, its colours packed and unpacked by the
 port of rgbcx), BC2 in src/rdo_bc_encoder.rs, src/texture.rs,
