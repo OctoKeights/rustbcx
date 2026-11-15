@@ -12,15 +12,21 @@
 //                                    and unpacked again
 //   dump bc7block <seed> <blocks>    BC7 blocks of every mode written from made-up endpoints
 //                                    and selectors, and unpacked again
+//   dump ert <seed> <blocks>         runs of made-up blocks, many of them near copies of the
+//                                    blocks before, packed in one of five formats and put
+//                                    through the entropy reduction transform, its settings
+//                                    varied
 
 #include "bc7decomp.h"
 #include "bc7enc.h"
+#include "ert.h"
 #include "rgbcx.h"
 
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <vector>
 
 // bc7enc.cpp's own, which its header leaves out.
 struct bc7_optimization_results
@@ -547,6 +553,150 @@ void DumpBc7Block(std::uint64_t seed, std::uint32_t blocks)
     }
     std::printf("bc7block unpacked: %u\n", unpacked_ok);
 }
+// The unpackers the entropy reduction transform is given.
+bool ErtUnpackBc1(const void* block, ert::color_rgba* pixels, std::uint32_t, void*)
+{
+    rgbcx::unpack_bc1(block, pixels, true, rgbcx::bc1_approx_mode::cBC1Ideal);
+    return true;
+}
+bool ErtUnpackBc4(const void* block, ert::color_rgba* pixels, std::uint32_t, void*)
+{
+    rgbcx::unpack_bc4(block, &pixels[0].m_c[0], 4);
+    return true;
+}
+bool ErtUnpackBc5(const void* block, ert::color_rgba* pixels, std::uint32_t, void*)
+{
+    rgbcx::unpack_bc5(block, pixels, 0, 1, 4);
+    return true;
+}
+bool ErtUnpackBc7(const void* block, ert::color_rgba* pixels, std::uint32_t, void*)
+{
+    return bc7decomp::unpack_bc7(block, reinterpret_cast<bc7decomp::color_rgba*>(pixels));
+}
+
+// Runs of made-up blocks, many of them near copies of the blocks before, packed in one of five
+// formats and put through the entropy reduction transform with its settings varied.
+void DumpErt(std::uint64_t seed, std::uint32_t blocks)
+{
+    Random random{seed};
+    Hash hash;
+    rgbcx::init(rgbcx::bc1_approx_mode::cBC1Ideal);
+    bc7enc_compress_block_init();
+    bc7enc_compress_block_params bc7_params;
+    bc7enc_compress_block_params_init(&bc7_params);
+    std::uint32_t remaining = blocks, runs = 0, modified = 0, failed = 0;
+    std::vector<std::uint8_t> px, packed;
+    std::vector<ert::color_rgba> alpha;
+    std::vector<float> scales;
+    while (remaining > 0)
+    {
+        const std::uint32_t format = random.Next() % 5;
+        const bool relative = random.Next() % 8 == 0;
+        std::uint32_t n = relative ? 8 + random.Next() % 57 : 32 + random.Next() % 481;
+        if (n > remaining)
+            n = remaining;
+        remaining -= n;
+
+        px.assign(static_cast<std::size_t>(n) * 64, 0);
+        for (std::uint32_t i = 0; i < n; ++i)
+        {
+            std::uint8_t* block = &px[static_cast<std::size_t>(i) * 64];
+            const std::uint32_t r = random.Next() % 8;
+            if (i > 0 && r < 3)
+                std::memcpy(block, block - 64, 64);
+            else if (i > 3 && r == 3)
+                std::memcpy(block, block - 64 * (1 + random.Next() % 3), 64);
+            else
+                MakePixels(random, block);
+            if (i > 0 && r < 2)
+            {
+                const std::uint32_t at = random.Next() % 64;
+                block[at] = static_cast<std::uint8_t>(block[at] + 1);
+            }
+        }
+
+        ert::reduce_entropy_params p;
+        p.m_lambda = static_cast<float>(random.Next() % 2000) / 100.0f + 0.01f;
+        static const std::uint32_t kWindows[6] = {16, 48, 128, 256, 1024, 4096};
+        p.m_lookback_window_size = kWindows[random.Next() % 6];
+        p.m_max_allowed_rms_increase_ratio = 1.0f + static_cast<float>(random.Next() % 1000) / 100.0f;
+        p.m_max_smooth_block_std_dev = 1.0f + static_cast<float>(random.Next() % 40);
+        p.m_smooth_block_max_mse_scale = 1.0f + static_cast<float>(random.Next() % 20);
+        p.m_try_two_matches = random.Next() % 2 != 0;
+        p.m_allow_relative_movement = relative;
+        p.m_skip_zero_mse_blocks = random.Next() % 4 == 0;
+        std::uint32_t weights[4] = {1, 1, 1, 1};
+        if (random.Next() % 2 != 0)
+            for (int c = 0; c < 4; ++c)
+                weights[c] = 1 + random.Next() % 4;
+        const bool use_scales = random.Next() % 3 == 0;
+        scales.assign(n, 0.0f);
+        if (use_scales)
+            for (std::uint32_t i = 0; i < n; ++i)
+            {
+                const std::uint32_t a = random.Next();
+                scales[i] = a % 4 == 0 ? 0.0f : 1.0f + static_cast<float>((a >> 8) % 10);
+            }
+        std::vector<float>* scale_list = use_scales ? &scales : nullptr;
+        const ert::color_rgba* pixels = reinterpret_cast<const ert::color_rgba*>(px.data());
+
+        const std::uint32_t stride = format < 2 ? 8 : 16;
+        packed.assign(static_cast<std::size_t>(n) * stride, 0);
+        const std::uint32_t level = random.Next() % 6;
+        std::uint32_t total = 0;
+        bool ok = true;
+        auto set_weights = [&p, &weights](std::uint32_t comps) {
+            for (std::uint32_t c = 0; c < 4; ++c)
+                p.m_color_weights[c] = c < comps ? weights[c] : 0;
+        };
+        switch (format)
+        {
+        case 0:
+            for (std::uint32_t i = 0; i < n; ++i)
+                rgbcx::encode_bc1(level, &packed[static_cast<std::size_t>(i) * 8], &px[static_cast<std::size_t>(i) * 64], false, false);
+            set_weights(3);
+            ok = ert::reduce_entropy(packed.data(), n, 8, 8, 4, 4, 3, pixels, p, total, ErtUnpackBc1, nullptr, scale_list);
+            break;
+        case 1:
+            for (std::uint32_t i = 0; i < n; ++i)
+                rgbcx::encode_bc4(&packed[static_cast<std::size_t>(i) * 8], &px[static_cast<std::size_t>(i) * 64], 4);
+            set_weights(1);
+            ok = ert::reduce_entropy(packed.data(), n, 8, 8, 4, 4, 1, pixels, p, total, ErtUnpackBc4, nullptr, scale_list);
+            break;
+        case 2:
+            for (std::uint32_t i = 0; i < n; ++i)
+                bc7enc_compress_block(&packed[static_cast<std::size_t>(i) * 16], &px[static_cast<std::size_t>(i) * 64], &bc7_params);
+            set_weights(4);
+            ok = ert::reduce_entropy(packed.data(), n, 16, 16, 4, 4, 4, pixels, p, total, ErtUnpackBc7, nullptr, scale_list);
+            break;
+        case 3:
+            for (std::uint32_t i = 0; i < n; ++i)
+                rgbcx::encode_bc3(level, &packed[static_cast<std::size_t>(i) * 16], &px[static_cast<std::size_t>(i) * 64]);
+            // The alpha half, against the alpha of the pixels put in the first channel.
+            alpha.assign(static_cast<std::size_t>(n) * 16, ert::color_rgba{{0, 0, 0, 0}});
+            for (std::size_t i = 0; i < alpha.size(); ++i)
+                alpha[i].m_c[0] = px[i * 4 + 3];
+            set_weights(1);
+            ok = ert::reduce_entropy(packed.data(), n, 16, 8, 4, 4, 1, alpha.data(), p, total, ErtUnpackBc4, nullptr, scale_list);
+            // The colour half.
+            set_weights(3);
+            ok = ert::reduce_entropy(packed.data() + 8, n, 16, 8, 4, 4, 3, pixels, p, total, ErtUnpackBc1, nullptr, scale_list) && ok;
+            break;
+        default:
+            for (std::uint32_t i = 0; i < n; ++i)
+                rgbcx::encode_bc5(&packed[static_cast<std::size_t>(i) * 16], &px[static_cast<std::size_t>(i) * 64], 0, 1, 4);
+            set_weights(2);
+            ok = ert::reduce_entropy(packed.data(), n, 16, 16, 4, 4, 2, pixels, p, total, ErtUnpackBc5, nullptr, scale_list);
+            break;
+        }
+        hash.Add(packed.data(), packed.size());
+        modified += total;
+        failed += ok ? 0 : 1;
+        ++runs;
+    }
+    std::printf("ert %016llx\n", static_cast<unsigned long long>(hash.value));
+    std::printf("ert runs: %u, blocks changed: %u, runs refused: %u\n", runs, modified, failed);
+}
 } // namespace
 
 int main(int argc, char** argv)
@@ -570,6 +720,8 @@ int main(int argc, char** argv)
         DumpBc7Enc(seed, blocks);
     else if (std::strcmp(argv[1], "bc7block") == 0)
         DumpBc7Block(seed, blocks);
+    else if (std::strcmp(argv[1], "ert") == 0)
+        DumpErt(seed, blocks);
     else
         return 2;
     return 0;

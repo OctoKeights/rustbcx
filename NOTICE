@@ -18,8 +18,8 @@ Version 2.0 (see LICENSE).
    multiply-add.
 
 2. bc7enc_rdo, by Richard Geldreich, Jr. (https://github.com/richgel999/bc7enc_rdo): its
-   bc7decomp.cpp, bc7enc.cpp and rgbcx.cpp with their headers and tables (src/bc7decomp.rs,
-   src/bc7enc.rs, src/rgbcx.rs, src/rgbcx_tables.rs).
+   bc7decomp.cpp, bc7enc.cpp, rgbcx.cpp and ert.cpp with their headers and tables
+   (src/bc7decomp.rs, src/bc7enc.rs, src/rgbcx.rs, src/rgbcx_tables.rs, src/ert.rs).
 
     Copyright(c) 2020-2021 Richard Geldreich, Jr.
 

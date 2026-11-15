@@ -12,6 +12,10 @@
 //!                                    and unpacked again
 //!   dump bc7block <seed> <blocks>    BC7 blocks of every mode written from made-up endpoints
 //!                                    and selectors, and unpacked again
+//!   dump ert <seed> <blocks>         runs of made-up blocks, many of them near copies of the
+//!                                    blocks before, packed in one of five formats and put
+//!                                    through the entropy reduction transform, its settings
+//!                                    varied
 //!
 //! And of the comparison with bc7e.ispc, as `compare/dump_bc7e.cpp` does with the ISPC encoder:
 //!
@@ -31,40 +35,15 @@ use rustbcx::bc7enc::{self, Bc7Enc, CompressBlockParams, OptimizationResults};
 use rustbcx::rgbcx::{self, Bc1ApproxMode, Rgbcx};
 use std::io::Write;
 
+/// The made-up blocks, and the dump the tests run as well (`tests/ert_golden.rs`).
+#[path = "../tests/made_up/mod.rs"]
+mod made_up;
+
+use made_up::{make_pixels, Hash, Random};
+
 /// The blocks and settings the bc7e dumps pack, shared with `tests/bc7e_golden.rs`.
 #[path = "../tests/bc7e_made_up/mod.rs"]
 mod bc7e_made_up;
-
-/// The two programs make the same blocks from the same seed: a 64-bit linear congruential
-/// generator, the high half of its state.
-struct Random {
-    state: u64,
-}
-
-impl Random {
-    fn next(&mut self) -> u32 {
-        self.state = self.state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-        (self.state >> 32) as u32
-    }
-}
-
-/// FNV-1a, 64 bits.
-struct Hash {
-    value: u64,
-}
-
-impl Hash {
-    fn new() -> Hash {
-        Hash { value: 14695981039346656037 }
-    }
-
-    fn add(&mut self, data: &[u8]) {
-        for &byte in data {
-            self.value ^= u64::from(byte);
-            self.value = self.value.wrapping_mul(1099511628211);
-        }
-    }
-}
 
 fn dump_bc7decomp(seed: u64, blocks: u32) {
     let mut random = Random { state: seed };
@@ -95,90 +74,6 @@ fn dump_bc7decomp(seed: u64, blocks: u32) {
         print!(" {count}");
     }
     println!();
-}
-
-/// Sixteen made-up pixels of one of eight kinds, the same in both programs.
-fn make_pixels(random: &mut Random) -> [[u8; 4]; 16] {
-    let mut pixels = [[0u8; 4]; 16];
-    let kind = random.next() % 8;
-    let clamp = |v: i32| v.clamp(0, 255) as u8;
-    match kind {
-        // noise
-        0 => {
-            for pixel in &mut pixels {
-                for value in pixel {
-                    *value = random.next() as u8;
-                }
-            }
-        }
-        // from one colour to another, with a little noise
-        1 => {
-            let (mut a, mut b) = ([0u8; 4], [0u8; 4]);
-            for c in 0..4 {
-                a[c] = random.next() as u8;
-                b[c] = random.next() as u8;
-            }
-            let noise = random.next() % 9;
-            for pixel in &mut pixels {
-                let t = (random.next() % 256) as i32;
-                for c in 0..4 {
-                    let n = if noise != 0 { (random.next() % (noise + 1)) as i32 - (noise / 2) as i32 } else { 0 };
-                    pixel[c] = clamp((i32::from(a[c]) * (255 - t) + i32::from(b[c]) * t) / 255 + n);
-                }
-            }
-        }
-        // greys
-        2 => {
-            for pixel in &mut pixels {
-                let v = random.next() as u8;
-                *pixel = [v, v, v, random.next() as u8];
-            }
-        }
-        // greys one step apart
-        3 => {
-            let base = random.next() % 255;
-            for pixel in &mut pixels {
-                let v = (base + random.next() % 2) as u8;
-                *pixel = [v, v, v, (base + random.next() % 3) as u8];
-            }
-        }
-        // one colour, or one colour but for a pixel
-        4 | 5 => {
-            let mut a = [0u8; 4];
-            for value in &mut a {
-                *value = random.next() as u8;
-            }
-            pixels = [a; 16];
-            if kind == 5 {
-                let at = (random.next() % 16) as usize;
-                for c in 0..4 {
-                    pixels[at][c] = (u32::from(a[c]) + 1 + random.next() % 40) as u8;
-                }
-            }
-        }
-        // dark, with pixels that count as black
-        6 => {
-            for pixel in &mut pixels {
-                let bright = random.next() % 4 == 0;
-                for value in pixel {
-                    *value = if bright { random.next() as u8 } else { (random.next() % 8) as u8 };
-                }
-            }
-        }
-        // three colours
-        _ => {
-            let mut palette = [[0u8; 4]; 3];
-            for color in &mut palette {
-                for value in color {
-                    *value = random.next() as u8;
-                }
-            }
-            for pixel in &mut pixels {
-                *pixel = palette[(random.next() % 3) as usize];
-            }
-        }
-    }
-    pixels
 }
 
 const MODES: [Bc1ApproxMode; 4] = [Bc1ApproxMode::Ideal, Bc1ApproxMode::NVidia, Bc1ApproxMode::Amd, Bc1ApproxMode::IdealRound4];
@@ -603,6 +498,7 @@ fn main() {
         "bc345" => dump_bc345(seed, blocks),
         "bc7enc" => dump_bc7enc(seed, blocks),
         "bc7block" => dump_bc7block(seed, blocks),
+        "ert" => print!("{}", made_up::ert(seed, blocks)),
         "bc7e_presets" => dump_bc7e(true, seed, blocks, args.get(4)),
         "bc7e_settings" => dump_bc7e(false, seed, blocks, args.get(4)),
         _ => std::process::exit(2),

@@ -14,5 +14,13 @@ itself:
     "$ref" bc7e_presets 1 300 > tests/data/bc7e_expected.txt
     "$ref" bc7e_settings 1 3000 >> tests/data/bc7e_expected.txt
 
+`ert_expected.txt` is what bc7enc_rdo's C++ makes of made-up blocks put through its entropy
+reduction transform, as `compare/dump.cpp` prints it; `tests/ert_golden.rs` checks that the port
+prints the same. To make it again:
+
+    compare/compare.sh <checkout of bc7enc_rdo> 3000 1 "ert"
+    ref="${TMPDIR:-/tmp}/rustbcx-compare/dump-cpp"
+    for run in "3 1200" "7 600" "12 900"; do "$ref" ert $run; done > tests/data/ert_expected.txt
+
 No texture from anywhere is in this repository: every block the tests and the comparison pack
 is made up from a seed.

@@ -7,8 +7,9 @@
 # originals. Runs every dump of both sides for each seed and compares what they print byte for
 # byte. [dumps] names the dumps to run, in quotes, when not all of them are wanted.
 #
-# The C++ library (bc7decomp.cpp, bc7enc.cpp, rgbcx.cpp): compare/dump.cpp is built against
-# it. Dumps: bc7decomp unpack bc1 bc345 bc7enc bc7block.
+# The C++ library (bc7decomp.cpp, bc7enc.cpp, rgbcx.cpp, ert.cpp): compare/dump.cpp is built
+# against it. Dumps: bc7decomp unpack bc1 bc345 bc7enc bc7block ert (ert with a tenth of
+# [blocks]: it unpacks each block thousands of times).
 #
 # bc7e.ispc: needs the ISPC compiler (https://github.com/ispc/ispc/releases), `ispc` on the
 # path or its path in $ISPC. bc7e.ispc is built the strict way (for SSE2, without fast-math:
@@ -28,7 +29,7 @@ here=$(cd "$(dirname "$0")/.." && pwd)
 source=$1
 blocks=${2:-200000}
 seeds=${3:-3}
-dumps=${4:-bc7decomp unpack bc1 bc345 bc7enc bc7block bc7e_presets bc7e_settings}
+dumps=${4:-bc7decomp unpack bc1 bc345 bc7enc bc7block ert bc7e_presets bc7e_settings}
 tmp=${TMPDIR:-/tmp}/rustbcx-compare
 mkdir -p "$tmp" || exit 2
 
@@ -57,11 +58,13 @@ for what in $dumps; do
     *)
         if [ "$built_cpp" -eq 0 ]; then
             # (No contraction of a multiply and an add into one instruction: Rust never does it.)
-            ${CXX:-c++} -O2 -ffp-contract=off -I "$source" "$here/compare/dump.cpp" "$source/bc7decomp.cpp" "$source/bc7enc.cpp" "$source/rgbcx.cpp" -o "$tmp/dump-cpp" || exit 2
+            # (ert.h uses the fixed-width integer types without including their header.)
+            ${CXX:-c++} -O2 -ffp-contract=off -include stdint.h -I "$source" "$here/compare/dump.cpp" "$source/bc7decomp.cpp" "$source/bc7enc.cpp" "$source/rgbcx.cpp" "$source/ert.cpp" -o "$tmp/dump-cpp" || exit 2
             built_cpp=1
         fi
         reference=$tmp/dump-cpp
         count=$blocks
+        [ "$what" = ert ] && count=$((blocks / 10))
         ;;
     esac
     seed=1
