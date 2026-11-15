@@ -15,7 +15,7 @@
 //   dump rdo <seed> <blocks>         made-up images of every shape packed whole by
 //                                    rdo_bc_encoder in each of its formats, with and without
 //                                    the rate-distortion pass, every setting varied; BC7 with
-//                                    bc7enc
+//                                    bc7enc; and the .dds file save_dds writes for each
 //   dump rdo_bc7e <seed> <blocks>    the same, BC7 with bc7e for about half the images (only
 //                                    in a build with -DSUPPORT_BC7E=1 and the ISPC object)
 //   dump ert <seed> <blocks>         runs of made-up blocks, many of them near copies of the
@@ -851,6 +851,24 @@ void DumpRdo(std::uint64_t seed, std::uint32_t blocks, bool with_bc7e)
             hash.Add(encoder.get_prerdo_blocks(), encoder.get_total_blocks_size_in_bytes());
             hash.Add(encoder.get_blocks(), encoder.get_total_blocks_size_in_bytes());
             hash.Add(unpacked.get_pixels().data(), unpacked.get_pixels().size() * 4);
+            // The .dds file save_dds writes for it, with the DX10 header forced for every
+            // other image.
+            char path[512];
+            const char* tmp = std::getenv("TMPDIR");
+            std::snprintf(path, sizeof(path), "%s/rustbcx-compare-%ld.dds", tmp ? tmp : "/tmp", static_cast<long>(getpid()));
+            if (utils::save_dds(path, encoder.get_orig_width(), encoder.get_orig_height(), encoder.get_blocks(), encoder.get_pixel_format_bpp(), p.m_dxgi_format, false, images % 2 == 1))
+            {
+                std::vector<std::uint8_t> file;
+                if (FILE* f = std::fopen(path, "rb"))
+                {
+                    int byte_read;
+                    while ((byte_read = std::fgetc(f)) != EOF)
+                        file.push_back(static_cast<std::uint8_t>(byte_read));
+                    std::fclose(f);
+                }
+                hash.Add(file.data(), file.size());
+                std::remove(path);
+            }
         }
         else
             ++refused;

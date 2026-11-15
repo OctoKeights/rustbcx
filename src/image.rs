@@ -99,6 +99,29 @@ impl Image {
         *self = new_image;
     }
 
+    /// The image at half the size each way (rounded down, but never to nothing), each pixel the
+    /// average of the two by two it covers, rounded to nearest: the next mip level. The values
+    /// are averaged as they are stored, alpha like the rest. (The crate's own: bc7enc_rdo
+    /// makes no mip levels.)
+    pub fn half(&self) -> Image {
+        let (width, height) = ((self.width / 2).max(1), (self.height / 2).max(1));
+        let mut half = Image::new(width, height);
+        for y in 0..height {
+            for x in 0..width {
+                // (A side of one pixel has nothing beside it: the pixel counts twice.)
+                let (x0, y0) = ((x * 2).min(self.width - 1), (y * 2).min(self.height - 1));
+                let (x1, y1) = ((x * 2 + 1).min(self.width - 1), (y * 2 + 1).min(self.height - 1));
+                let (a, b, c, d) = (self.pixel(x0, y0), self.pixel(x1, y0), self.pixel(x0, y1), self.pixel(x1, y1));
+                let mut pixel = [0u8; 4];
+                for (channel, value) in pixel.iter_mut().enumerate() {
+                    *value = ((u32::from(a[channel]) + u32::from(b[channel]) + u32::from(c[channel]) + u32::from(d[channel]) + 2) / 4) as u8;
+                }
+                half.pixels[(x + y * width) as usize] = pixel;
+            }
+        }
+        half
+    }
+
     /// The image upside down.
     pub fn flipped_y(&self) -> Image {
         let mut flipped = Image::new(self.width, self.height);
@@ -128,6 +151,21 @@ mod tests {
         // Smaller cuts off.
         image.crop_dup_borders(2, 1);
         assert_eq!(image.pixels, [[0, 0, 0, 255], [1, 0, 0, 255]]);
+    }
+
+    #[test]
+    fn half_averages_two_by_two() {
+        let image = Image::from_rgba8(4, 2, &[0, 0, 0, 255, 2, 0, 0, 255, 10, 0, 0, 255, 10, 0, 0, 255, 4, 0, 0, 255, 7, 0, 0, 255, 10, 0, 0, 255, 11, 0, 0, 255]).unwrap();
+        let half = image.half();
+        assert_eq!((half.width, half.height), (2, 1));
+        // (0 + 2 + 4 + 7 + 2) / 4 and (10 + 10 + 10 + 11 + 2) / 4.
+        assert_eq!(half.pixels, [[3, 0, 0, 255], [10, 0, 0, 255]]);
+        let last = half.half();
+        assert_eq!((last.width, last.height), (1, 1));
+        assert_eq!(last.pixels, [[7, 0, 0, 255]]);
+        assert_eq!(last.half(), last);
+        // An odd side leaves its last column out.
+        assert_eq!(Image::new(5, 3).half().width, 2);
     }
 
     #[test]

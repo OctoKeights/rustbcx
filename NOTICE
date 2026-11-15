@@ -32,4 +32,9 @@ Version 2.0 (see LICENSE).
    keeps in globals are values, and the entry points have Rust's names. What they compute is
    kept: they give the same blocks as the C++ library.
 
+What is around the ports is the crate's own: mip levels (in src/image.rs), src/texture.rs,
+src/dds.rs (its writer after bc7enc_rdo's save_dds), src/ktx.rs and src/parallel.rs. The
+data format descriptor src/ktx.rs writes into a .ktx2 file follows the one the Khronos
+Group's KTX-Software writes (createDFDCompressed in its dfdutils, Apache 2.0).
+
 The port was made in 2026 for the Noolith project.

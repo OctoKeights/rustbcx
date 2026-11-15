@@ -14,6 +14,9 @@
 //!   cores, with the rate-distortion pass (`rdo_bc_encoder.cpp`). [`image`] has the image it
 //!   takes.
 //!
+//! And around the ports, the crate's own: [`texture`], an image packed with its mip levels,
+//! and [`dds`] and [`ktx`], which read and write it as `.dds`, `.ktx` and `.ktx2` files.
+//!
 //! It keeps the originals' behaviour, so a block comes out as the same bytes from both (for
 //! `bc7e`, the original built without fast-math). It has no dependencies and no `unsafe`.
 
@@ -24,12 +27,15 @@
 pub mod bc7decomp;
 pub mod bc7e;
 pub mod bc7enc;
+pub mod dds;
 pub mod ert;
 pub mod image;
+pub mod ktx;
 mod parallel;
 pub mod rdo_bc_encoder;
 pub mod rgbcx;
 mod rgbcx_tables;
+pub mod texture;
 
 /// (The README's examples, compiled and run with the tests.)
 #[cfg(doctest)]

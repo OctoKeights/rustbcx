@@ -6,10 +6,12 @@
 
 use rustbcx::bc7decomp;
 use rustbcx::bc7enc::{Bc7Enc, CompressBlockParams};
+use rustbcx::dds;
 use rustbcx::ert::{self, ReduceEntropyParams};
 use rustbcx::image::Image;
 use rustbcx::rdo_bc_encoder::{BlockFormat, RdoBcEncoder, RdoBcParams};
 use rustbcx::rgbcx::{self, Bc1ApproxMode, Rgbcx};
+use rustbcx::texture::Texture;
 
 /// The two programs make the same blocks from the same seed: a 64-bit linear congruential
 /// generator, the high half of its state.
@@ -348,7 +350,8 @@ pub fn make_image(random: &mut Random, w: u32, h: u32) -> Image {
 
 /// The `rdo` dump (and `rdo_bc7e`, with `with_bc7e`): made-up images of every shape packed
 /// whole by the image encoder in each of its formats, with and without the rate-distortion
-/// pass, every setting varied. What `compare/dump.cpp` prints for the same seed and count.
+/// pass, every setting varied, and the `.dds` file for each. What `compare/dump.cpp` prints for
+/// the same seed and count.
 pub fn rdo(seed: u64, blocks: u32, with_bc7e: bool) -> String {
     const MODES: [Bc1ApproxMode; 4] = [Bc1ApproxMode::Ideal, Bc1ApproxMode::NVidia, Bc1ApproxMode::Amd, Bc1ApproxMode::IdealRound4];
     let mut random = Random { state: seed };
@@ -421,6 +424,9 @@ pub fn rdo(seed: u64, blocks: u32, with_bc7e: bool) -> String {
             hash.add(encoder.prerdo_blocks());
             hash.add(encoder.blocks());
             hash.add(unpacked.as_rgba8());
+            // The .dds file for it, with the DX10 header forced for every other image.
+            let texture = Texture { format: p.format.into(), srgb: false, width: encoder.orig_width(), height: encoder.orig_height(), levels: vec![encoder.blocks().to_vec()] };
+            hash.add(&dds::write(&texture, images % 2 == 1).expect("a whole texture"));
         } else {
             refused += 1;
         }
