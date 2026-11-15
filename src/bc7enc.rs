@@ -834,9 +834,16 @@ fn fix_degenerate_endpoints(mode: u32, trial_min_color: &mut ColorRgba, trial_ma
 }
 
 impl Bc7Enc {
-    /// Makes the lookup tables used for optimal single color compression in mode 1/7 and the
-    /// rest: `bc7enc_compress_block_init`.
+    /// The encoder with the lookup tables used for optimal single color compression in mode
+    /// 1/7 and the rest: `bc7enc_compress_block_init`. The tables are made the first time and
+    /// copied from then on.
     pub fn new() -> Self {
+        static TABLES: std::sync::OnceLock<Bc7Enc> = std::sync::OnceLock::new();
+        TABLES.get_or_init(Bc7Enc::make_tables).clone()
+    }
+
+    /// Makes the tables.
+    fn make_tables() -> Self {
         let mut tables = Bc7Enc {
             mode_1_optimal_endpoints: [[EndpointErr::default(); 2]; 256],
             mode_7_optimal_endpoints: [[[EndpointErr::default(); 2]; 2]; 256],

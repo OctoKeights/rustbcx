@@ -336,6 +336,7 @@ fn lookup_total_ordering_index3(hash: &[u16; 256], hist: &[u8; 3]) -> u32 {
 
 /// The encoder for BC1 and BC3 blocks: the tables `rgbcx::init` makes, for one way of
 /// interpolating.
+#[derive(Clone)]
 pub struct Rgbcx {
     approx_mode: Bc1ApproxMode,
     match5_equals_1: [Bc1MatchEntry; 256],
@@ -370,8 +371,15 @@ struct Bc1EncodeResults {
 type Vec3F = [f32; 3];
 
 impl Rgbcx {
-    /// `rgbcx::init`: makes the encoder's tables. `mode` is how the blocks will be decoded.
+    /// `rgbcx::init`: the encoder with its tables. `mode` is how the blocks will be decoded.
+    /// The tables of a mode are made the first time and copied from then on.
     pub fn new(mode: Bc1ApproxMode) -> Rgbcx {
+        static TABLES: [std::sync::OnceLock<Rgbcx>; 4] = [const { std::sync::OnceLock::new() }; 4];
+        TABLES[mode as usize].get_or_init(|| Rgbcx::make_tables(mode)).clone()
+    }
+
+    /// Makes the tables.
+    fn make_tables(mode: Bc1ApproxMode) -> Rgbcx {
         let mut bc1_expand5 = [0u8; 32];
         for (i, value) in bc1_expand5.iter_mut().enumerate() {
             *value = ((i << 3) | (i >> 2)) as u8;

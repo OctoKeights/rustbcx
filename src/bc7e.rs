@@ -474,8 +474,15 @@ fn search_endpoints(best: &mut EndpointErr, c: i32, count: u32, weight: u32, low
 }
 
 impl Bc7e {
-    /// Makes the tables: `bc7e_compress_block_init`.
+    /// The encoder with its tables: `bc7e_compress_block_init`. The tables are made the first
+    /// time and copied from then on.
     pub fn new() -> Self {
+        static TABLES: std::sync::OnceLock<Bc7e> = std::sync::OnceLock::new();
+        TABLES.get_or_init(Bc7e::make_tables).clone()
+    }
+
+    /// Makes the tables.
+    fn make_tables() -> Self {
         let empty = EndpointErr::default();
         let mut tables = Bc7e {
             mode_1_optimal_endpoints: [[empty; 2]; 256],

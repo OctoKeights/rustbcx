@@ -343,7 +343,9 @@ bc7enc_rdo and whose Rust rewrite needed to produce exactly the same blocks.
   each way up to quality 90 and at full size above it.
 - **The originals' globals are values here.** The tables the C++ and the ISPC fill at start-up
   are held by `Rgbcx::new`, `Bc7Enc::new` and `Bc7e::new`, so there is no init function to
-  remember to call, and one of each can be shared between threads.
+  remember to call, and one of each can be shared between threads. They are made the first
+  time one is asked for and copied after that, so making an encoder for every texture costs
+  next to nothing.
 - **Mip levels are plain averages** of two by two pixels, of the values as stored (of floats,
   for HDR). If you need another filter, or averaging in linear light for sRGB images, make the
   levels yourself and pack each with `RdoBcEncoder`.

@@ -58,6 +58,11 @@
   B44 blocks that do not come out smaller than their pixels are stored and read as the
   format has them, which tinyexr does not do and other readers need (the functions ending in
   `_as_tinyexr` do as tinyexr does). Files of several parts and deep images are left out.
+- **The encoders' tables are made once.** `Bc7e::new`, `Bc7Enc::new` and `Rgbcx::new` made
+  their lookup tables on every call, which took 26 milliseconds for the three, and
+  `texture::compress` paid that for every texture. They are now made the first time and
+  copied afterwards, which takes 20 microseconds: the same blocks, and a good deal of time
+  saved where many small textures are packed one after the other.
 - Fixed: a `.ktx2` file of an sRGB texture in BC3 did not mark its alpha as linear in its data
   format descriptor, as the Khronos tools do and their validator requires.
 - Changed: `Texture` has three more fields, so one written out by hand needs them;
