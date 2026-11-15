@@ -40,6 +40,26 @@ where
     });
 }
 
+/// Calls `work` for runs of blocks and the runs of pixels that go with them, on up to
+/// `threads` threads (0 for all the machine has). A few blocks are not worth a thread: under
+/// 64 they are done where they are.
+pub(crate) fn for_each_run<B, P, F>(blocks: &mut [B], pixels: &[P], threads: u32, work: F)
+where
+    B: Send,
+    P: Sync,
+    F: Fn(&mut [B], &[P]) + Sync,
+{
+    let threads = worker_count(threads);
+    if threads <= 1 || blocks.len() < 64 {
+        work(blocks, pixels);
+        return;
+    }
+    // Several runs for each thread, so that a thread with easy blocks takes more of them.
+    let run = (blocks.len() / (threads * 4)).max(16);
+    let runs: Vec<(&mut [B], &[P])> = blocks.chunks_mut(run).zip(pixels.chunks(run)).collect();
+    for_each(runs, threads, |(blocks, pixels)| work(blocks, pixels));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

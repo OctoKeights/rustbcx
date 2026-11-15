@@ -35,6 +35,7 @@ pub mod bc7e;
 pub mod bc7enc;
 pub mod dds;
 pub mod ert;
+mod fmath;
 pub mod image;
 pub mod ktx;
 mod parallel;

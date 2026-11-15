@@ -917,17 +917,15 @@ fn compute_stats_masked(stats: &mut [f32; 15], block: &[f32; 64], mask: i32) {
     let mut mask_shifted = mask << 1;
     for k in 0..16 {
         mask_shifted >>= 1;
-        let flag = (mask_shifted & 1) as f32;
-
-        let mut rgba = [0.0f32; 3];
-        for p in 0..3 {
-            rgba[p] = block[k + p * 16];
+        // (The original multiplies a pixel outside the mask by 0 and adds it all the same. The
+        // values are finite and the sums never below zero, so leaving it out gives the same
+        // sums.)
+        if mask_shifted & 1 == 0 {
+            continue;
         }
 
-        for value in &mut rgba {
-            *value *= flag;
-        }
-        stats[14] += flag;
+        let rgba = [block[k], block[k + 16], block[k + 32]];
+        stats[14] += 1.0;
 
         stats[10] += rgba[0];
         stats[11] += rgba[1];
@@ -1123,6 +1121,25 @@ fn block_quant(qblock: &mut [u32; 2], block: &[f32; 64], bits: u32, ep: &[f32], 
     let unquant_table: &[i32] = if bits == 3 { &UNQUANT_TABLE_3BITS } else { &UNQUANT_TABLE_4BITS };
     let levels = 1i32 << bits;
 
+    // What the original works out again for every pixel depends only on the pixel's subset and
+    // index, so it is worked out once here, by the same arithmetic: for each subset, the step
+    // from one end to the other and its squared length, and what each index unpacks to.
+    let subsets = ep.len() / 8;
+    let mut delta = [[0.0f32; 3]; 2];
+    let mut div = [0.0f32; 2];
+    let mut decoded = [[[0.0f32; 3]; 16]; 2];
+    for j in 0..subsets.min(2) {
+        for p in 0..3 {
+            let ep_a = ep[8 * j + p];
+            let ep_b = ep[8 * j + 4 + p];
+            delta[j][p] = ep_b - ep_a;
+            div[j] += sq(ep_b - ep_a);
+            for (q, &w) in unquant_table.iter().enumerate() {
+                decoded[j][q][p] = f2i(((64 - w) as f32 * ep_a + w as f32 * ep_b + 32.0) / 64.0) as f32;
+            }
+        }
+    }
+
     // 64-bit qblock: 5% overhead in this function
     *qblock = [0; 2];
 
@@ -1131,32 +1148,25 @@ fn block_quant(qblock: &mut [u32; 2], block: &[f32; 64], bits: u32, ep: &[f32], 
         let j = (pattern_shifted & 3) as usize;
         pattern_shifted >>= 2;
 
+        let pixel = [block[k], block[k + 16], block[k + 32]];
+
         let mut proj = 0.0f32;
-        let mut div = 0.0f32;
         for p in 0..3 {
-            let ep_a = ep[8 * j + p];
-            let ep_b = ep[8 * j + 4 + p];
-            proj += (block[k + p * 16] - ep_a) * (ep_b - ep_a);
-            div += sq(ep_b - ep_a);
+            proj += (pixel[p] - ep[8 * j + p]) * delta[j][p];
         }
 
-        proj /= div;
+        proj /= div[j];
 
         let mut q1 = f2i(proj * levels as f32 + 0.5);
         q1 = q1.max(1).min(levels - 1);
 
         let mut err0 = 0.0f32;
         let mut err1 = 0.0f32;
-        let w0 = unquant_table[(q1 - 1) as usize];
-        let w1 = unquant_table[q1 as usize];
+        let (dec_v0, dec_v1) = (&decoded[j][(q1 - 1) as usize], &decoded[j][q1 as usize]);
 
         for p in 0..3 {
-            let ep_a = ep[8 * j + p];
-            let ep_b = ep[8 * j + 4 + p];
-            let dec_v0 = f2i(((64 - w0) as f32 * ep_a + w0 as f32 * ep_b + 32.0) / 64.0) as f32;
-            let dec_v1 = f2i(((64 - w1) as f32 * ep_a + w1 as f32 * ep_b + 32.0) / 64.0) as f32;
-            err0 += sq(dec_v0 - block[k + p * 16]);
-            err1 += sq(dec_v1 - block[k + p * 16]);
+            err0 += sq(dec_v0[p] - pixel[p]);
+            err1 += sq(dec_v1[p] - pixel[p]);
         }
 
         let mut best_err = f2i(err1);
@@ -2167,16 +2177,30 @@ pub fn compress_block_bc6h(block: &mut [u8; 16], pixels: &[RgbHalf; 16], setting
     }
 }
 
-/// Packs many blocks, one for each sixteen pixels.
+/// Packs many blocks, one for each sixteen pixels. The work is shared out among all the
+/// machine's threads; the blocks are the same however many there are.
+/// [`compress_blocks_bc6h_on`] takes the number of threads.
 ///
 /// # Panics
 ///
 /// When there is not a block for each sixteen pixels.
 pub fn compress_blocks_bc6h(blocks: &mut [[u8; 16]], pixels: &[[RgbHalf; 16]], settings: &Bc6hEncSettings) {
+    compress_blocks_bc6h_on(0, blocks, pixels, settings);
+}
+
+/// [`compress_blocks_bc6h`] on a number of threads: 0 for all the machine has, 1 to stay on the
+/// calling thread.
+///
+/// # Panics
+///
+/// When there is not a block for each sixteen pixels.
+pub fn compress_blocks_bc6h_on(threads: u32, blocks: &mut [[u8; 16]], pixels: &[[RgbHalf; 16]], settings: &Bc6hEncSettings) {
     assert_eq!(blocks.len(), pixels.len(), "a block for each sixteen pixels");
-    for (block, pixels) in blocks.iter_mut().zip(pixels) {
-        compress_block_bc6h(block, pixels, settings);
-    }
+    crate::parallel::for_each_run(blocks, pixels, threads, |blocks, pixels| {
+        for (block, pixels) in blocks.iter_mut().zip(pixels) {
+            compress_block_bc6h(block, pixels, settings);
+        }
+    });
 }
 
 #[cfg(test)]
@@ -2248,9 +2272,13 @@ mod tests {
 
     #[test]
     fn many_blocks_pack_as_one_at_a_time() {
-        let pixels = [ramp([0.0, 0.5, 1.0], [1.0, 0.75, 0.25]), ramp([3.0, 0.0, 0.0], [0.0, 3.0, 0.0])];
-        let mut blocks = [[0u8; 16]; 2];
+        // Enough of them for more than one thread to take part.
+        let pixels: Vec<[RgbHalf; 16]> = (0..150).map(|i| ramp([i as f32 * 0.01, 0.5, 1.0], [1.0, 0.75 + i as f32 * 0.02, 0.25])).collect();
+        let mut blocks = vec![[0u8; 16]; pixels.len()];
         compress_blocks_bc6h(&mut blocks, &pixels, &Bc6hEncSettings::basic());
+        let mut on_three = vec![[0u8; 16]; pixels.len()];
+        compress_blocks_bc6h_on(3, &mut on_three, &pixels, &Bc6hEncSettings::basic());
+        assert_eq!(on_three, blocks);
         for (block, pixels) in blocks.iter().zip(&pixels) {
             let mut one = [0u8; 16];
             compress_block_bc6h(&mut one, pixels, &Bc6hEncSettings::basic());

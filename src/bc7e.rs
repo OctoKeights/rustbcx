@@ -19,6 +19,8 @@
 #![allow(clippy::collapsible_else_if, clippy::collapsible_if, clippy::implicit_saturating_sub)]
 
 use crate::bc7decomp::{ColorRgba, ANCHOR_INDEX_SECOND_SUBSET, ANCHOR_INDEX_THIRD_SUBSET_1, ANCHOR_INDEX_THIRD_SUBSET_2, PARTITION2, PARTITION3};
+use crate::fmath;
+use crate::parallel;
 use std::fmt;
 
 /// The bytes of a BC7 block.
@@ -1094,7 +1096,7 @@ fn evaluate_solution(low: &ColorQuadI, high: &ColorQuadI, pbits: &[u32; 2], para
     for i in 1..(n - 1) {
         for j in 0..nc {
             weighted_colors[i][j] =
-                ((weighted_colors[0][j] * (64.0f32 - params.selector_weights[i] as f32) + weighted_colors[n - 1][j] * params.selector_weights[i] as f32 + 32.0f32) * (1.0f32 / 64.0f32)).floor();
+                fmath::floor((weighted_colors[0][j] * (64.0f32 - params.selector_weights[i] as f32) + weighted_colors[n - 1][j] * params.selector_weights[i] as f32 + 32.0f32) * (1.0f32 / 64.0f32));
         }
     }
 
@@ -1136,7 +1138,7 @@ fn evaluate_solution(low: &ColorQuadI, high: &ColorQuadI, pbits: &[u32; 2], para
                     let g = c[1] as f32;
                     let b = c[2] as f32;
 
-                    let mut best_sel = (((r * dr + lr) + (g * dg + lg) + (b * db + lb)) * f + 0.5f32).floor();
+                    let mut best_sel = fmath::floor(((r * dr + lr) + (g * dg + lg) + (b * db + lb)) * f + 0.5f32);
                     best_sel = clampf(best_sel, 1.0, (n - 1) as f32);
 
                     let best_sel0 = best_sel - 1.0;
@@ -1209,7 +1211,7 @@ fn evaluate_solution(low: &ColorQuadI, high: &ColorQuadI, pbits: &[u32; 2], para
                     let b = c[2] as f32;
                     let a = c[3] as f32;
 
-                    let mut best_sel = (((r * dr + lr) + (g * dg + lg) + (b * db + lb) + (a * da + la)) * f + 0.5f32).floor();
+                    let mut best_sel = fmath::floor(((r * dr + lr) + (g * dg + lg) + (b * db + lb) + (a * da + la)) * f + 0.5f32);
                     best_sel = clampf(best_sel, 1.0, (n - 1) as f32);
 
                     let best_sel0 = best_sel - 1.0;
@@ -1798,7 +1800,7 @@ impl Bc7e {
                         }
 
                         for i in 0..num_pixels {
-                            selectors_temp1[i] = f2i(clampf((max_selector as f32 * (selectors_temp[i] as f32 - ly as f32) / (hy as f32 - ly as f32) + 0.5).floor(), 0.0, max_selector as f32));
+                            selectors_temp1[i] = f2i(clampf(fmath::floor(max_selector as f32 * (selectors_temp[i] as f32 - ly as f32) / (hy as f32 - ly as f32) + 0.5), 0.0, max_selector as f32));
                         }
 
                         let (xl, xh) = least_squares(&selectors_temp1);
@@ -1884,7 +1886,7 @@ fn color_cell_compression_est(mode: u32, params: &ColorCellCompressorParams, pix
         for c in pixels {
             let d = far * c[0] as f32 + fag * c[1] as f32 + fab * c[2] as f32;
 
-            let s = clampf(((d - low) * scale + 0.5).floor() * inv_n, 0.0, 1.0);
+            let s = clampf(fmath::floor((d - low) * scale + 0.5) * inv_n, 0.0, 1.0);
 
             let itr = sr + dir * s;
             let itg = sg + dig * s;
@@ -1900,7 +1902,7 @@ fn color_cell_compression_est(mode: u32, params: &ColorCellCompressorParams, pix
         for c in pixels {
             let d = far * c[0] as f32 + fag * c[1] as f32 + fab * c[2] as f32;
 
-            let s = clampf(((d - low) * scale + 0.5).floor() * inv_n, 0.0, 1.0);
+            let s = clampf(fmath::floor((d - low) * scale + 0.5) * inv_n, 0.0, 1.0);
 
             let itr = sr + dir * s;
             let itg = sg + dig * s;
@@ -1974,7 +1976,7 @@ fn color_cell_compression_est_mode7(mode: u32, params: &ColorCellCompressorParam
         for c in pixels {
             let d = far * c[0] as f32 + fag * c[1] as f32 + fab * c[2] as f32 + faa * c[3] as f32;
 
-            let s = clampf(((d - low) * scale + 0.5).floor() * inv_n, 0.0, 1.0);
+            let s = clampf(fmath::floor((d - low) * scale + 0.5) * inv_n, 0.0, 1.0);
 
             let itr = sr + dir * s;
             let itg = sg + dig * s;
@@ -1992,7 +1994,7 @@ fn color_cell_compression_est_mode7(mode: u32, params: &ColorCellCompressorParam
         for c in pixels {
             let d = far * c[0] as f32 + fag * c[1] as f32 + fab * c[2] as f32 + faa * c[3] as f32;
 
-            let s = clampf(((d - low) * scale + 0.5).floor() * inv_n, 0.0, 1.0);
+            let s = clampf(fmath::floor((d - low) * scale + 0.5) * inv_n, 0.0, 1.0);
 
             let itr = sr + dir * s;
             let itg = sg + dig * s;
@@ -2550,8 +2552,8 @@ impl Bc7e {
                     if xl > xh {
                         std::mem::swap(&mut xl, &mut xh);
                     }
-                    la = clampi(f2i((xl * (63.0f32 / 255.0f32) + 0.5).floor()), 0, 63) as u32;
-                    ha = clampi(f2i((xh * (63.0f32 / 255.0f32) + 0.5).floor()), 0, 63) as u32;
+                    la = clampi(f2i(fmath::floor(xl * (63.0f32 / 255.0f32) + 0.5)), 0, 63) as u32;
+                    ha = clampi(f2i(fmath::floor(xh * (63.0f32 / 255.0f32) + 0.5)), 0, 63) as u32;
                 }
             }
 
@@ -2649,8 +2651,8 @@ impl Bc7e {
                 if pass == 0 {
                     let (xl, xh) = compute_least_squares_endpoints_a(16, &trial_alpha_selectors, &WEIGHTS2X, pixels);
 
-                    let mut new_lo_a = clampi(f2i((xl + 0.5).floor()), 0, 255) as u32;
-                    let mut new_hi_a = clampi(f2i((xh + 0.5).floor()), 0, 255) as u32;
+                    let mut new_lo_a = clampi(f2i(fmath::floor(xl + 0.5)), 0, 255) as u32;
+                    let mut new_hi_a = clampi(f2i(fmath::floor(xh + 0.5)), 0, 255) as u32;
                     if new_lo_a > new_hi_a {
                         std::mem::swap(&mut new_lo_a, &mut new_hi_a);
                     }
@@ -3266,15 +3268,29 @@ impl Bc7e {
     }
 
     /// Packs blocks of 16 RGBA pixels each (red first) as BC7 blocks: `bc7e_compress_blocks`.
+    /// The work is shared out among all the machine's threads; the blocks are the same however
+    /// many there are. [`Bc7e::compress_blocks_on`] takes the number of threads.
     ///
     /// # Panics
     ///
     /// If there are not as many blocks as sets of pixels.
     pub fn compress_blocks(&self, blocks: &mut [[u8; 16]], pixels: &[[ColorRgba; 16]], comp_params: &CompressBlockParams) {
+        self.compress_blocks_on(0, blocks, pixels, comp_params);
+    }
+
+    /// [`Bc7e::compress_blocks`] on a number of threads: 0 for all the machine has, 1 to stay
+    /// on the calling thread.
+    ///
+    /// # Panics
+    ///
+    /// If there are not as many blocks as sets of pixels.
+    pub fn compress_blocks_on(&self, threads: u32, blocks: &mut [[u8; 16]], pixels: &[[ColorRgba; 16]], comp_params: &CompressBlockParams) {
         assert_eq!(blocks.len(), pixels.len(), "a block for each sixteen pixels");
-        for (block, pixels) in blocks.iter_mut().zip(pixels) {
-            self.compress_block(block, pixels, comp_params);
-        }
+        parallel::for_each_run(blocks, pixels, threads, |blocks, pixels| {
+            for (block, pixels) in blocks.iter_mut().zip(pixels) {
+                self.compress_block(block, pixels, comp_params);
+            }
+        });
     }
 }
 
@@ -3427,6 +3443,18 @@ mod tests {
             let mut alone = [0u8; 16];
             encoder.compress_block(&mut alone, &pixels[i], &params);
             assert_eq!(together[i], alone);
+        }
+
+        // Enough of them for more than one thread to take part: the same blocks on all the
+        // machine's threads, on one and on three.
+        let pixels: Vec<[ColorRgba; 16]> = (0..200u32).map(|i| std::array::from_fn(|k| [(i + k as u32 * 9) as u8, (i * 3) as u8, (k * 16) as u8, if i % 2 == 0 { 255 } else { (k * 17) as u8 }])).collect();
+        let params = CompressBlockParams::ultrafast(false);
+        let mut on_all = vec![[0u8; 16]; pixels.len()];
+        encoder.compress_blocks(&mut on_all, &pixels, &params);
+        for threads in [1, 3] {
+            let mut blocks = vec![[0u8; 16]; pixels.len()];
+            encoder.compress_blocks_on(threads, &mut blocks, &pixels, &params);
+            assert_eq!(blocks, on_all, "{threads} threads");
         }
     }
 

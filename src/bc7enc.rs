@@ -12,6 +12,7 @@
 //! `bc7_block`. They are not here.)
 
 use crate::bc7decomp::{ColorRgba, ANCHOR_INDEX_SECOND_SUBSET, ANCHOR_INDEX_THIRD_SUBSET_1, ANCHOR_INDEX_THIRD_SUBSET_2, PARTITION2, PARTITION3};
+use crate::fmath;
 use std::fmt;
 
 /// The bytes of a BC7 block.
@@ -1542,7 +1543,7 @@ impl Bc7Enc {
 
                         for i in 0..num_pixels {
                             selectors_temp1[i] =
-                                clampf((max_selector as f32 * (selectors_temp[i] as f32 - ly as f32) / (hy as f32 - ly as f32) + 0.5).floor(), 0.0, max_selector as f32) as u8;
+                                clampf(fmath::floor(max_selector as f32 * (selectors_temp[i] as f32 - ly as f32) / (hy as f32 - ly as f32) + 0.5), 0.0, max_selector as f32) as u8;
                         }
 
                         let (xl, xh) = least_squares(&selectors_temp1);
@@ -2318,8 +2319,8 @@ impl Bc7Enc {
                 if pass != total_passes - 1 {
                     let (xl, xh) = compute_least_squares_endpoints_a(&trial_alpha_selectors, &WEIGHTS2X, pixels);
 
-                    let mut new_lo_a = clampi(f2i((xl + 0.5).floor()), 0, 255) as u32;
-                    let mut new_hi_a = clampi(f2i((xh + 0.5).floor()), 0, 255) as u32;
+                    let mut new_lo_a = clampi(f2i(fmath::floor(xl + 0.5)), 0, 255) as u32;
+                    let mut new_hi_a = clampi(f2i(fmath::floor(xh + 0.5)), 0, 255) as u32;
                     if new_lo_a > new_hi_a {
                         std::mem::swap(&mut new_lo_a, &mut new_hi_a);
                     }
