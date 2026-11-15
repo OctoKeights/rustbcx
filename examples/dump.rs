@@ -23,6 +23,12 @@
 //!                                    through the entropy reduction transform, its settings
 //!                                    varied
 //!
+//! And of the comparison for BC6H, as `compare/dump_bc6h.cpp` does with bcdec:
+//!
+//!   dump bc6h_unpack <seed> <blocks>   made-up BC6H blocks of every mode (and of none)
+//!                                      unpacked as unsigned and as signed, to halves and to
+//!                                      floats
+//!
 //! And of the comparison with bc7e.ispc, as `compare/dump_bc7e.cpp` does with the ISPC encoder:
 //!
 //!   dump bc7e_presets <seed> <blocks> [file]    made-up blocks packed with each of the seven
@@ -507,6 +513,7 @@ fn main() {
         "ert" => print!("{}", made_up::ert(seed, blocks)),
         "rdo" => print!("{}", made_up::rdo(seed, blocks, false)),
         "rdo_bc7e" => print!("{}", made_up::rdo(seed, blocks, true)),
+        "bc6h_unpack" => print!("{}", made_up::bc6h_unpack(seed, blocks)),
         "bc7e_presets" => dump_bc7e(true, seed, blocks, args.get(4)),
         "bc7e_settings" => dump_bc7e(false, seed, blocks, args.get(4)),
         _ => std::process::exit(2),

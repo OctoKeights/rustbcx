@@ -21,7 +21,12 @@
 # that bc7e together. (A build of bc7e.ispc with --opt=fast-math, or for AVX2 without
 # --opt=disable-fma, packs some blocks differently from this one, and so from the port.)
 #
-# Without the ISPC compiler the bc7e dumps are left out, and the script says so and fails.
+# BC6H: the unpacker is compared with bcdec (https://github.com/iOrange/bcdec), whose folder
+# (the one holding bcdec.h) goes in $BCDEC; compare/dump_bc6h.cpp is built against it. Dump:
+# bc6h_unpack.
+#
+# Without the ISPC compiler the bc7e dumps are left out, and without $BCDEC the BC6H ones, and
+# the script says so and fails.
 set -u
 if [ $# -lt 1 ]; then
     echo "usage: $0 <folder with bc7enc_rdo's sources> [blocks] [seeds] [dumps]" >&2
@@ -31,7 +36,7 @@ here=$(cd "$(dirname "$0")/.." && pwd)
 source=$1
 blocks=${2:-200000}
 seeds=${3:-3}
-dumps=${4:-bc7decomp unpack bc1 bc345 bc7enc bc7block ert rdo bc7e_presets bc7e_settings rdo_bc7e}
+dumps=${4:-bc7decomp unpack bc1 bc345 bc7enc bc7block ert rdo bc7e_presets bc7e_settings rdo_bc7e bc6h_unpack}
 tmp=${TMPDIR:-/tmp}/rustbcx-compare
 mkdir -p "$tmp" || exit 2
 
@@ -40,6 +45,7 @@ rust=$(cd "$here" && cargo metadata --format-version 1 --no-deps 2>/dev/null | s
 
 built_cpp=0
 built_ispc=0
+built_bc6h=0
 bad=0
 # (ert.h uses the fixed-width integer types without including their header; no contraction of
 # a multiply and an add into one instruction, which Rust never does.)
@@ -63,6 +69,19 @@ for what in $dumps; do
         reference=$tmp/dump-ispc
         [ "$what" = rdo_bc7e ] && reference=$tmp/dump-cpp-bc7e
         count=$((blocks / 10))
+        ;;
+    bc6h_*)
+        if [ "$built_bc6h" -eq 0 ]; then
+            if [ -z "${BCDEC:-}" ] || [ ! -f "$BCDEC/bcdec.h" ]; then
+                echo "$what: NOT COMPARED, no bcdec (put the folder that holds bcdec.h in \$BCDEC)"
+                bad=$((bad + 1))
+                continue
+            fi
+            ${CXX:-c++} -O2 -ffp-contract=off -I "$BCDEC" "$here/compare/dump_bc6h.cpp" -o "$tmp/dump-bc6h" || exit 2
+            built_bc6h=1
+        fi
+        reference=$tmp/dump-bc6h
+        count=$blocks
         ;;
     *)
         if [ "$built_cpp" -eq 0 ]; then

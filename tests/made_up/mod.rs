@@ -4,6 +4,7 @@
 // (The arithmetic is written as dump.cpp has it; not every user of this module uses all of it.)
 #![allow(clippy::manual_is_multiple_of, clippy::needless_range_loop, dead_code)]
 
+use rustbcx::bc6h;
 use rustbcx::bc7decomp;
 use rustbcx::bc7enc::{Bc7Enc, CompressBlockParams};
 use rustbcx::dds;
@@ -434,4 +435,44 @@ pub fn rdo(seed: u64, blocks: u32, with_bc7e: bool) -> String {
         images += 1;
     }
     format!("rdo {:016x}\nrdo images: {images}, blocks: {done}, refused: {refused}\n", hash.value)
+}
+
+/// The first bits of the fourteen modes of BC6H.
+const BC6H_MODE_BITS: [u8; 14] = [0x00, 0x01, 0x02, 0x06, 0x0a, 0x0e, 0x12, 0x16, 0x1a, 0x1e, 0x03, 0x07, 0x0b, 0x0f];
+
+/// The `bc6h_unpack` dump: made-up BC6H blocks of every mode (and of none) unpacked as unsigned
+/// and as signed, to halves and to floats. What `compare/dump_bc6h.cpp` prints for the same
+/// seed and count.
+pub fn bc6h_unpack(seed: u64, blocks: u32) -> String {
+    let mut random = Random { state: seed };
+    let mut hash = Hash::new();
+    let mut black = 0u32;
+    for i in 0..blocks {
+        let mut block = [0u8; 16];
+        for byte in &mut block {
+            *byte = random.next() as u8;
+        }
+        // Half of them of a mode in turn; a few with only small values in them.
+        if i % 2 == 0 {
+            let bits = BC6H_MODE_BITS[((i / 2) % 14) as usize];
+            block[0] = if bits < 2 { (block[0] & 0xfc) | bits } else { (block[0] & 0xe0) | bits };
+        }
+        if i % 16 == 5 {
+            for byte in &mut block[1..10] {
+                *byte &= random.next() as u8;
+            }
+        }
+        for is_signed in [false, true] {
+            let halves = bc6h::unpack_bc6h_half(&block, is_signed);
+            for value in halves.as_flattened() {
+                hash.add(&value.to_le_bytes());
+            }
+            let floats = bc6h::unpack_bc6h_float(&block, is_signed);
+            for value in floats.as_flattened() {
+                hash.add(&value.to_bits().to_le_bytes());
+            }
+            black += u32::from(halves.as_flattened().iter().all(|&value| value == 0));
+        }
+    }
+    format!("bc6h_unpack {:016x}\nbc6h_unpack blocks unpacked to black: {black}\n", hash.value)
 }

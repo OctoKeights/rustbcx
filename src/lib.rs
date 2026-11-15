@@ -14,6 +14,9 @@
 //!   cores, with the rate-distortion pass (`rdo_bc_encoder.cpp`). [`image`] has the image it
 //!   takes.
 //!
+//! - [`bc6h`]: BC6H, the format for HDR colour: blocks to pixels (`bcdec.h`, from
+//!   Sergii Kudlai's [bcdec](https://github.com/iOrange/bcdec)).
+//!
 //! And around the ports, the crate's own: [`texture`], an image packed with its mip levels,
 //! and [`dds`] and [`ktx`], which read and write it as `.dds`, `.ktx` and `.ktx2` files.
 //!
@@ -24,6 +27,7 @@
 // The code follows the originals' line for line, and these are its shapes.
 #![allow(clippy::needless_range_loop, clippy::too_many_arguments, clippy::manual_range_contains)]
 
+pub mod bc6h;
 pub mod bc7decomp;
 pub mod bc7e;
 pub mod bc7enc;
