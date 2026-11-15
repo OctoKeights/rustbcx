@@ -1,0 +1,4 @@
+bc2 20000 52f1582db185aeab
+bc2 blocks packed with the first colour not the larger: 0
+bc2 20000 2d3ac02db69813fc
+bc2 blocks packed with the first colour not the larger: 0

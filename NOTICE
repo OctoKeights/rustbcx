@@ -56,7 +56,8 @@ Version 2.0 (see LICENSE).
    original built without fast-math and without fused multiply-add.
 
 What is around the ports is the crate's own: mip levels and the HDR image (in src/image.rs),
-float_to_half (in src/bc6h.rs), src/texture.rs,
+float_to_half (in src/bc6h.rs), src/bc2.rs (BC2, its colours packed and unpacked by the
+port of rgbcx), BC2 in src/rdo_bc_encoder.rs, src/texture.rs,
 src/dds.rs (its writer after bc7enc_rdo's save_dds), src/ktx.rs and src/parallel.rs. The
 data format descriptor src/ktx.rs writes into a .ktx2 file follows the one the Khronos
 Group's KTX-Software writes (createDFDCompressed in its dfdutils, Apache 2.0).

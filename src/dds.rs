@@ -1,7 +1,7 @@
 //! `.dds` files, DirectDraw Surface: the container Direct3D tools read and write.
 //!
 //! [`write()`] for one level, without sRGB, gives the bytes bc7enc_rdo's `save_dds`
-//! (`utils.cpp`) writes. Mip levels, sRGB, BC6H and [`read()`] are the crate's own.
+//! (`utils.cpp`) writes. Mip levels, sRGB, BC2, BC6H and [`read()`] are the crate's own.
 
 use crate::texture::{check_size, level_bytes, Reader, Texture, TextureError, TextureFormat};
 
@@ -29,6 +29,8 @@ fn dxgi_format(format: TextureFormat, srgb: bool) -> u32 {
     match (format, srgb) {
         (TextureFormat::Bc1, false) => 71,
         (TextureFormat::Bc1, true) => 72,
+        (TextureFormat::Bc2, false) => 74,
+        (TextureFormat::Bc2, true) => 75,
         (TextureFormat::Bc3, false) => 77,
         (TextureFormat::Bc3, true) => 78,
         (TextureFormat::Bc4, _) => 80,
@@ -42,7 +44,8 @@ fn dxgi_format(format: TextureFormat, srgb: bool) -> u32 {
 
 /// The bytes of a `.dds` file for a texture.
 ///
-/// BC1, BC3, BC4 and BC5 get the old header with a FourCC (`DXT1`, `DXT5`, `ATI1`, `ATI2`),
+/// BC1, BC2, BC3, BC4 and BC5 get the old header with a FourCC (`DXT1`, `DXT3`, `DXT5`, `ATI1`,
+/// `ATI2`),
 /// which every tool reads, unless `force_dx10_header` is set; BC7, BC6H and anything marked
 /// sRGB get the DX10 header, which is the only one that can say so.
 ///
@@ -55,6 +58,7 @@ pub fn write(texture: &Texture, force_dx10_header: bool) -> Option<Vec<u8>> {
     let legacy_fourcc = match texture.format {
         _ if force_dx10_header || srgb => None,
         TextureFormat::Bc1 => Some(fourcc(b"DXT1")),
+        TextureFormat::Bc2 => Some(fourcc(b"DXT3")),
         TextureFormat::Bc3 => Some(fourcc(b"DXT5")),
         TextureFormat::Bc4 => Some(fourcc(b"ATI1")),
         TextureFormat::Bc5 => Some(fourcc(b"ATI2")),
@@ -95,7 +99,9 @@ pub fn write(texture: &Texture, force_dx10_header: bool) -> Option<Vec<u8>> {
     Some(file)
 }
 
-/// Reads a `.dds` file: a 2D texture in BC1, BC3, BC4, BC5, BC6H or BC7, with its mip levels.
+/// Reads a `.dds` file: a 2D texture in BC1, BC2, BC3, BC4, BC5, BC6H or BC7, with its mip
+/// levels. (The old FourCCs `DXT2` and `DXT4` are BC2 and BC3 with the colours multiplied by
+/// alpha; they are read as BC2 and BC3, and that the colours are multiplied is not kept.)
 /// Cube maps, arrays, volumes and other pixel formats are refused as unsupported.
 pub fn read(file: &[u8]) -> Result<Texture, TextureError> {
     if file.len() < 4 || &file[..4] != b"DDS " {
@@ -136,6 +142,8 @@ pub fn read(file: &[u8]) -> Result<Texture, TextureError> {
         match dxgi {
             70 | 71 => (TextureFormat::Bc1, false),
             72 => (TextureFormat::Bc1, true),
+            73 | 74 => (TextureFormat::Bc2, false),
+            75 => (TextureFormat::Bc2, true),
             76 | 77 => (TextureFormat::Bc3, false),
             78 => (TextureFormat::Bc3, true),
             79 | 80 => (TextureFormat::Bc4, false),
@@ -144,10 +152,12 @@ pub fn read(file: &[u8]) -> Result<Texture, TextureError> {
             96 => (TextureFormat::Bc6hSigned, false),
             97 | 98 => (TextureFormat::Bc7, false),
             99 => (TextureFormat::Bc7, true),
-            _ => return Err(TextureError::Unsupported("a DXGI format other than BC1, BC3, BC4, BC5, BC6H and BC7")),
+            _ => return Err(TextureError::Unsupported("a DXGI format other than BC1 to BC7")),
         }
     } else if code == fourcc(b"DXT1") {
         (TextureFormat::Bc1, false)
+    } else if code == fourcc(b"DXT2") || code == fourcc(b"DXT3") {
+        (TextureFormat::Bc2, false)
     } else if code == fourcc(b"DXT4") || code == fourcc(b"DXT5") {
         (TextureFormat::Bc3, false)
     } else if code == fourcc(b"ATI1") || code == fourcc(b"BC4U") {
@@ -155,7 +165,7 @@ pub fn read(file: &[u8]) -> Result<Texture, TextureError> {
     } else if code == fourcc(b"ATI2") || code == fourcc(b"BC5U") {
         (TextureFormat::Bc5, false)
     } else {
-        return Err(TextureError::Unsupported("a FourCC other than DXT1, DXT5, ATI1 and ATI2"));
+        return Err(TextureError::Unsupported("a FourCC other than DXT1 to DXT5, ATI1 and ATI2"));
     };
 
     let level_count = check_size(width, height, if desc[1] & DDSD_MIPMAPCOUNT != 0 { desc[6] } else { 1 })?;
@@ -182,7 +192,7 @@ mod tests {
 
     #[test]
     fn every_format_goes_out_and_comes_back() {
-        for format in [TextureFormat::Bc1, TextureFormat::Bc3, TextureFormat::Bc4, TextureFormat::Bc5, TextureFormat::Bc6hUnsigned, TextureFormat::Bc6hSigned, TextureFormat::Bc7] {
+        for format in [TextureFormat::Bc1, TextureFormat::Bc2, TextureFormat::Bc3, TextureFormat::Bc4, TextureFormat::Bc5, TextureFormat::Bc6hUnsigned, TextureFormat::Bc6hSigned, TextureFormat::Bc7] {
             for levels in [1, 2, 4] {
                 for srgb in [false, true] {
                     for dx10 in [false, true] {
@@ -223,7 +233,7 @@ mod tests {
         assert_eq!(read(&file[..100]), Err(TextureError::Invalid("the file is cut short")));
         assert_eq!(read(b"DDX "), Err(TextureError::Invalid("no DDS signature")));
         let mut other = file.clone();
-        other[84..88].copy_from_slice(b"DXT3");
+        other[84..88].copy_from_slice(b"UYVY");
         assert!(matches!(read(&other), Err(TextureError::Unsupported(_))));
         let mut cube = file.clone();
         cube[112..116].copy_from_slice(&0x200u32.to_le_bytes());

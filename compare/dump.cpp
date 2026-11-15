@@ -18,6 +18,10 @@
 //                                    bc7enc; and the .dds file save_dds writes for each
 //   dump rdo_bc7e <seed> <blocks>    the same, BC7 with bc7e for about half the images (only
 //                                    in a build with -DSUPPORT_BC7E=1 and the ISPC object)
+//   dump bc2 <seed> <blocks>         made-up BC2 blocks unpacked, the alphas by bcdec and the
+//                                    colours by rgbcx as four colours always; and the same
+//                                    pixels packed as BC2, the colours by rgbcx (only in a
+//                                    build with -DWITH_BCDEC=1 and bcdec.h to include)
 //   dump ert <seed> <blocks>         runs of made-up blocks, many of them near copies of the
 //                                    blocks before, packed in one of five formats and put
 //                                    through the entropy reduction transform, its settings
@@ -27,6 +31,12 @@
 // twice.)
 #include "rdo_bc_encoder.h"
 
+#if WITH_BCDEC
+#define BCDEC_IMPLEMENTATION
+#include "bcdec.h"
+#endif
+
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -401,6 +411,125 @@ void DumpBc345(std::uint64_t seed, std::uint32_t blocks)
     }
     std::printf("bc345 error of the searched BC4 blocks: %llu\n", static_cast<unsigned long long>(error));
 }
+
+#if WITH_BCDEC
+// A BC2 block's colours, always four, by rgbcx: the endpoints the other way round when BC1
+// would give three (the selectors turned with them), and one colour when they are the same.
+void Bc2Colours(const std::uint8_t colour[8], std::uint8_t pixels[64], rgbcx::bc1_approx_mode mode)
+{
+    const std::uint32_t low = colour[0] | (colour[1] << 8), high = colour[2] | (colour[3] << 8);
+    if (low > high)
+    {
+        rgbcx::unpack_bc1(colour, pixels, true, mode);
+    }
+    else if (low == high)
+    {
+        rgbcx::color32 c[4];
+        rgbcx::unpack_bc1_block_colors(colour, c, mode);
+        for (int k = 0; k < 16; ++k)
+        {
+            pixels[k * 4] = c[0].r;
+            pixels[k * 4 + 1] = c[0].g;
+            pixels[k * 4 + 2] = c[0].b;
+            pixels[k * 4 + 3] = 255;
+        }
+    }
+    else
+    {
+        std::uint8_t turned[8] = {colour[2], colour[3], colour[0], colour[1]};
+        for (int k = 4; k < 8; ++k)
+            turned[k] = colour[k] ^ 0x55;
+        rgbcx::unpack_bc1(turned, pixels, true, mode);
+    }
+}
+
+// The alphas of sixteen pixels as BC2 holds them: for each the nearest of the sixteen levels,
+// found by trying them all.
+void Bc2Alpha(std::uint8_t dst[8], const std::uint8_t pixels[64])
+{
+    std::memset(dst, 0, 8);
+    for (int k = 0; k < 16; ++k)
+    {
+        int best = 0;
+        for (int level = 1; level < 16; ++level)
+            if (std::abs(level * 17 - pixels[k * 4 + 3]) < std::abs(best * 17 - pixels[k * 4 + 3]))
+                best = level;
+        dst[k / 2] |= static_cast<std::uint8_t>(best << ((k % 2) * 4));
+    }
+}
+
+void DumpBc2(std::uint64_t seed, std::uint32_t blocks)
+{
+    Random random{seed};
+    Hash hash;
+    std::uint32_t three = 0, furthest = 0;
+    for (std::uint32_t i = 0; i < blocks; ++i)
+    {
+        const rgbcx::bc1_approx_mode mode = kModes[(i / 100) % 4];
+        if (i % 100 == 0)
+            rgbcx::init(mode);
+
+        // A made-up block unpacked: the alphas by bcdec, the colours by rgbcx each way.
+        std::uint8_t block[16];
+        for (int k = 0; k < 16; ++k)
+            block[k] = static_cast<std::uint8_t>(random.Next());
+        if (i % 8 == 3)
+        {
+            block[10] = block[8];
+            block[11] = block[9];
+        }
+        std::uint8_t theirs[64], unpacked[64];
+        bcdec_bc2(block, theirs, 16);
+        for (int m = 0; m < 4; ++m)
+        {
+            Bc2Colours(block + 8, unpacked, kModes[m]);
+            for (int k = 0; k < 16; ++k)
+                unpacked[k * 4 + 3] = theirs[k * 4 + 3];
+            hash.Add(unpacked, sizeof unpacked);
+            // (bcdec rounds where rgbcx's ideal way cuts off: near, never the same.)
+            if (m == 0)
+                for (int k = 0; k < 64; ++k)
+                    furthest = std::max(furthest, static_cast<std::uint32_t>(std::abs(unpacked[k] - theirs[k])));
+        }
+
+        // Made-up pixels packed: the colours by rgbcx, the alphas to their nearest levels.
+        std::uint8_t pixels[64];
+        MakePixels(random, pixels);
+        const std::uint32_t options = random.Next();
+        const std::uint32_t level = options % 19;
+
+        std::memset(block, 0xEE, sizeof block);
+        Bc2Alpha(block, pixels);
+        rgbcx::encode_bc1(level, block + 8, pixels, false, false);
+        hash.Add(block, sizeof block);
+        three += (block[8] | (block[9] << 8)) <= (block[10] | (block[11] << 8));
+        bcdec_bc2(block, theirs, 16);
+        Bc2Colours(block + 8, unpacked, mode);
+        for (int k = 0; k < 16; ++k)
+            unpacked[k * 4 + 3] = theirs[k * 4 + 3];
+        hash.Add(unpacked, sizeof unpacked);
+
+        std::memset(block, 0xEE, sizeof block);
+        Bc2Alpha(block, pixels);
+        // (Without a need for the block's error the encoder takes one first guess only.)
+        std::uint32_t flags = options >> 16;
+        if (!(flags & (rgbcx::cEncodeBC1UseLikelyTotalOrderings | rgbcx::cEncodeBC1UseFullMSEEval)))
+            flags &= ~static_cast<std::uint32_t>(rgbcx::cEncodeBC1TryAllInitialEndponts);
+        flags &= ~static_cast<std::uint32_t>(rgbcx::cEncodeBC1Use3ColorBlocksForBlackPixels | rgbcx::cEncodeBC1Use3ColorBlocks);
+        rgbcx::encode_bc1(block + 8, pixels, flags, 1 + (options >> 4) % 12);
+        hash.Add(block, sizeof block);
+        three += (block[8] | (block[9] << 8)) <= (block[10] | (block[11] << 8));
+
+        if ((i + 1) % 20000 == 0 || i + 1 == blocks)
+            std::printf("bc2 %u %016llx\n", i + 1, static_cast<unsigned long long>(hash.value));
+    }
+    std::printf("bc2 blocks packed with the first colour not the larger: %u\n", three);
+    // (Said only when it is not so, since the port has no bcdec to say it of.)
+    if (furthest > 2)
+        std::printf("bc2 colours are %u from bcdec's\n", furthest);
+    std::fprintf(stderr, "bc2 colours furthest from bcdec's: %u\n", furthest);
+}
+#endif
 
 std::uint32_t Bc7Mode(const std::uint8_t block[16])
 {
@@ -905,6 +1034,10 @@ int main(int argc, char** argv)
         DumpErt(seed, blocks);
     else if (std::strcmp(argv[1], "rdo") == 0)
         DumpRdo(seed, blocks, false);
+#if WITH_BCDEC
+    else if (std::strcmp(argv[1], "bc2") == 0)
+        DumpBc2(seed, blocks);
+#endif
 #if SUPPORT_BC7E
     else if (std::strcmp(argv[1], "rdo_bc7e") == 0)
         DumpRdo(seed, blocks, true);

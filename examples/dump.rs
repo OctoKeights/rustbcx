@@ -23,6 +23,10 @@
 //!                                    through the entropy reduction transform, its settings
 //!                                    varied
 //!
+//!   dump bc2 <seed> <blocks>         made-up BC2 blocks unpacked each way of interpolating,
+//!                                    and the same pixels packed as BC2 (the C++ side needs
+//!                                    bcdec for it)
+//!
 //! And of the comparison for BC6H, as `compare/dump_bc6h.cpp` does with bcdec:
 //!
 //!   dump bc6h_unpack <seed> <blocks>   made-up BC6H blocks of every mode (and of none)
@@ -517,6 +521,7 @@ fn main() {
         "ert" => print!("{}", made_up::ert(seed, blocks)),
         "rdo" => print!("{}", made_up::rdo(seed, blocks, false)),
         "rdo_bc7e" => print!("{}", made_up::rdo(seed, blocks, true)),
+        "bc2" => print!("{}", made_up::bc2(seed, blocks)),
         "bc6h_unpack" => print!("{}", made_up::bc6h_unpack(seed, blocks)),
         "bc6h_pack" => print!("{}", made_up::bc6h_pack(seed, blocks)),
         "bc7e_presets" => dump_bc7e(true, seed, blocks, args.get(4)),

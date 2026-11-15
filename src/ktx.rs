@@ -17,9 +17,11 @@ const GL_RGBA: u32 = 0x1908;
 const GL_RG: u32 = 0x8227;
 const GL_COMPRESSED_RGB_S3TC_DXT1_EXT: u32 = 0x83F0;
 const GL_COMPRESSED_RGBA_S3TC_DXT1_EXT: u32 = 0x83F1;
+const GL_COMPRESSED_RGBA_S3TC_DXT3_EXT: u32 = 0x83F2;
 const GL_COMPRESSED_RGBA_S3TC_DXT5_EXT: u32 = 0x83F3;
 const GL_COMPRESSED_SRGB_S3TC_DXT1_EXT: u32 = 0x8C4C;
 const GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT1_EXT: u32 = 0x8C4D;
+const GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT3_EXT: u32 = 0x8C4E;
 const GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT: u32 = 0x8C4F;
 const GL_COMPRESSED_RED_RGTC1: u32 = 0x8DBB;
 const GL_COMPRESSED_RG_RGTC2: u32 = 0x8DBD;
@@ -33,6 +35,8 @@ fn gl_formats(format: TextureFormat, srgb: bool) -> (u32, u32) {
     match (format, srgb) {
         (TextureFormat::Bc1, false) => (GL_COMPRESSED_RGB_S3TC_DXT1_EXT, GL_RGB),
         (TextureFormat::Bc1, true) => (GL_COMPRESSED_SRGB_S3TC_DXT1_EXT, GL_RGB),
+        (TextureFormat::Bc2, false) => (GL_COMPRESSED_RGBA_S3TC_DXT3_EXT, GL_RGBA),
+        (TextureFormat::Bc2, true) => (GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT3_EXT, GL_RGBA),
         (TextureFormat::Bc3, false) => (GL_COMPRESSED_RGBA_S3TC_DXT5_EXT, GL_RGBA),
         (TextureFormat::Bc3, true) => (GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT, GL_RGBA),
         (TextureFormat::Bc4, _) => (GL_COMPRESSED_RED_RGTC1, GL_RED),
@@ -49,6 +53,8 @@ fn vk_format(format: TextureFormat, srgb: bool) -> u32 {
     match (format, srgb) {
         (TextureFormat::Bc1, false) => 131,
         (TextureFormat::Bc1, true) => 132,
+        (TextureFormat::Bc2, false) => 135,
+        (TextureFormat::Bc2, true) => 136,
         (TextureFormat::Bc3, false) => 137,
         (TextureFormat::Bc3, true) => 138,
         (TextureFormat::Bc4, _) => 139,
@@ -91,8 +97,8 @@ pub fn write_ktx1(texture: &Texture) -> Option<Vec<u8>> {
     Some(file)
 }
 
-/// Reads a `.ktx` file (KTX version 1): a 2D texture in BC1, BC3, BC4, BC5, BC6H or BC7, with
-/// its mip levels. A file written on a big-endian machine, cube maps, arrays, volumes and
+/// Reads a `.ktx` file (KTX version 1): a 2D texture in BC1, BC2, BC3, BC4, BC5, BC6H or BC7,
+/// with its mip levels. A file written on a big-endian machine, cube maps, arrays, volumes and
 /// other formats are refused as unsupported.
 pub fn read_ktx1(file: &[u8]) -> Result<Texture, TextureError> {
     if file.len() < 12 || file[..12] != KTX1_IDENTIFIER {
@@ -113,6 +119,8 @@ pub fn read_ktx1(file: &[u8]) -> Result<Texture, TextureError> {
     let (format, srgb) = match internal_format {
         GL_COMPRESSED_RGB_S3TC_DXT1_EXT | GL_COMPRESSED_RGBA_S3TC_DXT1_EXT => (TextureFormat::Bc1, false),
         GL_COMPRESSED_SRGB_S3TC_DXT1_EXT | GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT1_EXT => (TextureFormat::Bc1, true),
+        GL_COMPRESSED_RGBA_S3TC_DXT3_EXT => (TextureFormat::Bc2, false),
+        GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT3_EXT => (TextureFormat::Bc2, true),
         GL_COMPRESSED_RGBA_S3TC_DXT5_EXT => (TextureFormat::Bc3, false),
         GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT => (TextureFormat::Bc3, true),
         GL_COMPRESSED_RED_RGTC1 => (TextureFormat::Bc4, false),
@@ -121,7 +129,7 @@ pub fn read_ktx1(file: &[u8]) -> Result<Texture, TextureError> {
         GL_COMPRESSED_RGB_BPTC_SIGNED_FLOAT => (TextureFormat::Bc6hSigned, false),
         GL_COMPRESSED_RGBA_BPTC_UNORM => (TextureFormat::Bc7, false),
         GL_COMPRESSED_SRGB_ALPHA_BPTC_UNORM => (TextureFormat::Bc7, true),
-        _ => return Err(TextureError::Unsupported("an OpenGL format other than BC1, BC3, BC4, BC5, BC6H and BC7")),
+        _ => return Err(TextureError::Unsupported("an OpenGL format other than BC1 to BC7")),
     };
     if depth > 1 {
         return Err(TextureError::Unsupported("a volume texture"));
@@ -158,6 +166,7 @@ fn data_format_descriptor(format: TextureFormat, srgb: bool) -> Vec<u8> {
     // The colour model, and for each sample its channel and where its bits start.
     let (model, samples): (u32, &[(u32, u32)]) = match format {
         TextureFormat::Bc1 => (128, &[(0, 0)]),
+        TextureFormat::Bc2 => (129, &[(15, 0), (0, 64)]),
         TextureFormat::Bc3 => (130, &[(15, 0), (0, 64)]),
         TextureFormat::Bc4 => (131, &[(0, 0)]),
         TextureFormat::Bc5 => (132, &[(0, 0), (1, 64)]),
@@ -240,8 +249,8 @@ pub fn write_ktx2(texture: &Texture) -> Option<Vec<u8>> {
     Some(file)
 }
 
-/// Reads a `.ktx2` file (KTX version 2): a 2D texture in BC1, BC3, BC4, BC5, BC6H or BC7, with
-/// its mip levels. Supercompressed levels (zstd, zlib, Basis), cube maps, arrays, volumes and
+/// Reads a `.ktx2` file (KTX version 2): a 2D texture in BC1, BC2, BC3, BC4, BC5, BC6H or BC7,
+/// with its mip levels. Supercompressed levels (zstd, zlib, Basis), cube maps, arrays, volumes and
 /// other formats are refused as unsupported.
 pub fn read_ktx2(file: &[u8]) -> Result<Texture, TextureError> {
     if file.len() < 12 || file[..12] != KTX2_IDENTIFIER {
@@ -256,6 +265,8 @@ pub fn read_ktx2(file: &[u8]) -> Result<Texture, TextureError> {
     let (format, srgb) = match format_number {
         131 | 133 => (TextureFormat::Bc1, false),
         132 | 134 => (TextureFormat::Bc1, true),
+        135 => (TextureFormat::Bc2, false),
+        136 => (TextureFormat::Bc2, true),
         137 => (TextureFormat::Bc3, false),
         138 => (TextureFormat::Bc3, true),
         139 => (TextureFormat::Bc4, false),
@@ -264,7 +275,7 @@ pub fn read_ktx2(file: &[u8]) -> Result<Texture, TextureError> {
         144 => (TextureFormat::Bc6hSigned, false),
         145 => (TextureFormat::Bc7, false),
         146 => (TextureFormat::Bc7, true),
-        _ => return Err(TextureError::Unsupported("a Vulkan format other than BC1, BC3, BC4, BC5, BC6H and BC7")),
+        _ => return Err(TextureError::Unsupported("a Vulkan format other than BC1 to BC7")),
     };
     if depth > 1 {
         return Err(TextureError::Unsupported("a volume texture"));
@@ -299,7 +310,7 @@ pub fn read_ktx2(file: &[u8]) -> Result<Texture, TextureError> {
 mod tests {
     use super::*;
 
-    const FORMATS: [TextureFormat; 7] = [TextureFormat::Bc1, TextureFormat::Bc3, TextureFormat::Bc4, TextureFormat::Bc5, TextureFormat::Bc6hUnsigned, TextureFormat::Bc6hSigned, TextureFormat::Bc7];
+    const FORMATS: [TextureFormat; 8] = [TextureFormat::Bc1, TextureFormat::Bc2, TextureFormat::Bc3, TextureFormat::Bc4, TextureFormat::Bc5, TextureFormat::Bc6hUnsigned, TextureFormat::Bc6hSigned, TextureFormat::Bc7];
 
     fn texture(format: TextureFormat, levels: usize) -> Texture {
         let (width, height) = (9, 6);

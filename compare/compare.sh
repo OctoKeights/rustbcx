@@ -28,8 +28,14 @@
 # kernel.ispc is built the strict way, as bc7e.ispc is, and compare/dump_bc6h.cpp against that
 # and bcdec. Dump: bc6h_pack, with a tenth of [blocks], since it packs every block five times.
 #
-# Without the ISPC compiler the bc7e dumps and bc6h_pack are left out, without $BCDEC the BC6H
-# dumps, and without $ISPCTC bc6h_pack; the script says so and fails.
+# BC2, which bc7enc_rdo does not have: the crate's own, made of rgbcx's BC1 for the colours and
+# sixteen alphas of four bits. Compared with compare/dump.cpp built against the C++ library
+# and bcdec together: the alphas with bcdec's bcdec_bc2, the colours with rgbcx's BC1 (bcdec
+# rounds its colours another way than any of rgbcx's four, so the dump only checks that they
+# are near). Dump: bc2.
+#
+# Without the ISPC compiler the bc7e dumps and bc6h_pack are left out, without $BCDEC bc2 and
+# the BC6H dumps, and without $ISPCTC bc6h_pack; the script says so and fails.
 set -u
 if [ $# -lt 1 ]; then
     echo "usage: $0 <folder with bc7enc_rdo's sources> [blocks] [seeds] [dumps]" >&2
@@ -39,7 +45,7 @@ here=$(cd "$(dirname "$0")/.." && pwd)
 source=$1
 blocks=${2:-200000}
 seeds=${3:-3}
-dumps=${4:-bc7decomp unpack bc1 bc345 bc7enc bc7block ert rdo bc7e_presets bc7e_settings rdo_bc7e bc6h_unpack bc6h_pack}
+dumps=${4:-bc7decomp unpack bc1 bc345 bc7enc bc7block ert rdo bc7e_presets bc7e_settings rdo_bc7e bc2 bc6h_unpack bc6h_pack}
 tmp=${TMPDIR:-/tmp}/rustbcx-compare
 mkdir -p "$tmp" || exit 2
 
@@ -48,6 +54,7 @@ rust=$(cd "$here" && cargo metadata --format-version 1 --no-deps 2>/dev/null | s
 
 built_cpp=0
 built_ispc=0
+built_bc2=0
 built_bc6h=0
 built_bc6h_pack=0
 bad=0
@@ -97,6 +104,20 @@ for what in $dumps; do
         fi
         reference=$tmp/dump-bc6h-ispc
         count=$((blocks / 10))
+        ;;
+    bc2)
+        if [ "$built_bc2" -eq 0 ]; then
+            if [ -z "${BCDEC:-}" ] || [ ! -f "$BCDEC/bcdec.h" ]; then
+                echo "$what: NOT COMPARED, no bcdec (put the folder that holds bcdec.h in \$BCDEC)"
+                bad=$((bad + 1))
+                continue
+            fi
+            # shellcheck disable=SC2086
+            ${CXX:-c++} $cpp_flags -DWITH_BCDEC=1 -I "$BCDEC" -I "$source" "$here/compare/dump.cpp" $cpp_sources -o "$tmp/dump-cpp-bc2" || exit 2
+            built_bc2=1
+        fi
+        reference=$tmp/dump-cpp-bc2
+        count=$blocks
         ;;
     bc6h_*)
         if [ "$built_bc6h" -eq 0 ]; then

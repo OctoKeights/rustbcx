@@ -39,5 +39,13 @@ Compressor's BC6H packer, built the strict way, makes of made-up HDR pixels;
     tmp="${TMPDIR:-/tmp}/rustbcx-compare"
     { "$tmp/dump-bc6h" bc6h_unpack 5 20000; "$tmp/dump-bc6h" bc6h_unpack 11 20000; "$tmp/dump-bc6h-ispc" bc6h_pack 4 1500; } > tests/data/bc6h_expected.txt
 
+`bc2_expected.txt` is what bc7enc_rdo's rgbcx and bcdec together make of made-up BC2 blocks and
+pixels, as `compare/dump.cpp` built with bcdec prints it; `tests/bc2_golden.rs` checks that the
+crate prints the same. To make it again:
+
+    BCDEC=<folder holding bcdec.h> compare/compare.sh <checkout of bc7enc_rdo> 3000 1 "bc2"
+    ref="${TMPDIR:-/tmp}/rustbcx-compare/dump-cpp-bc2"
+    { "$ref" bc2 6 20000; "$ref" bc2 13 20000; } > tests/data/bc2_expected.txt
+
 No texture from anywhere is in this repository: every block the tests and the comparison pack
 is made up from a seed.

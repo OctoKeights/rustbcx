@@ -4,6 +4,7 @@
 // (The arithmetic is written as dump.cpp has it; not every user of this module uses all of it.)
 #![allow(clippy::manual_is_multiple_of, clippy::needless_range_loop, dead_code)]
 
+use rustbcx::bc2;
 use rustbcx::bc6h::{self, Bc6hEncSettings};
 use rustbcx::bc7decomp;
 use rustbcx::bc7enc::{Bc7Enc, CompressBlockParams};
@@ -439,6 +440,63 @@ pub fn rdo(seed: u64, blocks: u32, with_bc7e: bool) -> String {
 
 /// The first bits of the fourteen modes of BC6H.
 const BC6H_MODE_BITS: [u8; 14] = [0x00, 0x01, 0x02, 0x06, 0x0a, 0x0e, 0x12, 0x16, 0x1a, 0x1e, 0x03, 0x07, 0x0b, 0x0f];
+
+const MODES: [Bc1ApproxMode; 4] = [Bc1ApproxMode::Ideal, Bc1ApproxMode::NVidia, Bc1ApproxMode::Amd, Bc1ApproxMode::IdealRound4];
+
+/// The `bc2` dump: made-up BC2 blocks unpacked each way of interpolating, and made-up pixels
+/// packed as BC2 at every level and with flags, and unpacked again.
+pub fn bc2(seed: u64, blocks: u32) -> String {
+    let encoders = MODES.map(Rgbcx::new);
+    let mut random = Random { state: seed };
+    let mut hash = Hash::new();
+    let mut three = 0u32;
+    let mut out = String::new();
+    let first_not_larger = |block: &[u8; 16]| u32::from(u16::from_le_bytes([block[8], block[9]]) <= u16::from_le_bytes([block[10], block[11]]));
+    for i in 0..blocks {
+        let mode = MODES[((i / 100) % 4) as usize];
+        let encoder = &encoders[((i / 100) % 4) as usize];
+
+        let mut block = [0u8; 16];
+        for byte in &mut block {
+            *byte = random.next() as u8;
+        }
+        if i % 8 == 3 {
+            block[10] = block[8];
+            block[11] = block[9];
+        }
+        let mut unpacked = [[0u8; 4]; 16];
+        for each in MODES {
+            bc2::unpack_bc2(&block, &mut unpacked, each);
+            hash.add(unpacked.as_flattened());
+        }
+
+        let pixels = make_pixels(&mut random);
+        let options = random.next();
+        let level = options % 19;
+
+        let mut block = [0xEEu8; 16];
+        bc2::encode_bc2(encoder, level, &mut block, &pixels);
+        hash.add(&block);
+        three += first_not_larger(&block);
+        bc2::unpack_bc2(&block, &mut unpacked, mode);
+        hash.add(unpacked.as_flattened());
+
+        // (Without a need for the block's error the encoder takes one first guess only.)
+        let mut flags = options >> 16;
+        if flags & (rgbcx::ENCODE_BC1_USE_LIKELY_TOTAL_ORDERINGS | rgbcx::ENCODE_BC1_USE_FULL_MSE_EVAL) == 0 {
+            flags &= !rgbcx::ENCODE_BC1_TRY_ALL_INITIAL_ENDPOINTS;
+        }
+        let mut block = [0xEEu8; 16];
+        bc2::encode_bc2_with_flags(encoder, &mut block, &pixels, flags, 1 + (options >> 4) % 12);
+        hash.add(&block);
+        three += first_not_larger(&block);
+
+        if (i + 1) % 20000 == 0 || i + 1 == blocks {
+            out += &format!("bc2 {} {:016x}\n", i + 1, hash.value);
+        }
+    }
+    out + &format!("bc2 blocks packed with the first colour not the larger: {three}\n")
+}
 
 /// The `bc6h_unpack` dump: made-up BC6H blocks of every mode (and of none) unpacked as unsigned
 /// and as signed, to halves and to floats. What `compare/dump_bc6h.cpp` prints for the same

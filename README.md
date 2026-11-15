@@ -1,7 +1,7 @@
 # rustbcx
 
-GPU texture compression in pure Rust: BC1, BC3, BC4, BC5, BC6H and BC7, from single blocks up
-to whole textures with mip levels in `.dds`, `.ktx` and `.ktx2` files.
+GPU texture compression in pure Rust: BC1 to BC7, from single blocks up to whole textures with
+mip levels in `.dds`, `.ktx` and `.ktx2` files.
 
 The encoders and decoders are ports of well-known C++ and ISPC libraries, chiefly Richard
 Geldreich's [bc7enc_rdo](https://github.com/richgel999/bc7enc_rdo), and the goal of this crate
@@ -14,7 +14,7 @@ with nothing else to install.
 - **No dependencies.** The crate uses only the Rust standard library. There is no C++ to
   build and no ISPC compiler to install.
 - **No `unsafe` code.** The crate is built with `#![forbid(unsafe_code)]`.
-- **Every format.** BC1, BC3, BC4, BC5 and BC7 both ways, and BC6H for HDR colour.
+- **Every format.** BC1, BC2, BC3, BC4, BC5 and BC7 both ways, and BC6H for HDR colour.
 - **Whole textures.** Hand it an image and get back a texture with its mip levels, ready to
   write as a `.dds`, `.ktx` or `.ktx2` file.
 - **All your cores.** Images are packed on every core the machine has unless you say
@@ -60,7 +60,7 @@ The ports, each checked byte for byte against its original:
 | `bc7enc` | bc7enc_rdo's `bc7enc.cpp` | Pixels to BC7, the small and quick encoder: modes 1 and 6 for opaque blocks, modes 5, 6 and 7 for blocks with alpha |
 | `bc7e` | Binomial's `bc7e.ispc` | Pixels to BC7, the thorough encoder: all eight modes, seven profiles from fastest to best |
 | `ert` | bc7enc_rdo's `ert.cpp` | The rate-distortion pass over packed blocks of any of these formats |
-| `rdo_bc_encoder` | bc7enc_rdo's `rdo_bc_encoder.cpp` | A whole image to blocks of BC1, BC3, BC4, BC5 or BC7, with the rate-distortion pass |
+| `rdo_bc_encoder` | bc7enc_rdo's `rdo_bc_encoder.cpp` | A whole image to blocks of BC1, BC3, BC4, BC5 or BC7, with the rate-distortion pass (and of BC2, which is this crate's addition) |
 | `bc6h` (unpacking) | [bcdec](https://github.com/iOrange/bcdec)'s `bcdec.h` | BC6H blocks, signed and unsigned, to half floats or floats |
 | `bc6h` (packing) | Intel's [ISPC Texture Compressor](https://github.com/GameTechDev/ISPCTextureCompressor), `kernel.ispc` | HDR pixels to unsigned BC6H, five profiles |
 
@@ -68,6 +68,7 @@ And around them, the crate's own code, which has no original to match:
 
 | Module | What it does |
 |---|---|
+| `bc2` | BC2 (DXT3), which none of the originals has: the colours by `rgbcx` as BC3's are, the alphas at four bits a pixel. Its unpacker is checked against bcdec's |
 | `image` | `Image` (8-bit RGBA) and `HdrImage` (half-float RGB), and the next mip level of each |
 | `texture` | `Texture`: a format, a size and the blocks of every mip level. `compress` and `compress_hdr` make one from an image; `load` and `save` read and write files |
 | `dds` | `.dds` files, both ways. For one level its writer gives the bytes bc7enc_rdo's `save_dds` writes |
@@ -276,6 +277,7 @@ and fails.
 | `rdo` | bc7enc_rdo | Whole images of every shape through the image encoder in each format, with and without the pass, and the `.dds` file for each |
 | `rdo_bc7e` | bc7enc_rdo with `bc7e.ispc` | The same, BC7 packed by bc7e for half the images |
 | `bc7e_presets`, `bc7e_settings` | `bc7e.ispc`, strict build | The seven profiles with both error measures; then about 24,000 made-up settings |
+| `bc2` | bc7enc_rdo's rgbcx and bcdec | BC2 blocks unpacked (the alphas against bcdec, the colours against rgbcx's BC1), and pixels packed at every level and with every flag |
 | `bc6h_unpack` | bcdec | BC6H blocks of every mode, and of none, unpacked as signed and unsigned |
 | `bc6h_pack` | Intel's `kernel.ispc`, strict build | HDR pixels packed with each of the five profiles |
 
@@ -337,7 +339,6 @@ machine and made-up pixels.
   `unsafe`. Its speed comes from using every core and from loops the compiler can vectorise by
   itself. On one core, the ISPC originals built for AVX2 are faster.
 - **BC6H: no packing of the signed kind**, since Intel's encoder has none. It unpacks.
-- **No BC2.** bc7enc_rdo has none; BC3 does its job better.
 - **Files: 2D textures only.** Cube maps, texture arrays and volume textures are refused when
   read and cannot be written. `.ktx2` files are written and read without supercompression
   (zstd, zlib, Basis), which would need a compressor.

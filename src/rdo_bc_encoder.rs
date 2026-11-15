@@ -2,7 +2,7 @@
 //! `rdo_bc_encoder.h` (Richard Geldreich, Jr.), bc7enc_rdo's own encoder of images.
 //!
 //! [`RdoBcEncoder`] takes an [`Image`], pads it to whole blocks, packs every block as BC1, BC3,
-//! BC4, BC5 or BC7 and, when [`RdoBcParams::rdo_lambda`] is above 0, puts the packed blocks
+//! BC4, BC5 or BC7 (and BC2, which the C++ does not have: see [`BlockFormat::Bc2`]) and, when [`RdoBcParams::rdo_lambda`] is above 0, puts the packed blocks
 //! through the entropy reduction transform ([`crate::ert`]).
 //!
 //! The C++ shares the work out with OpenMP; this does with the standard library's threads, on
@@ -17,6 +17,7 @@
 //! with its debug output, and the second unpacking of BC7 with `bc7decomp_ref` that its
 //! `unpack_blocks` checks the first against.
 
+use crate::bc2;
 use crate::bc7decomp::{self, ColorRgba};
 use crate::bc7e::{self, Bc7e};
 use crate::bc7enc::{self, Bc7Enc};
@@ -26,11 +27,16 @@ use crate::parallel;
 use crate::rgbcx::{self, Bc1ApproxMode, Rgbcx};
 use std::sync::atomic::{AtomicU32, Ordering};
 
-/// The block formats the encoder makes: the C++'s `m_dxgi_format`.
+/// The block formats the encoder makes: the C++'s `m_dxgi_format`, and BC2, which the C++
+/// does not make.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum BlockFormat {
     /// RGB, 8 bytes a block.
     Bc1,
+    /// RGB with alpha of four bits a pixel, 16 bytes a block ([`crate::bc2`]). The colours
+    /// are packed as BC3's at [`RdoBcParams::bc1_quality_level`], and the rate-distortion pass
+    /// goes over the colours as it does for BC3 and over the alphas as it does over BC3's.
+    Bc2,
     /// RGB with alpha, 16 bytes a block.
     Bc3,
     /// One channel, 8 bytes a block.
@@ -46,7 +52,7 @@ impl BlockFormat {
     pub fn bytes_per_block(self) -> u32 {
         match self {
             BlockFormat::Bc1 | BlockFormat::Bc4 => 8,
-            BlockFormat::Bc3 | BlockFormat::Bc5 | BlockFormat::Bc7 => 16,
+            BlockFormat::Bc2 | BlockFormat::Bc3 | BlockFormat::Bc5 | BlockFormat::Bc7 => 16,
         }
     }
 
@@ -54,6 +60,7 @@ impl BlockFormat {
     pub fn dxgi_format(self) -> u32 {
         match self {
             BlockFormat::Bc1 => 71,
+            BlockFormat::Bc2 => 74,
             BlockFormat::Bc3 => 77,
             BlockFormat::Bc4 => 80,
             BlockFormat::Bc5 => 83,
@@ -476,6 +483,13 @@ impl UnpackerFuncs {
         true
     }
 
+    /// (The crate's own, for BC2: the alpha half of a block, to red as BC4 goes.)
+    fn unpack_bc2_alpha_block(block: &[u8], pixels: &mut [ColorRgba]) -> bool {
+        pixels.fill([0; 4]);
+        bc2::unpack_bc2_alpha(block.try_into().expect("the alpha of a BC2 block"), pixels.as_flattened_mut(), 4);
+        true
+    }
+
     // TODO: Enforce 6/8 color constraints
     fn unpack_bc4_block(block: &[u8], pixels: &mut [ColorRgba]) -> bool {
         pixels.fill([0; 4]);
@@ -792,6 +806,9 @@ impl RdoBcEncoder {
                 BlockFormat::Bc1 => {
                     self.rgbcx_encoder.encode_bc1(params.bc1_quality_level, block.try_into().expect("8 bytes"), &pixels, params.use_bc1_3color_mode, params.use_bc1_3color_mode_for_black, None);
                 }
+                BlockFormat::Bc2 => {
+                    bc2::encode_bc2(&self.rgbcx_encoder, params.bc1_quality_level, block.try_into().expect("16 bytes"), &pixels);
+                }
                 BlockFormat::Bc3 => {
                     let block: &mut [u8; 16] = block.try_into().expect("16 bytes");
                     if params.use_hq_bc345 {
@@ -901,6 +918,7 @@ impl RdoBcEncoder {
         #[derive(Clone, Copy)]
         enum Unpacker {
             Bc1,
+            Bc2Alpha,
             Bc4,
             Bc7,
         }
@@ -971,8 +989,10 @@ impl RdoBcEncoder {
 
                 vec![Pass { offset: 0, size: 8, num_comps: 3, pixels: &block_pixels, params: ert_p, unpacker: Unpacker::Bc1, use_scales: true, counter: 0 }]
             }
-            BlockFormat::Bc3 => {
+            BlockFormat::Bc2 | BlockFormat::Bc3 => {
                 // BC3 RDO - One BC4 block followed by one BC1 block
+                // (BC2, the crate's own, goes the same way: its sixteen alphas of four bits
+                // are where BC3 has the BC4 block.)
                 ert_p.lookback_window_size = params.lookback_window_size.max(16);
 
                 block_pixels_first = single_channel(3);
@@ -997,7 +1017,7 @@ impl RdoBcEncoder {
                 block_unpackers.use_bc1_3color_mode_for_black = false;
 
                 vec![
-                    Pass { offset: 0, size: 8, num_comps: 1, pixels: &block_pixels_first, params: ert_alpha_p, unpacker: Unpacker::Bc4, use_scales: false, counter: 1 },
+                    Pass { offset: 0, size: 8, num_comps: 1, pixels: &block_pixels_first, params: ert_alpha_p, unpacker: if params.format == BlockFormat::Bc2 { Unpacker::Bc2Alpha } else { Unpacker::Bc4 }, use_scales: false, counter: 1 },
                     Pass { offset: 8, size: 8, num_comps: 3, pixels: &block_pixels, params: ert_p, unpacker: Unpacker::Bc1, use_scales: true, counter: 0 },
                 ]
             }
@@ -1028,6 +1048,7 @@ impl RdoBcEncoder {
                 let blocks = &mut strip[pass.offset..];
                 match pass.unpacker {
                     Unpacker::Bc1 => ert::reduce_entropy(blocks, num_blocks as u32, stride, pass.size, 4, 4, pass.num_comps, pixels, &pass.params, &mut total_modified_local, |block, pixels, _| block_unpackers.unpack_bc1_block(block, pixels), scales),
+                    Unpacker::Bc2Alpha => ert::reduce_entropy(blocks, num_blocks as u32, stride, pass.size, 4, 4, pass.num_comps, pixels, &pass.params, &mut total_modified_local, |block, pixels, _| UnpackerFuncs::unpack_bc2_alpha_block(block, pixels), scales),
                     Unpacker::Bc4 => ert::reduce_entropy(blocks, num_blocks as u32, stride, pass.size, 4, 4, pass.num_comps, pixels, &pass.params, &mut total_modified_local, |block, pixels, _| UnpackerFuncs::unpack_bc4_block(block, pixels), scales),
                     Unpacker::Bc7 => ert::reduce_entropy(blocks, num_blocks as u32, stride, pass.size, 4, 4, pass.num_comps, pixels, &pass.params, &mut total_modified_local, |block, pixels, _| UnpackerFuncs::unpack_bc7_block(block, pixels), scales),
                 };
@@ -1061,6 +1082,9 @@ impl RdoBcEncoder {
                 match format {
                     BlockFormat::Bc1 => {
                         rgbcx::unpack_bc1(block.try_into().expect("8 bytes"), &mut unpacked_pixels, true, mode);
+                    }
+                    BlockFormat::Bc2 => {
+                        bc2::unpack_bc2(block.try_into().expect("16 bytes"), &mut unpacked_pixels, mode);
                     }
                     BlockFormat::Bc3 => {
                         rgbcx::unpack_bc3(block.try_into().expect("16 bytes"), &mut unpacked_pixels, mode);
@@ -1139,7 +1163,7 @@ mod tests {
 
     #[test]
     fn every_format_packs_and_unpacks_close_to_the_image() {
-        for format in [BlockFormat::Bc1, BlockFormat::Bc3, BlockFormat::Bc4, BlockFormat::Bc5, BlockFormat::Bc7] {
+        for format in [BlockFormat::Bc1, BlockFormat::Bc2, BlockFormat::Bc3, BlockFormat::Bc4, BlockFormat::Bc5, BlockFormat::Bc7] {
             let mut params = RdoBcParams::new();
             params.format = format;
             params.bc1_quality_level = 5;
@@ -1150,7 +1174,7 @@ mod tests {
             // The channels a format holds come back near the source, away from the noise.
             let channels: &[usize] = match format {
                 BlockFormat::Bc1 => &[0, 1, 2],
-                BlockFormat::Bc3 | BlockFormat::Bc7 => &[0, 1, 2, 3],
+                BlockFormat::Bc2 | BlockFormat::Bc3 | BlockFormat::Bc7 => &[0, 1, 2, 3],
                 BlockFormat::Bc4 => &[0],
                 BlockFormat::Bc5 => &[0, 1],
             };
@@ -1178,6 +1202,27 @@ mod tests {
             assert_eq!(one.total_modified(), other.total_modified());
         }
         assert_eq!(one.bc7_mode_histogram().iter().sum::<u32>(), one.total_blocks());
+    }
+
+    #[test]
+    fn bc2_goes_through_the_pass_as_bc3_does() {
+        let mut params = RdoBcParams::new();
+        params.format = BlockFormat::Bc2;
+        params.bc1_quality_level = 5;
+        params.rdo_lambda = 3.0;
+        params.threads = 1;
+        let encoder = encode(&params);
+        // Colours and alphas were both changed, and the colours are still of four.
+        assert!(encoder.total_modified()[0] > 0 && encoder.total_modified()[1] > 0, "{:?}", encoder.total_modified());
+        assert_ne!(encoder.blocks(), encoder.prerdo_blocks());
+        assert!(encoder.blocks().chunks_exact(16).all(|block| u16::from_le_bytes([block[8], block[9]]) > u16::from_le_bytes([block[10], block[11]])));
+        let unpacked = encoder.unpack_blocks().unwrap();
+        let (source, got) = (encoder.source_image().pixel(60, 44), unpacked.pixel(60, 44));
+        for c in 0..4 {
+            assert!((i32::from(source[c]) - i32::from(got[c])).abs() <= 24, "channel {c}: {source:?} {got:?}");
+        }
+        params.threads = 0;
+        assert_eq!(encode(&params).blocks(), encoder.blocks());
     }
 
     #[test]

@@ -3,6 +3,7 @@
 //!
 //! (The crate's own: bc7enc_rdo stops at the blocks of one image.)
 
+use crate::bc2;
 use crate::bc6h::{self, Bc6hEncSettings};
 use crate::bc7decomp;
 use crate::image::{HdrImage, Image};
@@ -17,6 +18,8 @@ use crate::rgbcx::{self, Bc1ApproxMode};
 pub enum TextureFormat {
     /// RGB, 8 bytes a block.
     Bc1,
+    /// RGB with alpha of four bits a pixel, 16 bytes a block.
+    Bc2,
     /// RGB with alpha, 16 bytes a block.
     Bc3,
     /// One channel, 8 bytes a block.
@@ -40,9 +43,9 @@ impl TextureFormat {
         }
     }
 
-    /// Whether a file can mark the format as sRGB: BC1, BC3 and BC7.
+    /// Whether a file can mark the format as sRGB: BC1, BC2, BC3 and BC7.
     pub fn can_be_srgb(self) -> bool {
-        matches!(self, TextureFormat::Bc1 | TextureFormat::Bc3 | TextureFormat::Bc7)
+        matches!(self, TextureFormat::Bc1 | TextureFormat::Bc2 | TextureFormat::Bc3 | TextureFormat::Bc7)
     }
 }
 
@@ -50,6 +53,7 @@ impl From<BlockFormat> for TextureFormat {
     fn from(format: BlockFormat) -> TextureFormat {
         match format {
             BlockFormat::Bc1 => TextureFormat::Bc1,
+            BlockFormat::Bc2 => TextureFormat::Bc2,
             BlockFormat::Bc3 => TextureFormat::Bc3,
             BlockFormat::Bc4 => TextureFormat::Bc4,
             BlockFormat::Bc5 => TextureFormat::Bc5,
@@ -201,6 +205,7 @@ impl Texture {
                 TextureFormat::Bc1 => {
                     rgbcx::unpack_bc1(block.try_into().ok()?, &mut pixels, true, bc1_mode);
                 }
+                TextureFormat::Bc2 => bc2::unpack_bc2(block.try_into().ok()?, &mut pixels, bc1_mode),
                 TextureFormat::Bc3 => {
                     rgbcx::unpack_bc3(block.try_into().ok()?, &mut pixels, bc1_mode);
                 }
@@ -385,6 +390,17 @@ mod tests {
         // The last level is the average of the image.
         let last = texture.unpack_level(5, Bc1ApproxMode::Ideal).unwrap();
         assert!((i32::from(last.pixels[0][2]) - 90).abs() <= 2);
+        // BC2 the same way, with its alpha on sixteen levels.
+        let mut with_alpha = image.clone();
+        for (i, pixel) in with_alpha.pixels.iter_mut().enumerate() {
+            pixel[3] = (i % 16 * 17) as u8;
+        }
+        let mut bc2_params = RdoBcParams::new();
+        bc2_params.format = BlockFormat::Bc2;
+        let bc2_texture = compress(&with_alpha, &bc2_params, true).unwrap();
+        assert!(bc2_texture.is_valid() && bc2_texture.format == TextureFormat::Bc2);
+        let unpacked = bc2_texture.unpack_level(0, Bc1ApproxMode::Ideal).unwrap();
+        assert!(with_alpha.pixels.iter().zip(&unpacked.pixels).all(|(a, b)| a[3] == b[3]));
         // One level without mipmaps; nothing from no image.
         assert_eq!(compress(&image, &params, false).unwrap().levels.len(), 1);
         assert!(compress(&Image::new(0, 5), &params, true).is_none());

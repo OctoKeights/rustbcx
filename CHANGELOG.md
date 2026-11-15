@@ -1,5 +1,13 @@
 # Changelog
 
+## Not yet released
+
+- **BC2.** `bc2` packs and unpacks BC2 (DXT3) blocks: the colours by `rgbcx` as BC3's are, the
+  alphas at four bits a pixel. The image encoder takes it as a format (`BlockFormat::Bc2`),
+  with the rate-distortion pass, and `.dds`, `.ktx` and `.ktx2` files hold it. None of the
+  originals has BC2, so this is the crate's own; the comparison checks it against bc7enc_rdo's
+  rgbcx and bcdec (the `bc2` dump).
+
 ## 0.2.0
 
 What 0.1.0 listed as its limitations, taken on:

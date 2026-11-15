@@ -19,8 +19,9 @@
 //!   (`kernel.ispc`, from Intel's
 //!   [ISPC Texture Compressor](https://github.com/GameTechDev/ISPCTextureCompressor)).
 //!
-//! And around the ports, the crate's own: [`texture`], an image packed with its mip levels,
-//! and [`dds`] and [`ktx`], which read and write it as `.dds`, `.ktx` and `.ktx2` files.
+//! And around the ports, the crate's own: [`bc2`], the one block format of the family none of
+//! the originals has; [`texture`], an image packed with its mip levels; and [`dds`] and
+//! [`ktx`], which read and write it as `.dds`, `.ktx` and `.ktx2` files.
 //!
 //! The ports keep the originals' behaviour, so a block comes out as the same bytes from both
 //! (for the two ISPC originals, `bc7e.ispc` and Intel's `kernel.ispc`, as built without
@@ -30,6 +31,7 @@
 // The code follows the originals' line for line, and these are its shapes.
 #![allow(clippy::needless_range_loop, clippy::too_many_arguments, clippy::manual_range_contains)]
 
+pub mod bc2;
 pub mod bc6h;
 pub mod bc7decomp;
 pub mod bc7e;
