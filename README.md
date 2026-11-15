@@ -457,24 +457,26 @@ KTX=<checkout of KTX-Software> KTX_BUILD=<its build folder> TINYDDS=<checkout of
 ## Speed
 
 A 512 by 512 image (16,384 blocks) on a two-core x86-64 machine, in thousands of blocks a
-second. `cargo run --release --example bench` makes this table on yours.
+second, the best of three runs. `cargo run --release --example bench` makes this table on
+yours. (The encoders' lookup tables are made once in a program, in about 26 milliseconds, and
+are not in these figures.)
 
 | | One thread | Two threads |
 |---|---|---|
-| BC1, level 5 | 331 | 344 |
-| BC1, level 18 | 33 | 69 |
-| BC3, level 10 | 77 | 133 |
-| BC4 | 115 | 184 |
-| BC5 | 89 | 156 |
-| BC7, `bc7enc`, uber 0 | 134 | 218 |
-| BC7, `bc7enc`, uber 4 | 66 | 113 |
-| BC7, `bc7e`, `ultrafast` | 193 | 245 |
-| BC7, `bc7e`, `basic` | 31 | 54 |
-| BC7, `bc7e`, `slowest` | 7.6 | 15 |
-| BC7, `bc7e` `basic`, with the rate-distortion pass | 8.6 | 20 |
-| BC6H, `veryfast` | 902 | 1,891 |
-| BC6H, `basic` | 53 | 118 |
-| BC6H, `veryslow` | 6.1 | 11 |
+| BC1, level 5 | 3,160 | 5,000 |
+| BC1, level 18 | 60 | 101 |
+| BC3, level 10 | 136 | 290 |
+| BC4 | 175 | 288 |
+| BC5 | 113 | 192 |
+| BC7, `bc7enc`, uber 0 | 169 | 310 |
+| BC7, `bc7enc`, uber 4 | 72 | 132 |
+| BC7, `bc7e`, `ultrafast` | 302 | 551 |
+| BC7, `bc7e`, `basic` | 33 | 64 |
+| BC7, `bc7e`, `slowest` | 8.2 | 15 |
+| BC7, `bc7e` `basic`, with the rate-distortion pass | 9.8 | 20 |
+| BC6H, `veryfast` | 1,200 | 1,890 |
+| BC6H, `basic` | 80 | 153 |
+| BC6H, `veryslow` | 6.5 | 12 |
 
 With a nightly compiler, the `nightly-simd` feature has `bc7e` weigh a set of endpoints for
 four pixels at a time with `std::simd`, where the plain build takes one pixel at a time:

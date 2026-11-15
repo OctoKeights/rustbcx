@@ -1,6 +1,9 @@
 # Changelog
 
-## Not yet released
+## 0.3.0
+
+Every block format of the family, every shape of texture, and the files around them: the
+crate now reads the pictures it packs and compresses the files it writes.
 
 - **BC2.** `bc2` packs and unpacks BC2 (DXT3) blocks: the colours by `rgbcx` as BC3's are, the
   alphas at four bits a pixel. The image encoder takes it as a format (`BlockFormat::Bc2`),

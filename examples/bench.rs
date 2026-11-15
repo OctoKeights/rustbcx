@@ -49,6 +49,10 @@ fn main() {
     println!("{size} x {size} pixels, {blocks} blocks, {threads} threads");
     println!("{:<34} {:>9} {:>9} {:>10} {:>10}", "", "1 thread", "all", "kblocks/s", "kblocks/s");
 
+    // (The encoders' tables are made once, the first time one is wanted: before the clock
+    // starts, so that the first line does not pay for them.)
+    let _ = rustbcx::rdo_bc_encoder::RdoBcEncoder::new();
+
     let report = |name: &str, one: f64, all: f64| println!("{name:<34} {one:>8.2}s {all:>8.2}s {:>10.1} {:>10.1}", blocks / one / 1000.0, blocks / all / 1000.0);
 
     let ldr = |name: &str, change: &dyn Fn(&mut RdoBcParams)| {
