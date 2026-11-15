@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.2.0
+
+What 0.1.0 listed as its limitations, taken on:
+
+- **The rate-distortion pass.** `ert` is the port of bc7enc_rdo's `ert.cpp`: it goes over
+  packed blocks and makes them compress better afterwards, at a small cost in quality.
+- **Whole images, on all cores.** `rdo_bc_encoder` is the port of bc7enc_rdo's
+  `rdo_bc_encoder.cpp`: an image to BC1, BC3, BC4, BC5 or BC7 blocks, with the rate-distortion
+  pass. It uses every core the machine has unless `RdoBcParams::threads` says otherwise, and
+  the blocks do not depend on the number. `Bc7e::compress_blocks` shares its blocks out the
+  same way (`compress_blocks_on` takes the number of threads).
+- **BC6H.** `bc6h` unpacks both kinds (the port of bcdec's decoder) and packs the unsigned kind
+  with five profiles (the port of the encoder of Intel's ISPC Texture Compressor, matched to a
+  strict build of it as `bc7e` is).
+- **Textures, mip levels and files.** `texture::compress` and `texture::compress_hdr` take an
+  image to a `Texture` with every mip level; `Texture::save` and `Texture::load` write and read
+  `.dds`, `.ktx` and `.ktx2` files (`dds`, `ktx`). These parts are the crate's own.
+- **Speed.** `bc7e` is about 15% faster and the two BC7 encoders no longer call a software
+  `floor`. `examples/bench.rs` times every encoder on one thread and on all.
+- The blocks of 0.1.0's encoders and decoders are unchanged.
+- The comparison (`compare/compare.sh`) covers all of the above; it takes the folders of bcdec
+  and the ISPC Texture Compressor in `$BCDEC` and `$ISPCTC`.
+- The crate still has no dependencies and no `unsafe`. SIMD by hand would need `unsafe` in
+  stable Rust, so it is left out; the README says where that leaves the speed.
+
 ## 0.1.0
 
 - First release: the port of bc7enc_rdo's `rgbcx` (BC1, BC3, BC4 and BC5, both ways),

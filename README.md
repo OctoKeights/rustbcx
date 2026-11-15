@@ -1,21 +1,26 @@
 # rustbcx
 
-Texture block compression in pure Rust, BC1 to BC5 and BC7: a port of Richard Geldreich's
-[bc7enc_rdo](https://github.com/richgel999/bc7enc_rdo) and of the encoder that comes with it,
-Binomial's `bc7e.ispc`.
+GPU texture compression in pure Rust: BC1, BC3, BC4, BC5, BC6H and BC7, from single blocks up
+to whole textures with mip levels in `.dds`, `.ktx` and `.ktx2` files.
 
-The goal of this crate is simple: pack and unpack GPU texture blocks exactly the way those
-libraries do, in safe Rust, with nothing else to install.
+The encoders and decoders are ports of well-known C++ and ISPC libraries, chiefly Richard
+Geldreich's [bc7enc_rdo](https://github.com/richgel999/bc7enc_rdo), and the goal of this crate
+is simple: pack and unpack texture blocks exactly the way those libraries do, in safe Rust,
+with nothing else to install.
 
-- **Bit-identical output.** The port follows the originals function by function and keeps
-  their floating-point operations in the same order, so the blocks you get are the same bytes
-  the originals produce.
+- **Bit-identical output.** Each port follows its original function by function and keeps its
+  floating-point operations in the same order, so the blocks you get are the same bytes the
+  original produces.
 - **No dependencies.** The crate uses only the Rust standard library. There is no C++ to
   build and no ISPC compiler to install.
 - **No `unsafe` code.** The crate is built with `#![forbid(unsafe_code)]`.
-- **Every format both ways.** BC1, BC3, BC4, BC5 and BC7, from pixels to blocks and back.
-- **Two BC7 encoders.** A small, quick one, and a thorough one that uses all eight of BC7's
-  modes.
+- **Every format.** BC1, BC3, BC4, BC5 and BC7 both ways, and BC6H for HDR colour.
+- **Whole textures.** Hand it an image and get back a texture with its mip levels, ready to
+  write as a `.dds`, `.ktx` or `.ktx2` file.
+- **All your cores.** Images are packed on every core the machine has unless you say
+  otherwise, and the result does not depend on how many that is.
+- **Rate-distortion optimisation.** bc7enc_rdo's pass that makes a texture smaller on disk
+  once it is zipped, at a small and controllable cost in quality.
 
 ## Contents
 
@@ -23,6 +28,8 @@ libraries do, in safe Rust, with nothing else to install.
 - [What is in it](#what-is-in-it)
 - [Examples](#examples)
 - [Which BC7 encoder](#which-bc7-encoder)
+- [The rate-distortion pass](#the-rate-distortion-pass)
+- [Threads](#threads)
 - [Is this the right crate for you?](#is-this-the-right-crate-for-you)
 - [Things to know](#things-to-know)
 - [How the port is verified](#how-the-port-is-verified)
@@ -39,104 +46,177 @@ Put it in your `Cargo.toml`, straight from this repository:
 rustbcx = { git = "https://github.com/OctoKeights/rustbcx" }
 ```
 
-A block is sixteen RGBA pixels, left to right and top to bottom, each pixel a `[u8; 4]`. Split
-your image into 4x4 blocks, pack each one, and write the packed blocks out in the same order:
-that is the texture data a `.dds` or `.ktx` file holds.
+Build your own project with optimisation (`cargo build --release`): the encoders do a great
+deal of arithmetic and are many times slower without it.
 
 ## What is in it
 
+The ports, each checked byte for byte against its original:
+
 | Module | Port of | What it does |
 |---|---|---|
-| `rgbcx` | `rgbcx.cpp` | BC1, BC3, BC4 and BC5: pixels to blocks and back |
-| `bc7decomp` | `bc7decomp.cpp` | BC7 blocks of every mode to pixels |
-| `bc7enc` | `bc7enc.cpp` | Pixels to BC7, the small and quick encoder: modes 1 and 6 for opaque blocks, modes 5, 6 and 7 for blocks with alpha |
-| `bc7e` | `bc7e.ispc` | Pixels to BC7, the thorough encoder: all eight modes, seven profiles from fastest to best |
+| `rgbcx` | bc7enc_rdo's `rgbcx.cpp` | BC1, BC3, BC4 and BC5: pixels to blocks and back |
+| `bc7decomp` | bc7enc_rdo's `bc7decomp.cpp` | BC7 blocks of every mode to pixels |
+| `bc7enc` | bc7enc_rdo's `bc7enc.cpp` | Pixels to BC7, the small and quick encoder: modes 1 and 6 for opaque blocks, modes 5, 6 and 7 for blocks with alpha |
+| `bc7e` | Binomial's `bc7e.ispc` | Pixels to BC7, the thorough encoder: all eight modes, seven profiles from fastest to best |
+| `ert` | bc7enc_rdo's `ert.cpp` | The rate-distortion pass over packed blocks of any of these formats |
+| `rdo_bc_encoder` | bc7enc_rdo's `rdo_bc_encoder.cpp` | A whole image to blocks of BC1, BC3, BC4, BC5 or BC7, with the rate-distortion pass |
+| `bc6h` (unpacking) | [bcdec](https://github.com/iOrange/bcdec)'s `bcdec.h` | BC6H blocks, signed and unsigned, to half floats or floats |
+| `bc6h` (packing) | Intel's [ISPC Texture Compressor](https://github.com/GameTechDev/ISPCTextureCompressor), `kernel.ispc` | HDR pixels to unsigned BC6H, five profiles |
+
+And around them, the crate's own code, which has no original to match:
+
+| Module | What it does |
+|---|---|
+| `image` | `Image` (8-bit RGBA) and `HdrImage` (half-float RGB), and the next mip level of each |
+| `texture` | `Texture`: a format, a size and the blocks of every mip level. `compress` and `compress_hdr` make one from an image; `load` and `save` read and write files |
+| `dds` | `.dds` files, both ways. For one level its writer gives the bytes bc7enc_rdo's `save_dds` writes |
+| `ktx` | `.ktx` (KTX 1) and `.ktx2` (KTX 2) files, both ways |
 
 ## Examples
 
-BC7 with the thorough encoder:
+An image to a `.dds` file with mip levels, and back:
 
 ```rust
-use rustbcx::bc7e::{Bc7e, CompressBlockParams};
+use rustbcx::image::Image;
+use rustbcx::rdo_bc_encoder::{BlockFormat, RdoBcParams};
+use rustbcx::texture::{self, Texture};
 
-// Makes the encoder's tables: once, then share it.
-let encoder = Bc7e::new();
+// An image is a width, a height, and RGBA bytes in rows from the top.
+let (width, height) = (64u32, 48u32);
+let rgba: Vec<u8> = (0..width * height).flat_map(|i| [(i % width * 4) as u8, (i / width * 5) as u8, 128, 255]).collect();
+let image = Image::from_rgba8(width, height, &rgba).unwrap();
 
-// One of the seven profiles, for error measured as the eye sees it (true) or in plain RGB.
-let params = CompressBlockParams::slow(true);
+let mut params = RdoBcParams::new();
+params.format = BlockFormat::Bc7; // or Bc1, Bc3, Bc4, Bc5
+params.bc7_uber_level = 3;        // 0 is fastest, 6 best
 
-let pixels = [[200u8, 120, 40, 255]; 16];
-let mut block = [0u8; 16];
-encoder.compress_block(&mut block, &pixels, &params);
+// Packed on all the machine's cores, every mip level down to one pixel.
+let texture = texture::compress(&image, &params, true).unwrap();
+assert_eq!(texture.levels.len(), 7);
 
-// Or many at once.
-let mut blocks = vec![[0u8; 16]; 4];
-encoder.compress_blocks(&mut blocks, &[pixels; 4], &params);
+// The file's ending says which kind to write: .dds, .ktx or .ktx2.
+let path = std::env::temp_dir().join("rustbcx-example.dds");
+texture.save(&path).unwrap();
+assert_eq!(Texture::load(&path).unwrap(), texture);
 ```
 
-BC7 with the quick encoder, and back to pixels:
+The same with the rate-distortion pass, for a file that zips smaller:
+
+```rust
+use rustbcx::image::Image;
+use rustbcx::rdo_bc_encoder::{BlockFormat, RdoBcParams};
+use rustbcx::texture;
+
+let image = Image::new(64, 64); // (yours, not a black one)
+
+let mut params = RdoBcParams::new();
+params.format = BlockFormat::Bc1;
+params.rdo_lambda = 1.0; // 0 is off; higher gives smaller files and more error
+
+let texture = texture::compress(&image, &params, false).unwrap();
+let dds_file: Vec<u8> = rustbcx::dds::write(&texture, false).unwrap();
+assert_eq!(dds_file.len(), 128 + 16 * 16 * 8);
+```
+
+An HDR image to BC6H:
+
+```rust
+use rustbcx::bc6h::Bc6hEncSettings;
+use rustbcx::image::HdrImage;
+use rustbcx::texture::{self, TextureFormat};
+
+// Floats, three to a pixel: red, green, blue.
+let (width, height) = (32u32, 32u32);
+let rgb: Vec<f32> = (0..width * height).flat_map(|i| [1.0 + (i % width) as f32 * 0.05, 2.0, 0.5]).collect();
+let image = HdrImage::from_rgb_f32(width, height, &rgb).unwrap();
+
+// One of five profiles, with mip levels, on all cores (the last argument: 0).
+let texture = texture::compress_hdr(&image, &Bc6hEncSettings::basic(), true, 0).unwrap();
+assert_eq!(texture.format, TextureFormat::Bc6hUnsigned);
+
+// Back to an image of floats.
+let unpacked = texture.unpack_level_hdr(0).unwrap().to_rgb_f32();
+assert_eq!(unpacked.len(), rgb.len());
+```
+
+Block by block, when you want to do the rest yourself. A block is sixteen pixels, left to right
+and top to bottom:
 
 ```rust
 use rustbcx::bc7decomp;
-use rustbcx::bc7enc::{Bc7Enc, CompressBlockParams};
-
-let encoder = Bc7Enc::new();
-let params = CompressBlockParams::new();
-
-let pixels = [[200u8, 120, 40, 255]; 16];
-let mut block = [0u8; 16];
-encoder.compress_block(&mut block, &pixels, &params);
-
-let mut unpacked = [[0u8; 4]; 16];
-assert!(bc7decomp::unpack_bc7(&block, &mut unpacked));
-```
-
-BC1 (BC3, BC4 and BC5 are alike):
-
-```rust
+use rustbcx::bc7e::{Bc7e, CompressBlockParams};
 use rustbcx::rgbcx::{self, Bc1ApproxMode, Rgbcx};
 
-let encoder = Rgbcx::new(Bc1ApproxMode::Ideal);
-
 let pixels = [[200u8, 120, 40, 255]; 16];
-let mut block = [0u8; 8];
-// Level 0 is fastest and 18 best; no three-colour blocks, no transparent texels for black.
-encoder.encode_bc1(10, &mut block, &pixels, false, false, None);
+
+// BC7 with the thorough encoder. Making it builds its tables: once, then share it.
+let bc7_encoder = Bc7e::new();
+let mut bc7_block = [0u8; 16];
+bc7_encoder.compress_block(&mut bc7_block, &pixels, &CompressBlockParams::slow(true));
 
 let mut unpacked = [[0u8; 4]; 16];
-rgbcx::unpack_bc1(&block, &mut unpacked, true, Bc1ApproxMode::Ideal);
-```
+assert!(bc7decomp::unpack_bc7(&bc7_block, &mut unpacked));
 
-`Bc7e`, `Bc7Enc` and `Rgbcx` hold only tables, so one of each can be shared between threads;
-split the blocks between them.
+// BC1. Level 0 is fastest and 18 best; no three-colour blocks, no transparent texels for black.
+let bc1_encoder = Rgbcx::new(Bc1ApproxMode::Ideal);
+let mut bc1_block = [0u8; 8];
+bc1_encoder.encode_bc1(10, &mut bc1_block, &pixels, false, false, None);
+rgbcx::unpack_bc1(&bc1_block, &mut unpacked, true, Bc1ApproxMode::Ideal);
+```
 
 ## Which BC7 encoder
 
 - **`bc7e`** when quality matters. It can use every mode, so it does better on blocks the two
   or three modes of `bc7enc` suit poorly. Its profiles are the original's, fastest first:
-  `ultrafast`, `veryfast`, `fast`, `basic`, `slow`, `veryslow`, `slowest`.
-  `CompressBlockParams::new` gives the settings they all start from, and every field can be set
-  by hand: which modes may be used, how many partitions are estimated and how many tried in
-  full, the weights of the four channels, the uber level, the refinement passes.
-- **`bc7enc`** when the blocks have to match what bc7enc_rdo's C++ gives, or for a small
-  encoder with a few settings.
+  `ultrafast`, `veryfast`, `fast`, `basic`, `slow`, `veryslow`, `slowest`. It is what
+  `RdoBcParams` uses unless `use_bc7e` is switched off, as bc7enc_rdo does when built with it.
+- **`bc7enc`** when the blocks have to match what bc7enc_rdo gives without ISPC, or for a
+  small encoder with a few settings.
 
 The two give different blocks for the same pixels: each matches its own original.
+
+## The rate-distortion pass
+
+A packed texture is usually compressed again on disk or in a download (zip, zstd, LZMA).
+bc7enc_rdo's pass goes over the packed blocks and, where it costs little, copies runs of bytes
+from the blocks just before, which is what such compressors find and shrink. Set
+`RdoBcParams::rdo_lambda` above 0 to turn it on: around 0.5 to 2 is a mild trade, and higher
+values give smaller files and more visible error. The pass looks after smooth regions, which
+show changes most, by itself.
+
+One setting changes the blocks and is easy to miss: an image of 4,096 blocks or more is put
+through the pass in `rdo_max_threads` strips, each on its own, since a strip cannot copy from
+the one before. It is 128 unless you change it, on every machine, so the same image gives the
+same texture everywhere. (bc7enc_rdo's own command line sets it from the machine's core count
+instead.)
+
+## Threads
+
+Packing an image (`texture::compress`, `texture::compress_hdr`, `RdoBcEncoder`) and packing
+many blocks at once (`Bc7e::compress_blocks`, `bc6h::compress_blocks_bc6h`) use every core the
+machine has. To hold them to fewer, set `RdoBcParams::threads`, pass a thread count to
+`compress_hdr`, or call the `_on` forms of the many-blocks functions; 1 keeps the work on the
+calling thread. The blocks are the same whatever the number.
+
+The threads are the standard library's and live only for the call.
 
 ## Is this the right crate for you?
 
 Rust already has ways to pack these formats, among them bindings to the C++ and ISPC encoders
 themselves (for example [rgbcx-sys](https://crates.io/crates/rgbcx-sys) and
 [intel_tex_2](https://crates.io/crates/intel_tex_2)). If you are happy to build C++ or ISPC
-code as part of your project and want the most speed, one of those may suit you better: the
-ISPC encoders pack several blocks at once with SIMD, and this crate packs one at a time.
+code as part of your project and want the most speed from each core, one of those may suit you
+better: the ISPC encoders pack several blocks at once with SIMD instructions, and this crate
+packs one block at a time on each core.
 
 rustbcx is aimed at a narrower need:
 
 - You are moving a C++ project that uses bc7enc_rdo to Rust, and its textures must not change.
 - You want the same blocks on every machine and from every build, which the usual fast-math
-  build of `bc7e.ispc` does not give.
-- You would like a small, self-contained encoder and decoder with no dependencies at all.
+  builds of the ISPC encoders do not give.
+- You would like a self-contained texture compressor with no dependencies at all, and no
+  `unsafe`.
 
 The crate was written for Noolith, a project whose C++ code packed its textures with
 bc7enc_rdo and whose Rust rewrite needed to produce exactly the same blocks.
@@ -148,100 +228,143 @@ bc7enc_rdo and whose Rust rewrite needed to produce exactly the same blocks.
   bits. Some or all pixels of such a block then unpack as 254, not 255. The original does the
   same. A shader that ignores alpha for opaque textures never sees it; to rule it out, switch
   mode 6 off for opaque blocks (`opaque_settings.use_mode[6] = false`).
-- **`bc7e` matches the strict build of the original, not the usual one.** `bc7e.ispc` is
-  normally compiled with `--opt=fast-math` for several instruction sets, which lets the compiler
-  reorder the arithmetic. That build packs about one block in eleven differently from the strict
-  one, in the last bits of a choice and not in kind. This crate gives the strict build's blocks.
+- **The ISPC ports match the strict builds of their originals, not the usual ones.**
+  `bc7e.ispc` and Intel's `kernel.ispc` are normally compiled with `--opt=fast-math`, which
+  lets the compiler reorder the arithmetic. Those builds pack about one block in ten
+  differently from the strict ones, in the last bits of a choice and not in kind. This crate
+  gives the strict builds' blocks.
+- **BC6H packs the unsigned kind only**, as Intel's encoder does. Both kinds unpack. Values
+  below zero are packed as zero by `compress_hdr`.
+- **BC6H's packer is weak on very bright blocks.** The original keeps each pixel's squared
+  error as an int, which bright values overflow, so among such blocks its choices are less
+  good than its search would allow. That is kept, since the blocks depend on it.
 - **Oddities of the originals are kept**, since changing them would change the blocks. In
   `bc7e`, mode 7's table of best endpoints for a single colour carries one p-bit pair's find
-  over to the next, and its single-colour error is worked out from the six-bit values without
-  widening them.
-- **With `bc7e`, solid blocks are exact.** A block of one colour is packed in mode 5 and unpacks
-  to exactly that colour, alpha included.
+  over to the next. In the image encoder, the rate-distortion pass compares BC4 against the
+  image's red, and BC5 against red and green, whatever channels were packed.
 - **`bc7enc` panics when its mode mask leaves a block no mode**, where the C++ asserts.
 - **The originals' globals are values here.** The tables the C++ and the ISPC fill at start-up
   are held by `Rgbcx::new`, `Bc7Enc::new` and `Bc7e::new`, so there is no init function to
-  remember to call.
+  remember to call, and one of each can be shared between threads.
+- **Mip levels are plain averages** of two by two pixels, of the values as stored (of floats,
+  for HDR). If you need another filter, or averaging in linear light for sRGB images, make the
+  levels yourself and pack each with `RdoBcEncoder`.
 
 ## How the port is verified
 
-The repository includes a tool that checks the port against the originals directly.
-`compare/compare.sh` builds them from a checkout of bc7enc_rdo, runs made-up blocks through
-them and through this crate, and confirms that the results match byte for byte:
+The repository includes a tool that checks the ports against the originals directly.
+`compare/compare.sh` builds the originals, runs made-up blocks and images through them and
+through this crate, and confirms that the results match byte for byte:
 
 ```text
-compare/compare.sh <checkout of bc7enc_rdo> [blocks] [seeds] [dumps]
+ISPC=<the ispc compiler> BCDEC=<checkout of bcdec> ISPCTC=<checkout of ISPCTextureCompressor> \
+    compare/compare.sh <checkout of bc7enc_rdo> [blocks] [seeds] [dumps]
 ```
 
-**Against the C++ library** (`bc7decomp.cpp`, `bc7enc.cpp`, `rgbcx.cpp`, built without
-contracting a multiply and an add into one instruction, which Rust never does):
+It needs a C++ compiler; the [ISPC compiler](https://github.com/ispc/ispc/releases) for the two
+ISPC originals; and the folders named above. What it cannot build it says it has not compared,
+and fails.
 
-- `bc7decomp`: BC7 blocks of every mode, and of none, unpacked.
-- `unpack`: BC1, BC3, BC4 and BC5 blocks unpacked every way, and solid BC1 blocks made.
-- `bc1`, `bc345`: made-up pixels packed at every level and with every flag, for each way a GPU
-  interpolates, and unpacked again.
-- `bc7enc`: the same pixels packed as BC7 with every setting varied, and unpacked again.
-- `bc7block`: BC7 blocks of every mode written from made-up endpoints and selectors.
+| Dump | Against | What is compared |
+|---|---|---|
+| `bc7decomp` | bc7enc_rdo | BC7 blocks of every mode, and of none, unpacked |
+| `unpack` | bc7enc_rdo | BC1, BC3, BC4 and BC5 blocks unpacked every way |
+| `bc1`, `bc345` | bc7enc_rdo | Pixels packed at every level and with every flag, for each way a GPU interpolates |
+| `bc7enc` | bc7enc_rdo | Pixels packed as BC7 with every setting varied |
+| `bc7block` | bc7enc_rdo | BC7 blocks of every mode written from made-up endpoints and selectors |
+| `ert` | bc7enc_rdo | Runs of near-copied blocks in five formats through the rate-distortion pass, its settings varied |
+| `rdo` | bc7enc_rdo | Whole images of every shape through the image encoder in each format, with and without the pass, and the `.dds` file for each |
+| `rdo_bc7e` | bc7enc_rdo with `bc7e.ispc` | The same, BC7 packed by bc7e for half the images |
+| `bc7e_presets`, `bc7e_settings` | `bc7e.ispc`, strict build | The seven profiles with both error measures; then about 24,000 made-up settings |
+| `bc6h_unpack` | bcdec | BC6H blocks of every mode, and of none, unpacked as signed and unsigned |
+| `bc6h_pack` | Intel's `kernel.ispc`, strict build | HDR pixels packed with each of the five profiles |
 
-**Against `bc7e.ispc`**, which needs the [ISPC compiler](https://github.com/ispc/ispc/releases)
-(`ispc` on the path, or named in `$ISPC`). The original packs several blocks at once in the
-lanes of a vector register; the port packs them one after another with the same arithmetic in
-the same order. Built for SSE2 without fast-math, the original gives the same bytes on every
-instruction set, at every vector width and optimisation level, and whatever blocks are packed
-beside a block (tested before the port was begun), so there is one answer to match.
-
-- `bc7e_presets`: the same blocks with each of the seven profiles, for both error measures.
-- `bc7e_settings`: the blocks in groups of 32, each group with settings made up from the seed
-  (modes switched on and off, partition counts, weights, masks, uber levels, refinement passes).
-
-The made-up blocks are noise, ramps, greys, single colours, dark blocks and blocks of a few
-colours, with and without alpha.
+The two ISPC originals pack several blocks at once in the lanes of a vector register; the ports
+pack them one after another with the same arithmetic in the same order. Built for SSE2 without
+fast-math, each original gives the same bytes on every instruction set, at every vector width
+and optimisation level, and whatever blocks are packed beside a block. That was tested before
+each port was begun, so there is one answer to match.
 
 ### Results so far
 
-These comparisons were run on Linux (x86-64).
+These comparisons were run on Linux (x86-64), the C++ built with gcc and the ISPC with ISPC
+1.32.0. All identical:
 
-| Compared | Result |
+| Compared | How much |
 |---|---|
-| Every dump against the C++ library built with gcc | Identical |
-| `bc7enc`: 3 million blocks with every setting varied, and 3 million written in all eight modes; the C++ built by gcc and by clang at several optimisation levels; again with Rust's overflow checks on | Identical |
-| `bc7e` against the strict build made by ISPC 1.32.0: 1.68 million blocks through the seven profiles, 780,000 through about 24,000 made-up settings; a part of it again with Rust's overflow checks on | Identical, with every mode used |
+| `bc7enc` | 3 million blocks with every setting varied, 3 million written in all eight modes; the C++ built by gcc and by clang at several optimisation levels; again with Rust's overflow checks on |
+| `bc7e` | 1.68 million blocks through the seven profiles, 780,000 through about 24,000 made-up settings |
+| `ert` | 160,000 blocks in runs of five formats |
+| `rdo`, `rdo_bc7e` | Over 100 seeds of images, 2,500 to 10,000 blocks each, the Rust on all cores, one thread and three in turn |
+| `bc6h_unpack` | 1.5 million blocks, each as signed and as unsigned |
+| `bc6h_pack` | 240,000 blocks through each of the five profiles |
 
-`cargo test` needs neither a C++ compiler nor ISPC. Among its tests, two pack made-up blocks
-and compare their hashes with ones recorded from the originals: `tests/bc7e_golden.rs` for
-`bc7e` (7,200 blocks) and one in `src/bc7enc.rs` for `bc7enc`.
+`cargo test` needs neither a C++ compiler nor ISPC. Among its tests, five pack and unpack
+made-up blocks and images and compare their hashes with ones recorded from the originals: the
+four in `tests/*_golden.rs` and one in `src/bc7enc.rs`.
 
 ## Speed
 
-For `bc7e`, on one thread of the machine it was written on, 70,000 blocks (5,000 through each
-profile and error measure) took about 4.2 seconds with this crate, 4.4 seconds in the strict
-SSE2 build of the original, and 3.0 seconds in its AVX2 fast-math build. Take that as a rough
-guide only: it is one machine and made-up blocks.
+A 512 by 512 image (16,384 blocks) on a two-core x86-64 machine, in thousands of blocks a
+second. `cargo run --release --example bench` makes this table on yours.
 
-The crate does no threading of its own. Blocks are independent, so the simple way to use more
-cores is to give each thread its own run of blocks.
+| | One thread | Two threads |
+|---|---|---|
+| BC1, level 5 | 331 | 344 |
+| BC1, level 18 | 33 | 69 |
+| BC3, level 10 | 77 | 133 |
+| BC4 | 115 | 184 |
+| BC5 | 89 | 156 |
+| BC7, `bc7enc`, uber 0 | 134 | 218 |
+| BC7, `bc7enc`, uber 4 | 66 | 113 |
+| BC7, `bc7e`, `ultrafast` | 193 | 245 |
+| BC7, `bc7e`, `basic` | 31 | 54 |
+| BC7, `bc7e`, `slowest` | 7.6 | 15 |
+| BC7, `bc7e` `basic`, with the rate-distortion pass | 8.6 | 20 |
+| BC6H, `veryfast` | 902 | 1,891 |
+| BC6H, `basic` | 53 | 118 |
+| BC6H, `veryslow` | 6.1 | 11 |
+
+Against the originals on one thread of the same machine: `bc7e` takes about four fifths of the
+time of the strict SSE2 build of `bc7e.ispc` and about a fifth longer than its AVX2 fast-math
+build; BC6H takes about one and a half times as long as the strict SSE2 build of Intel's
+encoder, which packs four blocks at a time. Take all of this as a rough guide: it is one
+machine and made-up pixels.
 
 ## Limitations
 
-- **No rate-distortion pass.** bc7enc_rdo can also trade a little quality for blocks that
-  compress better afterwards (the "rdo" of its name). That part is not ported.
-- **Blocks only.** The crate packs and unpacks 4x4 blocks. Reading and writing `.dds` or `.ktx`
-  files, making mipmaps and splitting an image into blocks are left to you.
-- **One block at a time.** There is no SIMD across blocks as in the ISPC original.
-- **BC6H is not here**, as it is not in bc7enc_rdo.
+- **No SIMD written by hand.** Stable Rust has no SIMD without `unsafe`, and the crate has no
+  `unsafe`. Its speed comes from using every core and from loops the compiler can vectorise by
+  itself. On one core, the ISPC originals built for AVX2 are faster.
+- **BC6H: no packing of the signed kind**, since Intel's encoder has none. It unpacks.
+- **No BC2.** bc7enc_rdo has none; BC3 does its job better.
+- **Files: 2D textures only.** Cube maps, texture arrays and volume textures are refused when
+  read and cannot be written. `.ktx2` files are written and read without supercompression
+  (zstd, zlib, Basis), which would need a compressor.
+- **Images come in as pixels.** The crate does not read `.png`, `.jpg` or `.exr` files: use an
+  image crate for that and hand over the pixels.
+- **x86's float-to-int rules are built in.** Where an original turns a float that does not fit
+  into an int, the ports give what x86 gives, on every processor, so the blocks are the same
+  everywhere. The originals themselves would differ on other processors.
 
 ## Credits and licence
 
-All of the compression logic is the work of others. `rgbcx`, `bc7enc` and `bc7decomp` are by
-Richard Geldreich, Jr., from [bc7enc_rdo](https://github.com/richgel999/bc7enc_rdo). `bc7e` is
-by Binomial LLC, Copyright (C) 2018-2020, from the same repository (first released as
-[bc7e](https://github.com/BinomialLLC/bc7e)). This crate is a translation of that work into
-Rust.
+All of the compression logic is the work of others, and this crate is a translation of it into
+Rust:
+
+- `rgbcx`, `bc7enc`, `bc7decomp`, `ert` and `rdo_bc_encoder` are by Richard Geldreich, Jr.,
+  from [bc7enc_rdo](https://github.com/richgel999/bc7enc_rdo).
+- `bc7e` is by Binomial LLC, Copyright (C) 2018-2020, from the same repository (first released
+  as [bc7e](https://github.com/BinomialLLC/bc7e)).
+- BC6H unpacking is by Sergii Kudlai, from [bcdec](https://github.com/iOrange/bcdec).
+- BC6H packing is by Intel Corporation, Copyright 2017, from the
+  [ISPC Texture Compressor](https://github.com/GameTechDev/ISPCTextureCompressor).
 
 rustbcx is available under the Apache License 2.0, the licence of `bc7e.ispc`: see
-[`LICENSE`](LICENSE) and [`NOTICE`](NOTICE). bc7enc_rdo's own files are offered by their author
-under the MIT licence or as public domain; that notice is kept in
-[`LICENSE-bc7enc_rdo.txt`](LICENSE-bc7enc_rdo.txt).
+[`LICENSE`](LICENSE) and [`NOTICE`](NOTICE). The other originals are under the MIT licence, or
+MIT or public domain at your choice; their notices are kept in
+[`LICENSE-bc7enc_rdo.txt`](LICENSE-bc7enc_rdo.txt), [`LICENSE-bcdec.txt`](LICENSE-bcdec.txt) and
+[`LICENSE-ispc-texcomp.txt`](LICENSE-ispc-texcomp.txt).
 
 Bug reports and contributions are welcome. If you find a block that this crate packs or
 unpacks differently from the originals, please open an issue: that is exactly the kind of bug

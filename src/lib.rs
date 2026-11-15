@@ -1,6 +1,7 @@
-//! Texture block compression, BC1 to BC5 and BC7: a port to Rust of Richard Geldreich's
-//! [bc7enc_rdo](https://github.com/richgel999/bc7enc_rdo) and of the encoder that comes with
-//! it, Binomial's `bc7e.ispc`, function for function.
+//! GPU texture compression, BC1 to BC7: ports to Rust, function for function, of Richard
+//! Geldreich's [bc7enc_rdo](https://github.com/richgel999/bc7enc_rdo), of the encoder that
+//! comes with it, Binomial's `bc7e.ispc`, and for BC6H of bcdec and Intel's ISPC Texture
+//! Compressor; and around them, textures with mip levels and their files.
 //!
 //! - [`bc7decomp`]: BC7 blocks to pixels (`bc7decomp.cpp`).
 //! - [`bc7enc`]: BC7 blocks from pixels, the small and quick encoder: modes 1 and 6 for opaque
@@ -13,7 +14,6 @@
 //! - [`rdo_bc_encoder`]: whole images to blocks of any of these formats, on all the machine's
 //!   cores, with the rate-distortion pass (`rdo_bc_encoder.cpp`). [`image`] has the image it
 //!   takes.
-//!
 //! - [`bc6h`]: BC6H, the format for HDR colour: blocks to pixels (`bcdec.h`, from
 //!   Sergii Kudlai's [bcdec](https://github.com/iOrange/bcdec)) and pixels to blocks
 //!   (`kernel.ispc`, from Intel's
@@ -22,8 +22,9 @@
 //! And around the ports, the crate's own: [`texture`], an image packed with its mip levels,
 //! and [`dds`] and [`ktx`], which read and write it as `.dds`, `.ktx` and `.ktx2` files.
 //!
-//! It keeps the originals' behaviour, so a block comes out as the same bytes from both (for
-//! `bc7e`, the original built without fast-math). It has no dependencies and no `unsafe`.
+//! The ports keep the originals' behaviour, so a block comes out as the same bytes from both
+//! (for the two ISPC originals, `bc7e.ispc` and Intel's `kernel.ispc`, as built without
+//! fast-math). The crate has no dependencies and no `unsafe`.
 
 #![forbid(unsafe_code)]
 // The code follows the originals' line for line, and these are its shapes.
