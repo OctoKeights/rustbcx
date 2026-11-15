@@ -22,5 +22,13 @@ prints the same. To make it again:
     ref="${TMPDIR:-/tmp}/rustbcx-compare/dump-cpp"
     for run in "3 1200" "7 600" "12 900"; do "$ref" ert $run; done > tests/data/ert_expected.txt
 
+`rdo_expected.txt` is what bc7enc_rdo's image encoder makes of made-up images, with bc7e.ispc
+built the strict way for part of the BC7; `tests/rdo_golden.rs` checks that the port prints the
+same. To make it again:
+
+    compare/compare.sh <checkout of bc7enc_rdo> 3000 1 "rdo rdo_bc7e"
+    tmp="${TMPDIR:-/tmp}/rustbcx-compare"
+    { "$tmp/dump-cpp" rdo 9 800; "$tmp/dump-cpp-bc7e" rdo_bc7e 2 800; "$tmp/dump-cpp-bc7e" rdo_bc7e 14 800; } > tests/data/rdo_expected.txt
+
 No texture from anywhere is in this repository: every block the tests and the comparison pack
 is made up from a seed.

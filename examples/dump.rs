@@ -12,6 +12,12 @@
 //!                                    and unpacked again
 //!   dump bc7block <seed> <blocks>    BC7 blocks of every mode written from made-up endpoints
 //!                                    and selectors, and unpacked again
+//!   dump rdo <seed> <blocks>         made-up images of every shape packed whole by the image
+//!                                    encoder in each of its formats, with and without the
+//!                                    rate-distortion pass, every setting varied; BC7 with
+//!                                    bc7enc
+//!   dump rdo_bc7e <seed> <blocks>    the same, BC7 with bc7e for about half the images (the
+//!                                    C++ side needs the ISPC object for it)
 //!   dump ert <seed> <blocks>         runs of made-up blocks, many of them near copies of the
 //!                                    blocks before, packed in one of five formats and put
 //!                                    through the entropy reduction transform, its settings
@@ -499,6 +505,8 @@ fn main() {
         "bc7enc" => dump_bc7enc(seed, blocks),
         "bc7block" => dump_bc7block(seed, blocks),
         "ert" => print!("{}", made_up::ert(seed, blocks)),
+        "rdo" => print!("{}", made_up::rdo(seed, blocks, false)),
+        "rdo_bc7e" => print!("{}", made_up::rdo(seed, blocks, true)),
         "bc7e_presets" => dump_bc7e(true, seed, blocks, args.get(4)),
         "bc7e_settings" => dump_bc7e(false, seed, blocks, args.get(4)),
         _ => std::process::exit(2),

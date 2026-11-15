@@ -7,16 +7,18 @@
 # originals. Runs every dump of both sides for each seed and compares what they print byte for
 # byte. [dumps] names the dumps to run, in quotes, when not all of them are wanted.
 #
-# The C++ library (bc7decomp.cpp, bc7enc.cpp, rgbcx.cpp, ert.cpp): compare/dump.cpp is built
-# against it. Dumps: bc7decomp unpack bc1 bc345 bc7enc bc7block ert (ert with a tenth of
-# [blocks]: it unpacks each block thousands of times).
+# The C++ library (bc7decomp.cpp, bc7enc.cpp, rgbcx.cpp, ert.cpp, rdo_bc_encoder.cpp and what
+# they need): compare/dump.cpp is built against it. Dumps: bc7decomp unpack bc1 bc345 bc7enc
+# bc7block ert rdo (ert and rdo with a tenth of [blocks]: they unpack each block thousands of
+# times).
 #
 # bc7e.ispc: needs the ISPC compiler (https://github.com/ispc/ispc/releases), `ispc` on the
 # path or its path in $ISPC. bc7e.ispc is built the strict way (for SSE2, without fast-math:
 # no fused multiply-add, no reordered arithmetic), which gives the same blocks on every
 # machine, and compare/dump_bc7e.cpp is built against it. Dumps: bc7e_presets bc7e_settings,
 # each with a tenth of [blocks], since it packs every block fourteen times or with thorough
-# settings. (A build of bc7e.ispc with --opt=fast-math, or for AVX2 without
+# settings; and rdo_bc7e, the rdo dump with compare/dump.cpp built against the C++ library and
+# that bc7e together. (A build of bc7e.ispc with --opt=fast-math, or for AVX2 without
 # --opt=disable-fma, packs some blocks differently from this one, and so from the port.)
 #
 # Without the ISPC compiler the bc7e dumps are left out, and the script says so and fails.
@@ -29,7 +31,7 @@ here=$(cd "$(dirname "$0")/.." && pwd)
 source=$1
 blocks=${2:-200000}
 seeds=${3:-3}
-dumps=${4:-bc7decomp unpack bc1 bc345 bc7enc bc7block ert bc7e_presets bc7e_settings}
+dumps=${4:-bc7decomp unpack bc1 bc345 bc7enc bc7block ert rdo bc7e_presets bc7e_settings rdo_bc7e}
 tmp=${TMPDIR:-/tmp}/rustbcx-compare
 mkdir -p "$tmp" || exit 2
 
@@ -39,9 +41,13 @@ rust=$(cd "$here" && cargo metadata --format-version 1 --no-deps 2>/dev/null | s
 built_cpp=0
 built_ispc=0
 bad=0
+# (ert.h uses the fixed-width integer types without including their header; no contraction of
+# a multiply and an add into one instruction, which Rust never does.)
+cpp_flags="-O2 -ffp-contract=off -include stdint.h"
+cpp_sources="$source/bc7decomp.cpp $source/bc7decomp_ref.cpp $source/bc7enc.cpp $source/rgbcx.cpp $source/ert.cpp $source/rdo_bc_encoder.cpp $source/utils.cpp $source/lodepng.cpp"
 for what in $dumps; do
     case $what in
-    bc7e_*)
+    bc7e_* | rdo_bc7e)
         if [ "$built_ispc" -eq 0 ]; then
             if ! command -v "${ISPC:-ispc}" > /dev/null 2>&1; then
                 echo "$what: NOT COMPARED, no ISPC compiler (put ispc on the path or its path in \$ISPC)"
@@ -50,26 +56,28 @@ for what in $dumps; do
             fi
             "${ISPC:-ispc}" -O2 --pic --target=sse2-i32x4 --opt=disable-assertions "$source/bc7e.ispc" -o "$tmp/bc7e.o" -h "$tmp/bc7e_ispc.h" 2> "$tmp/ispc.log" || { cat "$tmp/ispc.log" >&2; exit 2; }
             ${CXX:-c++} -O2 -I "$tmp" "$here/compare/dump_bc7e.cpp" "$tmp/bc7e.o" -o "$tmp/dump-ispc" || exit 2
+            # shellcheck disable=SC2086
+            ${CXX:-c++} $cpp_flags -DSUPPORT_BC7E=1 -I "$tmp" -I "$source" "$here/compare/dump.cpp" $cpp_sources "$tmp/bc7e.o" -o "$tmp/dump-cpp-bc7e" || exit 2
             built_ispc=1
         fi
         reference=$tmp/dump-ispc
+        [ "$what" = rdo_bc7e ] && reference=$tmp/dump-cpp-bc7e
         count=$((blocks / 10))
         ;;
     *)
         if [ "$built_cpp" -eq 0 ]; then
-            # (No contraction of a multiply and an add into one instruction: Rust never does it.)
-            # (ert.h uses the fixed-width integer types without including their header.)
-            ${CXX:-c++} -O2 -ffp-contract=off -include stdint.h -I "$source" "$here/compare/dump.cpp" "$source/bc7decomp.cpp" "$source/bc7enc.cpp" "$source/rgbcx.cpp" "$source/ert.cpp" -o "$tmp/dump-cpp" || exit 2
+            # shellcheck disable=SC2086
+            ${CXX:-c++} $cpp_flags -I "$source" "$here/compare/dump.cpp" $cpp_sources -o "$tmp/dump-cpp" || exit 2
             built_cpp=1
         fi
         reference=$tmp/dump-cpp
         count=$blocks
-        [ "$what" = ert ] && count=$((blocks / 10))
+        case $what in ert | rdo) count=$((blocks / 10)) ;; esac
         ;;
     esac
     seed=1
     while [ "$seed" -le "$seeds" ]; do
-        "$reference" "$what" "$seed" "$count" > "$tmp/reference.txt"
+        "$reference" "$what" "$seed" "$count" > "$tmp/reference.txt" 2> /dev/null
         "$rust" "$what" "$seed" "$count" > "$tmp/rust.txt"
         if cmp -s "$tmp/reference.txt" "$tmp/rust.txt"; then
             echo "$what, seed $seed: the same ($(tail -1 "$tmp/rust.txt"))"

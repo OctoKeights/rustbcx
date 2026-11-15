@@ -12,21 +12,29 @@
 //                                    and unpacked again
 //   dump bc7block <seed> <blocks>    BC7 blocks of every mode written from made-up endpoints
 //                                    and selectors, and unpacked again
+//   dump rdo <seed> <blocks>         made-up images of every shape packed whole by
+//                                    rdo_bc_encoder in each of its formats, with and without
+//                                    the rate-distortion pass, every setting varied; BC7 with
+//                                    bc7enc
+//   dump rdo_bc7e <seed> <blocks>    the same, BC7 with bc7e for about half the images (only
+//                                    in a build with -DSUPPORT_BC7E=1 and the ISPC object)
 //   dump ert <seed> <blocks>         runs of made-up blocks, many of them near copies of the
 //                                    blocks before, packed in one of five formats and put
 //                                    through the entropy reduction transform, its settings
 //                                    varied
 
-#include "bc7decomp.h"
-#include "bc7enc.h"
-#include "ert.h"
-#include "rgbcx.h"
+// (bc7decomp.h, bc7enc.h, ert.h and rgbcx.h come with this one; bc7enc.h cannot be included
+// twice.)
+#include "rdo_bc_encoder.h"
 
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <vector>
+
+#include <fcntl.h>
+#include <unistd.h>
 
 // bc7enc.cpp's own, which its header leaves out.
 struct bc7_optimization_results
@@ -697,6 +705,161 @@ void DumpErt(std::uint64_t seed, std::uint32_t blocks)
     std::printf("ert %016llx\n", static_cast<unsigned long long>(hash.value));
     std::printf("ert runs: %u, blocks changed: %u, runs refused: %u\n", runs, modified, failed);
 }
+// A made-up image: noise, a ramp, flat boxes, a repeated tile, a very smooth field, or half a
+// ramp and half noise; opaque, with noise for alpha, or with a ramp of alpha.
+utils::image_u8 MakeImage(Random& random, std::uint32_t w, std::uint32_t h)
+{
+    utils::image_u8 image(w, h);
+    const std::uint32_t kind = random.Next() % 6;
+    const std::uint32_t alpha_kind = random.Next() % 3;
+    auto byte = [&random] { return static_cast<std::uint8_t>(random.Next()); };
+    auto clamp = [](int v) { return static_cast<std::uint8_t>(v < 0 ? 0 : (v > 255 ? 255 : v)); };
+    std::uint8_t a[4], b[4];
+    for (int c = 0; c < 4; ++c)
+        a[c] = byte(), b[c] = byte();
+    const std::uint32_t noise = random.Next() % 4;
+    std::uint8_t tile[256];
+    for (int i = 0; i < 256; ++i)
+        tile[i] = byte();
+    for (std::uint32_t y = 0; y < h; ++y)
+        for (std::uint32_t x = 0; x < w; ++x)
+        {
+            std::uint8_t p[4];
+            switch (kind)
+            {
+            case 0:
+                for (int c = 0; c < 4; ++c)
+                    p[c] = byte();
+                break;
+            case 1:
+            {
+                const int t = static_cast<int>((x * 255) / (w > 1 ? w - 1 : 1));
+                for (int c = 0; c < 4; ++c)
+                {
+                    const int n = noise ? static_cast<int>(random.Next() % (noise + 1)) : 0;
+                    p[c] = clamp((a[c] * (255 - t) + b[c] * t) / 255 + n);
+                }
+                break;
+            }
+            case 2:
+            {
+                const bool in_box = ((x / 16) + (y / 12)) % 3 == 0;
+                for (int c = 0; c < 4; ++c)
+                    p[c] = in_box ? b[c] : a[c];
+                break;
+            }
+            case 3:
+                for (int c = 0; c < 4; ++c)
+                    p[c] = tile[((x % 8) + (y % 8) * 8) * 4 + c];
+                break;
+            case 4:
+                for (int c = 0; c < 4; ++c)
+                    p[c] = static_cast<std::uint8_t>(a[c] / 2 + 60 + random.Next() % 2);
+                break;
+            default:
+                if (x < w / 2)
+                {
+                    const int t = static_cast<int>((y * 255) / (h > 1 ? h - 1 : 1));
+                    for (int c = 0; c < 4; ++c)
+                        p[c] = static_cast<std::uint8_t>((a[c] * (255 - t) + b[c] * t) / 255);
+                }
+                else
+                    for (int c = 0; c < 4; ++c)
+                        p[c] = byte();
+                break;
+            }
+            if (alpha_kind == 0)
+                p[3] = 255;
+            else if (alpha_kind == 2)
+                p[3] = static_cast<std::uint8_t>((x + y) * 3);
+            image(x, y) = utils::color_quad_u8(p[0], p[1], p[2], p[3]);
+        }
+    return image;
+}
+
+// Made-up images packed whole by rdo_bc_encoder.
+void DumpRdo(std::uint64_t seed, std::uint32_t blocks, bool with_bc7e)
+{
+    Random random{seed};
+    Hash hash;
+    std::uint32_t done = 0, images = 0, refused = 0;
+    while (done < blocks)
+    {
+        const bool big = random.Next() % 6 == 0;
+        const std::uint32_t w = big ? 240 + random.Next() % 100 : 1 + random.Next() % 96;
+        const std::uint32_t h = big ? 240 + random.Next() % 100 : 1 + random.Next() % 96;
+        const utils::image_u8 image = MakeImage(random, w, h);
+
+        rdo_bc::rdo_bc_params p;
+        static const DXGI_FORMAT kFormats[5] = {DXGI_FORMAT_BC1_UNORM, DXGI_FORMAT_BC3_UNORM, DXGI_FORMAT_BC4_UNORM, DXGI_FORMAT_BC5_UNORM, DXGI_FORMAT_BC7_UNORM};
+        p.m_dxgi_format = kFormats[random.Next() % 5];
+        const std::uint32_t level = random.Next();
+        p.m_bc1_quality_level = static_cast<int>(big ? level % 3 : level % 11);
+        p.m_use_bc1_3color_mode = random.Next() % 2 != 0;
+        p.m_use_bc1_3color_mode_for_black = random.Next() % 2 != 0;
+        p.m_bc1_mode = kModes[random.Next() % 4];
+        p.m_y_flip = random.Next() % 4 == 0;
+        p.m_bc45_channel0 = random.Next() % 4;
+        p.m_bc45_channel1 = random.Next() % 4;
+        p.m_use_hq_bc345 = random.Next() % 2 != 0;
+        p.m_bc345_search_rad = static_cast<int>(random.Next() % 8);
+        p.m_bc345_mode_mask = 1 + random.Next() % 3;
+        const bool use_bc7e = random.Next() % 2 != 0;
+        p.m_use_bc7e = with_bc7e && use_bc7e;
+        const std::uint32_t uber = random.Next();
+        p.m_bc7_uber_level = static_cast<int>(big ? uber % 2 : (w * h <= 256 ? uber % 7 : uber % 5));
+        p.m_bc7enc_max_partitions_to_scan = static_cast<int>(random.Next() % 65);
+        p.m_perceptual = random.Next() % 2 != 0;
+        p.m_bc7enc_mode6_only = random.Next() % 8 == 0;
+        p.m_bc7enc_reduce_entropy = random.Next() % 2 != 0;
+        p.m_bc7enc_rdo_bc7_quant_mode6_endpoints = random.Next() % 2 != 0;
+        p.m_bc7enc_rdo_bc7_weight_modes = random.Next() % 2 != 0;
+        p.m_bc7enc_rdo_bc7_weight_low_frequency_partitions = random.Next() % 2 != 0;
+        p.m_bc7enc_rdo_bc7_pbit1_weighting = random.Next() % 2 != 0;
+        const bool lambda_on = random.Next() % 3 != 0;
+        const std::uint32_t lambda = random.Next();
+        p.m_rdo_lambda = lambda_on ? static_cast<float>(lambda % 1000) / 100.0f + 0.05f : 0.0f;
+        static const std::uint32_t kWindows[6] = {8, 16, 64, 128, 256, 1024};
+        p.m_lookback_window_size = kWindows[random.Next() % 6];
+        p.m_custom_rdo_smooth_block_error_scale = random.Next() % 2 != 0;
+        p.m_rdo_smooth_block_error_scale = 1.0f + static_cast<float>(random.Next() % 40);
+        p.m_rdo_max_smooth_block_std_dev = 1.0f + static_cast<float>(random.Next() % 40);
+        const bool relative = random.Next() % 4 == 0;
+        p.m_rdo_allow_relative_movement = relative && !big && w * h <= 1024;
+        p.m_rdo_try_2_matches = random.Next() % 2 != 0;
+        p.m_rdo_ultrasmooth_block_handling = random.Next() % 2 != 0;
+        p.m_rdo_multithreading = random.Next() % 4 != 0;
+        p.m_rdo_max_threads = 1 + random.Next() % 8;
+
+        // (The encoder prints its settings for BC1 whether asked or not: not into the dump.)
+        std::fflush(stdout);
+        const int saved = dup(1), null = open("/dev/null", O_WRONLY);
+        dup2(null, 1);
+        rdo_bc::rdo_bc_encoder encoder;
+        bool ok = encoder.init(image, p) && encoder.encode();
+        utils::image_u8 unpacked;
+        ok = ok && encoder.unpack_blocks(unpacked);
+        std::fflush(stdout);
+        dup2(saved, 1);
+        close(saved);
+        close(null);
+
+        const std::uint32_t sizes[4] = {encoder.get_blocks_x(), encoder.get_blocks_y(), encoder.get_bytes_per_block(), ok ? 1u : 0u};
+        hash.Add(sizes, sizeof(sizes));
+        if (ok)
+        {
+            hash.Add(encoder.get_prerdo_blocks(), encoder.get_total_blocks_size_in_bytes());
+            hash.Add(encoder.get_blocks(), encoder.get_total_blocks_size_in_bytes());
+            hash.Add(unpacked.get_pixels().data(), unpacked.get_pixels().size() * 4);
+        }
+        else
+            ++refused;
+        done += encoder.get_total_blocks();
+        ++images;
+    }
+    std::printf("rdo %016llx\n", static_cast<unsigned long long>(hash.value));
+    std::printf("rdo images: %u, blocks: %u, refused: %u\n", images, done, refused);
+}
 } // namespace
 
 int main(int argc, char** argv)
@@ -722,6 +885,12 @@ int main(int argc, char** argv)
         DumpBc7Block(seed, blocks);
     else if (std::strcmp(argv[1], "ert") == 0)
         DumpErt(seed, blocks);
+    else if (std::strcmp(argv[1], "rdo") == 0)
+        DumpRdo(seed, blocks, false);
+#if SUPPORT_BC7E
+    else if (std::strcmp(argv[1], "rdo_bc7e") == 0)
+        DumpRdo(seed, blocks, true);
+#endif
     else
         return 2;
     return 0;

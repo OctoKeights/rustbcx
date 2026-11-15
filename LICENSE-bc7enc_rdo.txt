@@ -1,5 +1,5 @@
 The parts of this crate ported from bc7enc_rdo's C++ (src/bc7decomp.rs, src/bc7enc.rs,
-src/rgbcx.rs, src/rgbcx_tables.rs, src/ert.rs) come from files their author, Richard Geldreich, Jr., offers
+src/rgbcx.rs, src/rgbcx_tables.rs, src/ert.rs, src/rdo_bc_encoder.rs, src/image.rs) come from files their author, Richard Geldreich, Jr., offers
 under two licences, for the user to choose between. This is that notice, from the LICENSE file
 of https://github.com/richgel999/bc7enc_rdo. The port itself is offered under the Apache
 License 2.0 (see LICENSE and NOTICE).

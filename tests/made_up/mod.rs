@@ -7,6 +7,8 @@
 use rustbcx::bc7decomp;
 use rustbcx::bc7enc::{Bc7Enc, CompressBlockParams};
 use rustbcx::ert::{self, ReduceEntropyParams};
+use rustbcx::image::Image;
+use rustbcx::rdo_bc_encoder::{BlockFormat, RdoBcEncoder, RdoBcParams};
 use rustbcx::rgbcx::{self, Bc1ApproxMode, Rgbcx};
 
 /// The two programs make the same blocks from the same seed: a 64-bit linear congruential
@@ -269,4 +271,161 @@ pub fn ert(seed: u64, blocks: u32) -> String {
         runs += 1;
     }
     format!("ert {:016x}\nert runs: {runs}, blocks changed: {modified}, runs refused: {failed}\n", hash.value)
+}
+
+/// A made-up image: noise, a ramp, flat boxes, a repeated tile, a very smooth field, or half a
+/// ramp and half noise; opaque, with noise for alpha, or with a ramp of alpha.
+pub fn make_image(random: &mut Random, w: u32, h: u32) -> Image {
+    let mut image = Image::new(w, h);
+    let kind = random.next() % 6;
+    let alpha_kind = random.next() % 3;
+    let clamp = |v: i32| v.clamp(0, 255) as u8;
+    let (mut a, mut b) = ([0u8; 4], [0u8; 4]);
+    for c in 0..4 {
+        a[c] = random.next() as u8;
+        b[c] = random.next() as u8;
+    }
+    let noise = random.next() % 4;
+    let mut tile = [0u8; 256];
+    for value in &mut tile {
+        *value = random.next() as u8;
+    }
+    for y in 0..h {
+        for x in 0..w {
+            let mut p = [0u8; 4];
+            match kind {
+                0 => {
+                    for c in 0..4 {
+                        p[c] = random.next() as u8;
+                    }
+                }
+                1 => {
+                    let t = ((x * 255) / if w > 1 { w - 1 } else { 1 }) as i32;
+                    for c in 0..4 {
+                        let n = if noise != 0 { (random.next() % (noise + 1)) as i32 } else { 0 };
+                        p[c] = clamp((i32::from(a[c]) * (255 - t) + i32::from(b[c]) * t) / 255 + n);
+                    }
+                }
+                2 => {
+                    let in_box = ((x / 16) + (y / 12)) % 3 == 0;
+                    for c in 0..4 {
+                        p[c] = if in_box { b[c] } else { a[c] };
+                    }
+                }
+                3 => {
+                    for c in 0..4 {
+                        p[c] = tile[(((x % 8) + (y % 8) * 8) * 4) as usize + c];
+                    }
+                }
+                4 => {
+                    for c in 0..4 {
+                        p[c] = (u32::from(a[c]) / 2 + 60 + random.next() % 2) as u8;
+                    }
+                }
+                _ => {
+                    if x < w / 2 {
+                        let t = ((y * 255) / if h > 1 { h - 1 } else { 1 }) as i32;
+                        for c in 0..4 {
+                            p[c] = ((i32::from(a[c]) * (255 - t) + i32::from(b[c]) * t) / 255) as u8;
+                        }
+                    } else {
+                        for c in 0..4 {
+                            p[c] = random.next() as u8;
+                        }
+                    }
+                }
+            }
+            if alpha_kind == 0 {
+                p[3] = 255;
+            } else if alpha_kind == 2 {
+                p[3] = ((x + y) * 3) as u8;
+            }
+            image.pixels[(x + y * w) as usize] = p;
+        }
+    }
+    image
+}
+
+/// The `rdo` dump (and `rdo_bc7e`, with `with_bc7e`): made-up images of every shape packed
+/// whole by the image encoder in each of its formats, with and without the rate-distortion
+/// pass, every setting varied. What `compare/dump.cpp` prints for the same seed and count.
+pub fn rdo(seed: u64, blocks: u32, with_bc7e: bool) -> String {
+    const MODES: [Bc1ApproxMode; 4] = [Bc1ApproxMode::Ideal, Bc1ApproxMode::NVidia, Bc1ApproxMode::Amd, Bc1ApproxMode::IdealRound4];
+    let mut random = Random { state: seed };
+    let mut hash = Hash::new();
+    let (mut done, mut images, mut refused) = (0u32, 0u32, 0u32);
+    let mut encoder = RdoBcEncoder::new();
+    while done < blocks {
+        let big = random.next() % 6 == 0;
+        let w = if big { 240 + random.next() % 100 } else { 1 + random.next() % 96 };
+        let h = if big { 240 + random.next() % 100 } else { 1 + random.next() % 96 };
+        let image = make_image(&mut random, w, h);
+
+        let mut p = RdoBcParams::new();
+        const FORMATS: [BlockFormat; 5] = [BlockFormat::Bc1, BlockFormat::Bc3, BlockFormat::Bc4, BlockFormat::Bc5, BlockFormat::Bc7];
+        p.format = FORMATS[(random.next() % 5) as usize];
+        let level = random.next();
+        p.bc1_quality_level = if big { level % 3 } else { level % 11 };
+        p.use_bc1_3color_mode = random.next() % 2 != 0;
+        p.use_bc1_3color_mode_for_black = random.next() % 2 != 0;
+        p.bc1_mode = MODES[(random.next() % 4) as usize];
+        p.y_flip = random.next() % 4 == 0;
+        p.bc45_channel0 = random.next() % 4;
+        p.bc45_channel1 = random.next() % 4;
+        p.use_hq_bc345 = random.next() % 2 != 0;
+        p.bc345_search_rad = random.next() % 8;
+        p.bc345_mode_mask = 1 + random.next() % 3;
+        let use_bc7e = random.next() % 2 != 0;
+        p.use_bc7e = with_bc7e && use_bc7e;
+        let uber = random.next();
+        p.bc7_uber_level = if big {
+            uber % 2
+        } else if w * h <= 256 {
+            uber % 7
+        } else {
+            uber % 5
+        };
+        p.bc7enc_max_partitions_to_scan = random.next() % 65;
+        p.perceptual = random.next() % 2 != 0;
+        p.bc7enc_mode6_only = random.next() % 8 == 0;
+        p.bc7enc_reduce_entropy = random.next() % 2 != 0;
+        p.bc7enc_rdo_bc7_quant_mode6_endpoints = random.next() % 2 != 0;
+        p.bc7enc_rdo_bc7_weight_modes = random.next() % 2 != 0;
+        p.bc7enc_rdo_bc7_weight_low_frequency_partitions = random.next() % 2 != 0;
+        p.bc7enc_rdo_bc7_pbit1_weighting = random.next() % 2 != 0;
+        let lambda_on = random.next() % 3 != 0;
+        let lambda = random.next();
+        p.rdo_lambda = if lambda_on { (lambda % 1000) as f32 / 100.0 + 0.05 } else { 0.0 };
+        const WINDOWS: [u32; 6] = [8, 16, 64, 128, 256, 1024];
+        p.lookback_window_size = WINDOWS[(random.next() % 6) as usize];
+        p.custom_rdo_smooth_block_error_scale = random.next() % 2 != 0;
+        p.rdo_smooth_block_error_scale = 1.0 + (random.next() % 40) as f32;
+        p.rdo_max_smooth_block_std_dev = 1.0 + (random.next() % 40) as f32;
+        let relative = random.next() % 4 == 0;
+        p.rdo_allow_relative_movement = relative && !big && w * h <= 1024;
+        p.rdo_try_2_matches = random.next() % 2 != 0;
+        p.rdo_ultrasmooth_block_handling = random.next() % 2 != 0;
+        p.rdo_multithreading = random.next() % 4 != 0;
+        p.rdo_max_threads = 1 + random.next() % 8;
+        // (The number of threads does not change the blocks: all the cores, one, three.)
+        p.threads = [0, 1, 3][(images % 3) as usize];
+
+        let mut ok = encoder.init(&image, &p) && encoder.encode();
+        let unpacked = if ok { encoder.unpack_blocks() } else { None };
+        ok = ok && unpacked.is_some();
+
+        for size in [encoder.blocks_x(), encoder.blocks_y(), encoder.bytes_per_block(), u32::from(ok)] {
+            hash.add(&size.to_le_bytes());
+        }
+        if let Some(unpacked) = unpacked {
+            hash.add(encoder.prerdo_blocks());
+            hash.add(encoder.blocks());
+            hash.add(unpacked.as_rgba8());
+        } else {
+            refused += 1;
+        }
+        done += encoder.total_blocks();
+        images += 1;
+    }
+    format!("rdo {:016x}\nrdo images: {images}, blocks: {done}, refused: {refused}\n", hash.value)
 }
