@@ -1,7 +1,8 @@
 # rustbcx
 
 GPU texture compression in pure Rust: BC1 to BC7, from single blocks up to whole textures with
-mip levels in `.dds`, `.ktx` and `.ktx2` files.
+mip levels in `.dds`, `.ktx` and `.ktx2` files, made from `.png`, `.bmp` and `.jpg` pictures or
+from pixels of your own.
 
 The encoders and decoders are ports of well-known C++ and ISPC libraries, chiefly Richard
 Geldreich's [bc7enc_rdo](https://github.com/richgel999/bc7enc_rdo), and the goal of this crate
@@ -19,6 +20,8 @@ with nothing else to install.
 - **Whole textures.** Hand it an image and get back a texture with its mip levels, ready to
   write as a `.dds`, `.ktx` or `.ktx2` file. Hand it several and get a texture array, a cube
   map or a volume texture.
+- **Pictures in and out.** It reads `.png`, `.bmp` and `.jpg` files into images and writes
+  images back out as them, with ports of stb_image and stb_image_write.
 - **All your cores.** Images are packed on every core the machine has unless you say
   otherwise, and the result does not depend on how many that is.
 - **Rate-distortion optimisation.** bc7enc_rdo's pass that makes a texture smaller on disk
@@ -67,14 +70,15 @@ The ports, each checked byte for byte against its original:
 | `bc6h` (packing) | Intel's [ISPC Texture Compressor](https://github.com/GameTechDev/ISPCTextureCompressor), `kernel.ispc` | HDR pixels to unsigned BC6H, five profiles |
 | `bc6h_enc` | [bc6h_enc](https://github.com/0xc0de/bc6h_enc), which is DirectXTex's BC6H encoder as one file | HDR pixels to signed or unsigned BC6H, the thorough and slow way |
 | `miniz` | Rich Geldreich's [miniz](https://github.com/richgel999/miniz): its compressor, its decompressor and its checksums | zlib and deflate, both ways, for `.ktx2` files with ZLIB supercompression |
-| `stb_image_write` | Sean Barrett's [stb](https://github.com/nothings/stb), `stb_image_write.h` | Images of 8 bits a channel to `.png`, `.bmp` and `.jpg` files |
+| `stb_image` | Sean Barrett's [stb](https://github.com/nothings/stb), `stb_image.h`: its PNG, BMP and JPEG readers and its zlib decoder | `.png`, `.bmp` and `.jpg` files to pixels, at 8 or 16 bits a channel |
+| `stb_image_write` | stb's `stb_image_write.h`: its PNG, BMP and JPEG writers | Pixels of 8 bits a channel to `.png`, `.bmp` and `.jpg` files |
 
 And around them, the crate's own code, which has no original to match:
 
 | Module | What it does |
 |---|---|
 | `bc2` | BC2 (DXT3), which none of the originals has: the colours by `rgbcx` as BC3's are, the alphas at four bits a pixel. Its unpacker is checked against bcdec's |
-| `image` | `Image` (8-bit RGBA) and `HdrImage` (half-float RGB), and the next mip level of each |
+| `image` | `Image` (8-bit RGBA) and `HdrImage` (half-float RGB), and the next mip level of each. `Image::load` and `save` read and write `.png`, `.bmp` and `.jpg` files |
 | `texture` | `Texture`: a format, a size and the blocks of every mip level, for one image or for a texture array, a cube map or a volume texture. `compress` and `compress_hdr` make one from an image, `compress_many` and `compress_hdr_many` from several; `load` and `save` read and write files |
 | `dds` | `.dds` files, both ways, with either header. For one level its writer gives the bytes bc7enc_rdo's `save_dds` writes |
 | `ktx` | `.ktx` (KTX 1) and `.ktx2` (KTX 2) files, both ways; `.ktx2` with its levels as they are or supercompressed with zlib |
@@ -105,6 +109,35 @@ assert_eq!(texture.levels.len(), 7);
 let path = std::env::temp_dir().join("rustbcx-example.dds");
 texture.save(&path).unwrap();
 assert_eq!(Texture::load(&path).unwrap(), texture);
+```
+
+A picture file in, and one out:
+
+```rust
+use rustbcx::image::Image;
+use rustbcx::rdo_bc_encoder::{BlockFormat, RdoBcParams};
+use rustbcx::rgbcx::Bc1ApproxMode;
+use rustbcx::texture;
+
+// (A picture to read: here one is made and saved first.)
+let folder = std::env::temp_dir();
+let mut picture = Image::new(32, 32);
+for (i, pixel) in picture.pixels.iter_mut().enumerate() {
+    *pixel = [(i % 32 * 8) as u8, (i / 32 * 8) as u8, 60, 255];
+}
+picture.save(folder.join("rustbcx-example.png")).unwrap();
+
+// A .png, .bmp or .jpg file comes in as an image...
+let image = Image::load(folder.join("rustbcx-example.png")).unwrap();
+assert_eq!(image, picture);
+
+let mut params = RdoBcParams::new();
+params.format = BlockFormat::Bc7;
+let texture = texture::compress(&image, &params, false).unwrap();
+
+// ...and what a texture unpacks to can go out as one, to see what the packing did.
+let unpacked = texture.unpack_level(0, Bc1ApproxMode::Ideal).unwrap();
+unpacked.save(folder.join("rustbcx-example-unpacked.png")).unwrap();
 ```
 
 The same with the rate-distortion pass, for a file that zips smaller:
@@ -263,8 +296,9 @@ bc7enc_rdo and whose Rust rewrite needed to produce exactly the same blocks.
   lets the compiler reorder the arithmetic. Those builds pack about one block in ten
   differently from the strict ones, in the last bits of a choice and not in kind. This crate
   gives the strict builds' blocks.
-- **BC6H packs the unsigned kind only**, as Intel's encoder does. Both kinds unpack. Values
-  below zero are packed as zero by `compress_hdr`.
+- **BC6H has two packers.** `compress_hdr` uses Intel's, which is quick and packs the unsigned
+  kind only, values below zero as zero. `compress_hdr_signed` uses DirectXTex's, which packs
+  the signed kind and is far slower. Both kinds unpack.
 - **BC6H's packer is weak on very bright blocks.** The original keeps each pixel's squared
   error as an int, which bright values overflow, so among such blocks its choices are less
   good than its search would allow. That is kept, since the blocks depend on it.
@@ -273,6 +307,13 @@ bc7enc_rdo and whose Rust rewrite needed to produce exactly the same blocks.
   over to the next. In the image encoder, the rate-distortion pass compares BC4 against the
   image's red, and BC5 against red and green, whatever channels were packed.
 - **`bc7enc` panics when its mode mask leaves a block no mode**, where the C++ asserts.
+- **Picture files are read as stb_image reads them.** Decoders differ a little in the pixels
+  they make of a `.jpg`; these are stb_image's. A file it refuses is refused here, with its
+  reason in the `LoadError`, and a damaged file it reads all the same is read here too. The
+  checksums in a `.png` are not checked, as there. `Image` holds 8 bits a channel, so a 16-bit
+  `.png` is brought down to 8 on the way in; `stb_image::load_16_from_memory` keeps all 16.
+- **A `.jpg` is written as stb_image_write writes it**: baseline, with the colour at half size
+  each way up to quality 90 and at full size above it.
 - **The originals' globals are values here.** The tables the C++ and the ISPC fill at start-up
   are held by `Rgbcx::new`, `Bc7Enc::new` and `Bc7e::new`, so there is no init function to
   remember to call, and one of each can be shared between threads.
@@ -313,6 +354,7 @@ and fails.
 | `bc6h_enc` | bc6h_enc, built with `BC6H_SSE_INTRINSICS` | HDR pixels of both signs packed as signed and as unsigned BC6H |
 | `miniz` | miniz | Made-up files compressed at every level, with every strategy and with made-up flags, in one go and in pieces with flushes between; each stream decompressed whole, into too little room, damaged, cut short and with bytes after it |
 | `stb_image_write` | stb's `stb_image_write.h` | Made-up images of one to four channels written as `.png` with made-up compression levels and filters, as `.bmp`, and as `.jpg` with made-up qualities, some upside down and some with rows further apart than they are wide; and made-up data through its zlib compressor |
+| `stb_image` | stb's `stb_image.h`, built with `STBI_NO_SIMD` | Made-up files asked their size and read at 8 and 16 bits a channel, with every number of channels asked for: pictures written by stb_image_write, and files put together with every kind of header the readers take and made-up bytes for the picture (PNG of every depth and colour type, with palettes, transparent colours and interlacing; BMP of every header size and depth, with palettes and bit masks; JPEG baseline and progressive, of one to four components sampled every way, with restart markers). A third of them are damaged first, and for those the reason for refusing is compared. And made-up zlib streams, whole and damaged, through its zlib decoder |
 
 The two ISPC originals pack several blocks at once in the lanes of a vector register; the ports
 pack them one after another with the same arithmetic in the same order. Built for SSE2 without
@@ -337,10 +379,18 @@ These comparisons were run on Linux (x86-64), the C++ built with gcc and the ISP
 | `bc6h_enc` | 60,000 blocks, each as signed and as unsigned; the C++ built by gcc and by clang |
 | `miniz` | 30,000 files, 800 megabytes in all, each compressed two or three ways and decompressed seven |
 | `stb_image_write` | 9,000 images, 32 million pixels, each as three files; the C built by gcc and by clang at several optimisation levels |
+| `stb_image` | 60,000 files, of which 46,500 were read (105 million pixels) and 13,300 refused, each for the same reason; the C built by gcc and by clang at several optimisation levels |
 
-`cargo test` needs neither a C++ compiler nor ISPC. Among its tests, nine run made-up blocks,
+The JPEG reader is the one port with a choice of original to match. stb_image has two
+versions of its inverse transform: plain C, and SSE2 or NEON where the processor has them. For
+a JPEG file that an encoder wrote they give the same pixels (the two builds of the original
+were compared on 20,000 such files). For a damaged file, whose values can be ones no encoder
+writes, they can differ, since the SIMD version keeps fewer bits along the way. The port
+follows the plain C, which gives one answer on every processor.
+
+`cargo test` needs neither a C++ compiler nor ISPC. Among its tests, ten run made-up blocks,
 images and files through the ports and compare their hashes with ones recorded from the
-originals: the eight in `tests/*_golden.rs` and one in `src/bc7enc.rs`.
+originals: the nine in `tests/*_golden.rs` and one in `src/bc7enc.rs`.
 
 The files have their own check. `compare/files.sh` writes textures of every format and shape
 (plain, texture array, cube map, array of cube maps, volume texture) as `.dds`, `.ktx` and
@@ -390,8 +440,9 @@ machine and made-up pixels.
 - **`.ktx2` supercompression: zlib only, so far.** Zstandard is not written or read yet.
   BasisLZ, the third scheme the format has, cannot hold these formats at all: it is the
   packing of Basis Universal's own ETC1S format.
-- **Images come in as pixels.** The crate writes `.png`, `.bmp` and `.jpg` files but does not
-  read them yet, and has no `.exr`: use an image crate for that and hand over the pixels.
+- **Picture files: `.png`, `.bmp` and `.jpg`.** Those are read and written. `.exr`, for HDR
+  images, is not yet: use an image crate for that and hand over the floats. Of the other
+  formats stb_image reads (`.tga`, `.gif`, `.psd`, `.hdr`, `.pnm`), none is ported.
 - **x86's float-to-int rules are built in.** Where an original turns a float that does not fit
   into an int, the ports give what x86 gives, on every processor, so the blocks are the same
   everywhere. The originals themselves would differ on other processors.
@@ -411,7 +462,7 @@ Rust:
   `bc6h_enc` by Microsoft (DirectXTex), made into one file by Alexander Samusev as
   [bc6h_enc](https://github.com/0xc0de/bc6h_enc).
 - zlib is by Rich Geldreich and others, from [miniz](https://github.com/richgel999/miniz).
-- The `.png`, `.bmp` and `.jpg` writers are by Sean Barrett and others, from
+- The `.png`, `.bmp` and `.jpg` readers and writers are by Sean Barrett and others, from
   [stb](https://github.com/nothings/stb); the JPEG writer is after Jon Olick's `jo_jpeg.cpp`.
 
 rustbcx is available under the Apache License 2.0, the licence of `bc7e.ispc`: see

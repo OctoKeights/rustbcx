@@ -23,11 +23,13 @@
 //!   which is the encoder of Microsoft's DirectXTex).
 //! - [`miniz`]: zlib and deflate, both ways (Rich Geldreich's
 //!   [miniz](https://github.com/richgel999/miniz)), for the files below.
-//! - [`stb_image_write`]: images to `.png`, `.bmp` and `.jpg` files (`stb_image_write.h`, from
-//!   Sean Barrett's [stb](https://github.com/nothings/stb)).
+//! - [`stb_image`] and [`stb_image_write`]: `.png`, `.bmp` and `.jpg` files to images and
+//!   back (`stb_image.h` and `stb_image_write.h`, from Sean Barrett's
+//!   [stb](https://github.com/nothings/stb)).
 //!
 //! And around the ports, the crate's own: [`bc2`], the one block format of the family none of
-//! the originals has; [`texture`], an image packed with its mip levels, or several as a texture
+//! the originals has; [`image`], the images the encoders take, read from picture files and
+//! written to them; [`texture`], an image packed with its mip levels, or several as a texture
 //! array, a cube map or a volume texture; and [`dds`] and [`ktx`], which read and write it as
 //! `.dds`, `.ktx` and `.ktx2` files.
 //!
@@ -56,6 +58,7 @@ mod parallel;
 pub mod rdo_bc_encoder;
 pub mod rgbcx;
 mod rgbcx_tables;
+pub mod stb_image;
 pub mod stb_image_write;
 mod stb_image_write_tables;
 pub mod texture;

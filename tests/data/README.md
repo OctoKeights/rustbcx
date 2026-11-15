@@ -69,5 +69,13 @@ port prints the same. To make it again:
     ref="${TMPDIR:-/tmp}/rustbcx-compare/dump-stb-image-write"
     { "$ref" stb_image_write 5 400; "$ref" stb_image_write 12 400; } > tests/data/stb_image_write_expected.txt
 
-No texture from anywhere is in this repository: every block the tests and the comparison pack
-is made up from a seed.
+`stb_image_expected.txt` is what stb_image.h makes of made-up `.png`, `.bmp` and `.jpg` files,
+as `compare/dump_stb_image.c` prints it; `tests/stb_image_golden.rs` checks that the port
+prints the same. To make it again:
+
+    STB=<checkout of stb> MINIZ=<checkout of miniz> compare/compare.sh <checkout of bc7enc_rdo> 3000 1 "stb_image"
+    ref="${TMPDIR:-/tmp}/rustbcx-compare/dump-stb-image"
+    { "$ref" stb_image 4 600; "$ref" stb_image 10 600; } > tests/data/stb_image_expected.txt
+
+No texture or picture from anywhere is in this repository: every block the tests and the
+comparison pack, and every file they read, is made up from a seed.

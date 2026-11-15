@@ -21,10 +21,16 @@
   and decompressor themselves under `miniz::tdef` and `miniz::tinfl`. `ktx::write_ktx2_with`
   and `Texture::save_ktx2` write a `.ktx2` file with each level compressed
   (`ktx::Supercompression::Zlib`), and `read_ktx2` reads one.
-- **`.png`, `.bmp` and `.jpg` files written.** `stb_image_write` is the port of
-  stb_image_write.h's three writers, `write_png`, `write_bmp` and `write_jpg`, each giving
-  the bytes of the file, the same as the original writes; `zlib_compress` is the small zlib
-  compressor its PNG writer uses.
+- **`.png`, `.bmp` and `.jpg` files, read and written.** `Image::load` and `save` read and
+  write them (`from_file_bytes`, `to_png`, `to_bmp` and `to_jpg` for the bytes), so an image
+  no longer has to come in through another crate. Under them are two ports. `stb_image` is
+  stb_image.h's PNG, BMP and JPEG readers (`load_from_memory`, `load_16_from_memory` for 16
+  bits a channel, `info_from_memory`), with its zlib decoder: PNG of every depth and colour
+  type, interlaced or not; BMP without run-length encoding; JPEG baseline and progressive.
+  It gives the pixels the original gives and refuses what it refuses, with the same reason.
+  `stb_image_write` is stb_image_write.h's three writers, `write_png`, `write_bmp` and
+  `write_jpg`, each giving the bytes of the file, the same as the original writes;
+  `zlib_compress` is the small zlib compressor its PNG writer uses.
 - Fixed: a `.ktx2` file of an sRGB texture in BC3 did not mark its alpha as linear in its data
   format descriptor, as the Khronos tools do and their validator requires.
 - Changed: `Texture` has three more fields, so one written out by hand needs them;

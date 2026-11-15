@@ -54,6 +54,12 @@
 //!                                         made-up settings, and made-up data through the
 //!                                         file's own zlib compressor
 //!
+//! And of the comparison with stb_image.h, as `compare/dump_stb_image.c` does:
+//!
+//!   dump stb_image <seed> <count>   made-up .png, .bmp and .jpg files, a third of them
+//!                                   damaged, asked their size and read at 8 and 16 bits a
+//!                                   channel; and made-up data through its zlib decoder
+//!
 //! And of the comparison with bc7e.ispc, as `compare/dump_bc7e.cpp` does with the ISPC encoder:
 //!
 //!   dump bc7e_presets <seed> <blocks> [file]    made-up blocks packed with each of the seven
@@ -542,6 +548,7 @@ fn main() {
         "bc6h_enc" => print!("{}", made_up::bc6h_enc(seed, blocks)),
         "miniz" => print!("{}", made_up::miniz(seed, blocks)),
         "stb_image_write" => print!("{}", made_up::stb_image_write(seed, blocks)),
+        "stb_image" => print!("{}", made_up::stb_image(seed, blocks)),
         "bc6h_unpack" => print!("{}", made_up::bc6h_unpack(seed, blocks)),
         "bc6h_pack" => print!("{}", made_up::bc6h_pack(seed, blocks)),
         "bc7e_presets" => dump_bc7e(true, seed, blocks, args.get(4)),

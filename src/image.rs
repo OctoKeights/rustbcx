@@ -1,7 +1,12 @@
-//! An image of 8-bit RGBA pixels, one of HDR pixels, and what cutting them into blocks needs.
+//! An image of 8-bit RGBA pixels, one of HDR pixels, what cutting them into blocks needs, and
+//! the first to and from `.png`, `.bmp` and `.jpg` files.
+
+use std::path::Path;
 
 use crate::bc6h::{float_to_half, half_to_float, RgbHalf};
 use crate::bc7decomp::ColorRgba;
+use crate::stb_image::{self, LoadError, LoadOptions};
+use crate::stb_image_write::{self, WriteOptions};
 
 /// An image: `width * height` pixels in rows from the top, each red, green, blue, alpha.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -169,6 +174,79 @@ impl Image {
         }
         flipped
     }
+
+    /// The image in the bytes of a `.png`, `.bmp` or `.jpg` file, read by [`crate::stb_image`].
+    /// A file of fewer channels gets the rest made up (grey in all three colours, opaque), and
+    /// one of 16 bits a channel is brought down to 8.
+    pub fn from_file_bytes(file: &[u8]) -> Result<Image, LoadError> {
+        let loaded = stb_image::load_from_memory(file, 4, &LoadOptions::default())?;
+        Ok(Image { width: loaded.x as u32, height: loaded.y as u32, pixels: loaded.data.chunks_exact(4).map(|pixel| [pixel[0], pixel[1], pixel[2], pixel[3]]).collect() })
+    }
+
+    /// Reads a `.png`, `.bmp` or `.jpg` file from disk. A file that is none of them, or is
+    /// damaged, comes back as an error of the kind `InvalidData`, with the [`LoadError`]
+    /// inside.
+    pub fn load(path: impl AsRef<Path>) -> std::io::Result<Image> {
+        Image::from_file_bytes(&std::fs::read(path)?).map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
+    }
+
+    /// Whether every pixel is opaque.
+    pub fn is_opaque(&self) -> bool {
+        self.pixels.iter().all(|pixel| pixel[3] == 255)
+    }
+
+    /// The pixels as the writers take them: three bytes each when all are opaque, else four.
+    fn for_file(&self) -> Option<(i32, i32, i32, Vec<u8>)> {
+        let (width, height) = (i32::try_from(self.width).ok()?, i32::try_from(self.height).ok()?);
+        if self.pixels.len() != self.width as usize * self.height as usize {
+            return None;
+        }
+        if self.is_opaque() {
+            Some((width, height, 3, self.pixels.iter().flat_map(|pixel| [pixel[0], pixel[1], pixel[2]]).collect()))
+        } else {
+            Some((width, height, 4, self.as_rgba8().to_vec()))
+        }
+    }
+
+    /// The image as the bytes of a `.png` file, written by [`crate::stb_image_write`]: with
+    /// alpha unless every pixel is opaque. None for an image of no pixels.
+    pub fn to_png(&self) -> Option<Vec<u8>> {
+        let (width, height, channels, bytes) = self.for_file()?;
+        stb_image_write::write_png(&bytes, 0, width, height, channels, &WriteOptions::default())
+    }
+
+    /// The image as the bytes of a `.bmp` file: 32 bits a pixel with alpha, or 24 when every
+    /// pixel is opaque. None for an image of no pixels.
+    pub fn to_bmp(&self) -> Option<Vec<u8>> {
+        let (width, height, channels, bytes) = self.for_file()?;
+        stb_image_write::write_bmp(width, height, channels, &bytes, 0, &WriteOptions::default())
+    }
+
+    /// The image as the bytes of a `.jpg` file, at a quality from 1 to 100. The format holds
+    /// no alpha, and loses a little of the colour. None for an image of no pixels.
+    pub fn to_jpg(&self, quality: i32) -> Option<Vec<u8>> {
+        let (width, height) = (i32::try_from(self.width).ok()?, i32::try_from(self.height).ok()?);
+        if self.pixels.len() != self.width as usize * self.height as usize {
+            return None;
+        }
+        stb_image_write::write_jpg(width, height, 4, self.as_rgba8(), quality.clamp(1, 100), 0, &WriteOptions::default())
+    }
+
+    /// Writes the image to disk as the file its name ends in says: `.png`, `.bmp`, or `.jpg`
+    /// or `.jpeg` (at quality 90; [`Image::to_jpg`] for another). Any other ending, and an
+    /// image of no pixels, is an error of the kind `InvalidInput`.
+    pub fn save(&self, path: impl AsRef<Path>) -> std::io::Result<()> {
+        let path = path.as_ref();
+        let extension = path.extension().and_then(|extension| extension.to_str()).map(str::to_ascii_lowercase);
+        let file = match extension.as_deref() {
+            Some("png") => self.to_png(),
+            Some("bmp") => self.to_bmp(),
+            Some("jpg" | "jpeg") => self.to_jpg(90),
+            _ => return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "the file name has to end in .png, .bmp, .jpg or .jpeg")),
+        };
+        let file = file.ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, "the image has no pixels"))?;
+        std::fs::write(path, file)
+    }
 }
 
 /// An image of HDR colour: `width * height` pixels in rows from the top, each red, green and
@@ -291,6 +369,48 @@ impl HdrImage {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn images_go_to_files_and_come_back() {
+        let mut image = Image::new(13, 9);
+        for (i, pixel) in image.pixels.iter_mut().enumerate() {
+            *pixel = [(i * 2) as u8, 100 + (i % 13) as u8, 200 - (i / 13) as u8, 255];
+        }
+        // Opaque: three channels in the file, the same pixels back.
+        let png = image.to_png().unwrap();
+        assert_eq!(png[25], 2);
+        assert_eq!(Image::from_file_bytes(&png).unwrap(), image);
+        let bmp = image.to_bmp().unwrap();
+        assert_eq!(u16::from_le_bytes([bmp[28], bmp[29]]), 24);
+        assert_eq!(Image::from_file_bytes(&bmp).unwrap(), image);
+        let jpg = Image::from_file_bytes(&image.to_jpg(95).unwrap()).unwrap();
+        assert_eq!((jpg.width, jpg.height), (13, 9));
+        assert!(jpg.pixels.iter().zip(&image.pixels).all(|(a, b)| (0..3).all(|c| a[c].abs_diff(b[c]) < 40) && a[3] == 255));
+        // With alpha: four.
+        image.pixels[5][3] = 17;
+        let png = image.to_png().unwrap();
+        assert_eq!(png[25], 6);
+        assert_eq!(Image::from_file_bytes(&png).unwrap(), image);
+        let bmp = image.to_bmp().unwrap();
+        assert_eq!(u16::from_le_bytes([bmp[28], bmp[29]]), 32);
+        assert_eq!(Image::from_file_bytes(&bmp).unwrap(), image);
+        // To disk, by the name's ending.
+        let folder = std::env::temp_dir().join(format!("rustbcx-image-test-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        for name in ["a.png", "a.BMP"] {
+            image.save(folder.join(name)).unwrap();
+            assert_eq!(Image::load(folder.join(name)).unwrap(), image);
+        }
+        image.save(folder.join("a.jpeg")).unwrap();
+        assert_eq!(Image::load(folder.join("a.jpeg")).unwrap().width, 13);
+        assert_eq!(image.save(folder.join("a.gif")).unwrap_err().kind(), std::io::ErrorKind::InvalidInput);
+        std::fs::write(folder.join("b.png"), b"not a picture").unwrap();
+        assert_eq!(Image::load(folder.join("b.png")).unwrap_err().kind(), std::io::ErrorKind::InvalidData);
+        std::fs::remove_dir_all(&folder).unwrap();
+        // No pixels, no file.
+        assert!(Image::new(0, 4).to_png().is_none() && Image::new(0, 4).to_bmp().is_none() && Image::new(4, 0).to_jpg(90).is_none());
+        assert_eq!(Image::from_file_bytes(&[]), Err(LoadError("unknown image type")));
+    }
 
     #[test]
     fn the_last_column_and_row_are_repeated() {
