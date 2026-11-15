@@ -1,0 +1,33 @@
+rustbcx
+
+This crate is a port to Rust of two works. It is offered as a whole under the Apache License,
+Version 2.0 (see LICENSE).
+
+1. bc7e.ispc, the BC7 texture encoder by Binomial LLC (src/bc7e.rs):
+
+    bc7e.ispc - Fast high quality SIMD BC7 encoder
+    Copyright (C) 2018-2020 Binomial LLC, All rights reserved. Apache 2.0 license.
+
+   taken from Richard Geldreich's bc7enc_rdo (https://github.com/richgel999/bc7enc_rdo), which
+   holds its latest version; the original release is https://github.com/BinomialLLC/bc7e.
+
+   The original is changed here in that it is translated from ISPC to Rust: it packs one block
+   at a time where the original packs several side by side, its start-up tables are a value
+   and not globals, and its settings and entry points have Rust's names. What it computes is
+   kept: it gives the same blocks as the original built without fast-math and without fused
+   multiply-add.
+
+2. bc7enc_rdo, by Richard Geldreich, Jr. (https://github.com/richgel999/bc7enc_rdo): its
+   bc7decomp.cpp, bc7enc.cpp and rgbcx.cpp with their headers and tables (src/bc7decomp.rs,
+   src/bc7enc.rs, src/rgbcx.rs, src/rgbcx_tables.rs).
+
+    Copyright(c) 2020-2021 Richard Geldreich, Jr.
+
+   Those files are offered by their author under the MIT licence or as public domain
+   (unlicense.org), whichever the user prefers; that notice is kept in LICENSE-bc7enc_rdo.txt.
+
+   They are changed here in that they are translated from C++ to Rust: the tables the C++
+   keeps in globals are values, and the entry points have Rust's names. What they compute is
+   kept: they give the same blocks as the C++ library.
+
+The port was made in 2026 for the Noolith project.

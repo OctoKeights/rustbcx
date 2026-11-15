@@ -1,0 +1,12 @@
+[package]
+name = "rustbcx"
+description = "BC1-5 and BC7 texture block compression in pure Rust, ported from Richard Geldreich's bc7enc_rdo and Binomial's bc7e. Bit-identical output, no dependencies and no unsafe code."
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/OctoKeights/rustbcx"
+readme = "README.md"
+keywords = ["bc7", "bc1", "dxt", "texture", "compression"]
+categories = ["compression", "graphics", "game-development"]
+
+[dependencies]

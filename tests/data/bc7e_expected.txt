@@ -1,0 +1,17 @@
+ultrafast linear ddcd8c74fa0da373
+ultrafast perceptual 6377cc8a602209ba
+veryfast linear 8396ed70662c6174
+veryfast perceptual 8eb3d38920ac521a
+fast linear eca6779d5d39c198
+fast perceptual 8eb3d38920ac521a
+basic linear 8ae95aec9abe9b85
+basic perceptual 92b1c9e9eba4f177
+slow linear 0b2c7a8ec2940176
+slow perceptual 47116e611660c69d
+veryslow linear c54a5710d29448d1
+veryslow perceptual 65bb61fb554beff4
+slowest linear c0beed9d4c7218ba
+slowest perceptual 38651e2bd22bacc1
+blocks by mode: 187 272 115 78 917 961 1483 187 0
+settings 8d206ffd3824c99c
+blocks by mode: 211 166 133 82 351 755 961 341 0
