@@ -122,6 +122,26 @@ Version 2.0 (see LICENSE).
    of memory are fields and local arrays; what it computes is kept: the same frame, byte for
    byte, as ZSTD_compress gives for a source and a level.
 
+9. tinyexr, by Syoyo Fujita and many contributors (https://github.com/syoyo/tinyexr),
+   v3.4.0: of its tinyexr.h, the reading of a file of one part (src/tinyexr), with the
+   decompressors it has from OpenEXR (RLE, PIZ, B44) and its own (ZIP by way of miniz,
+   PXR24).
+
+    Copyright (c) 2014 - 2021, Syoyo Fujita and many contributors. All rights reserved.
+    Copyright (c) 2002, Industrial Light & Magic, a division of Lucas Digital Ltd. LLC.
+    All rights reserved.
+
+   Both under BSD 3-clause licences, kept in LICENSE-tinyexr.txt. The file is changed here
+   in that it is translated from C++ to Rust: a file comes in as its bytes, a refused file's
+   code and message come back with the refusal, the values of a channel are a vector of
+   their type where the original has bytes, and memory starts as zeros. Multipart and deep
+   files, the spectral helpers, ZFP and threads are left out. What it computes is kept: the
+   same header, the same values and the same refusals as tinyexr.h built without threads.
+   Where the original stops the program or reads past the end of a damaged file (a tile
+   size of 0, a count of chunks beyond what memory holds, a compressed tile placed past the
+   image's edge, a block that is not compressed and is shorter than its lines), the port
+   refuses the file.
+
 What is around the ports is the crate's own: mip levels, the HDR image and the reading and
 writing of picture files by the ports of stb (in src/image.rs),
 float_to_half (in src/bc6h.rs), src/bc2.rs (BC2, its colours packed and unpacked by the

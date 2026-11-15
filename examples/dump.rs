@@ -65,6 +65,11 @@
 //!   dump zstd_decode <seed> <count> <file>         the frames that program wrote to the file,
 //!   dump zstd_decode_small <seed> <count> <file>   each asked its size and decoded
 //!
+//! And of the comparison with tinyexr, as `compare/dump_tinyexr.cc` does:
+//!
+//!   dump tinyexr_read <seed> <count> <file>         the .exr files that program wrote to the
+//!   dump tinyexr_read_small <seed> <count> <file>   file, each read four ways
+//!
 //! And of the comparison with bc7e.ispc, as `compare/dump_bc7e.cpp` does with the ISPC encoder:
 //!
 //!   dump bc7e_presets <seed> <blocks> [file]    made-up blocks packed with each of the seven
@@ -560,6 +565,13 @@ fn main() {
                 std::process::exit(2);
             };
             print!("{}", made_up::zstd_decode(what, blocks, &file));
+        }
+        "tinyexr_read" | "tinyexr_read_small" => {
+            let Some(file) = args.get(4).and_then(|path| std::fs::read(path).ok()) else {
+                eprintln!("usage: dump {what} <seed> <count> <file of files from compare/dump_tinyexr.cc>");
+                std::process::exit(2);
+            };
+            print!("{}", made_up::tinyexr_read(what, blocks, &file));
         }
         "zstd_compress" | "zstd_compress_small" => print!("{}", made_up::zstd_compress(what, seed, blocks, false)),
         "zstd_entropy" => print!("{}", made_up::zstd_entropy(seed, blocks)),

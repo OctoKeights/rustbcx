@@ -95,5 +95,13 @@ of the compressor prints the same. To make them again:
     "${TMPDIR:-/tmp}/rustbcx-compare/dump-zstd-compress" zstd_compress_small 7 200 > tests/data/zstd_compress_expected.txt
     "${TMPDIR:-/tmp}/rustbcx-compare/dump-zstd-entropy" zstd_entropy 9 4000 > tests/data/zstd_entropy_expected.txt
 
+`exr_files.bin` holds `.exr` files that tinyexr saved of made-up images, as
+`compare/dump_tinyexr.cc` wrote them, and `tinyexr_read_expected.txt` what tinyexr reads of
+each, as the same program prints it; `tests/tinyexr_golden.rs` checks that the port prints the
+same from the same files. To make them again:
+
+    TINYEXR=<checkout of tinyexr> MINIZ=<checkout of miniz> compare/compare.sh <checkout of bc7enc_rdo> 3000 1 "tinyexr_read"
+    "${TMPDIR:-/tmp}/rustbcx-compare/dump-tinyexr" tinyexr_read_small 11 100 tests/data/exr_files.bin > tests/data/tinyexr_read_expected.txt
+
 No texture or picture from anywhere is in this repository: every block the tests and the
 comparison pack, and every file they read, is made up from a seed.

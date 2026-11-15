@@ -2322,3 +2322,244 @@ pub fn zstd_entropy(seed: u64, count: u32) -> String {
     out.push_str(&format!("{name} outputs: {}, refused: {}\n", e.outputs, e.errors));
     out
 }
+
+/// Whether the comparison leaves a file with this header unread. A damaged size can ask for
+/// more memory and time than there is; those are left, but for the sizes tinyexr refuses at
+/// once. Two more are left, which stop tinyexr: a tile size of 0, which it divides by, and a
+/// count of chunks in the thousands of millions, which it makes a table for before it looks
+/// whether the file has one.
+pub fn tinyexr_left(header: &rustbcx::tinyexr::ExrHeader) -> bool {
+    let limit = 1024 * 8192;
+    let w = i64::from(header.data_window.max_x) - i64::from(header.data_window.min_x) + 1;
+    let h = i64::from(header.data_window.max_y) - i64::from(header.data_window.min_y) + 1;
+    let (tile_x, tile_y) = (i64::from(header.tile_size_x), i64::from(header.tile_size_y));
+    let refused = w <= 0 || h <= 0 || w > limit || h > limit || (header.tiled != 0 && (tile_x > limit || tile_y > limit));
+    if refused {
+        false
+    } else if header.tiled != 0 {
+        w * h > (1 << 22) || tile_x <= 0 || tile_y <= 0 || tile_x * tile_y > (1 << 16) || (w / tile_x + 1) * (h / tile_y + 1) * tile_x * tile_y > (1 << 23)
+    } else {
+        w * h > (1 << 22) || header.chunk_count > (1 << 24)
+    }
+}
+
+/// The `tinyexr_read` dumps: the files `compare/dump_tinyexr.cc` made with tinyexr and wrote
+/// to a file (for each: whether halves are to be read as floats, and the file), each read as
+/// that program reads it with tinyexr: its version, its header, its image, and it as floats
+/// of red, green, blue and alpha.
+pub fn tinyexr_read(name: &str, count: u32, file: &[u8]) -> String {
+    use rustbcx::tinyexr::{self, ChannelData, ExrError, ExrImage};
+    let mut hash = Hash::new();
+    let (mut headers, mut images, mut refused, mut left, mut as_rgba, mut stopped) = (0u32, 0u32, 0u32, 0u32, 0u32, 0u32);
+    let mut file_total = 0u64;
+    let mut out = String::new();
+    let mut at = 0;
+    let number = |at: &mut usize| {
+        let value = u32::from_le_bytes(file[*at..*at + 4].try_into().unwrap()) as usize;
+        *at += 4;
+        value
+    };
+    fn add_number(hash: &mut Hash, value: i32) {
+        hash.add(&value.to_le_bytes());
+    }
+    // A name with its end, or a mark in its place where it was not UTF-8.
+    fn add_name(hash: &mut Hash, text: &str) {
+        if text.contains('\u{fffd}') {
+            hash.add(&0xfffffffdu32.to_le_bytes());
+        } else {
+            hash.add(text.as_bytes());
+            hash.add(&[0]);
+        }
+    }
+    fn add_message(hash: &mut Hash, message: &str) {
+        if message.is_empty() {
+            hash.add(&0xfffffffeu32.to_le_bytes());
+        } else {
+            hash.add(message.as_bytes());
+            hash.add(&[0]);
+        }
+    }
+    fn add_error(hash: &mut Hash, error: &ExrError) {
+        add_number(hash, error.code);
+        add_message(hash, &error.message);
+    }
+    fn add_values(hash: &mut Hash, values: &ChannelData) {
+        match values {
+            ChannelData::Uint(values) => values.iter().for_each(|value| hash.add(&value.to_le_bytes())),
+            ChannelData::Half(values) => values.iter().for_each(|value| hash.add(&value.to_le_bytes())),
+            ChannelData::Float(values) => values.iter().for_each(|value| hash.add(&value.to_bits().to_le_bytes())),
+        }
+    }
+    // The file as floats of red, green, blue and alpha.
+    fn continue_with_rgba(hash: &mut Hash, wish: usize, bytes: &[u8], as_rgba: &mut u32) {
+        let loaded = tinyexr::load_exr_from_memory(bytes);
+        if wish & 8 != 0 {
+            hash.add(&0xfffffffcu32.to_le_bytes());
+            if loaded.is_ok() {
+                hash.add(b"read where tinyexr stops");
+            }
+            return;
+        }
+        match loaded {
+            Err(error) => add_error(hash, &error),
+            Ok((rgba, width, height)) => {
+                add_number(hash, 0);
+                add_message(hash, "");
+                *as_rgba += 1;
+                add_number(hash, width);
+                add_number(hash, height);
+                for value in &rgba {
+                    hash.add(&value.to_bits().to_le_bytes());
+                }
+            }
+        }
+    }
+    for i in 0..count {
+        let wish = number(&mut at);
+        let size = number(&mut at);
+        let bytes = &file[at..at + size];
+        at += size;
+        file_total += size as u64;
+
+        add_number(&mut hash, size as i32);
+        hash.add(bytes);
+
+        let mut large = false;
+        match tinyexr::parse_exr_version_from_memory(bytes) {
+            Err(code) => add_number(&mut hash, code),
+            Ok(version) => {
+                add_number(&mut hash, 0);
+                add_number(&mut hash, version.version);
+                add_number(&mut hash, i32::from(version.tiled));
+                add_number(&mut hash, i32::from(version.long_name));
+                add_number(&mut hash, i32::from(version.non_image));
+                add_number(&mut hash, i32::from(version.multipart));
+
+                match tinyexr::parse_exr_header_from_memory(&version, bytes) {
+                    Err(error) => add_error(&mut hash, &error),
+                    Ok(mut header) => {
+                        add_number(&mut hash, 0);
+                        add_message(&mut hash, "");
+                        headers += 1;
+                        hash.add(&header.pixel_aspect_ratio.to_bits().to_le_bytes());
+                        add_number(&mut hash, header.line_order);
+                        for window in [header.data_window, header.display_window] {
+                            add_number(&mut hash, window.min_x);
+                            add_number(&mut hash, window.min_y);
+                            add_number(&mut hash, window.max_x);
+                            add_number(&mut hash, window.max_y);
+                        }
+                        hash.add(&header.screen_window_center[0].to_bits().to_le_bytes());
+                        hash.add(&header.screen_window_center[1].to_bits().to_le_bytes());
+                        hash.add(&header.screen_window_width.to_bits().to_le_bytes());
+                        add_number(&mut hash, header.chunk_count);
+                        add_number(&mut hash, header.tiled);
+                        add_number(&mut hash, header.tile_size_x);
+                        add_number(&mut hash, header.tile_size_y);
+                        add_number(&mut hash, header.tile_level_mode);
+                        add_number(&mut hash, header.tile_rounding_mode);
+                        add_number(&mut hash, header.long_name);
+                        add_number(&mut hash, header.non_image);
+                        add_number(&mut hash, header.multipart);
+                        add_number(&mut hash, header.header_len as i32);
+                        add_number(&mut hash, header.custom_attributes.len() as i32);
+                        for attribute in &header.custom_attributes {
+                            add_name(&mut hash, &attribute.name);
+                            add_name(&mut hash, &attribute.type_name);
+                            add_number(&mut hash, attribute.value.len() as i32);
+                            hash.add(&attribute.value);
+                        }
+                        add_number(&mut hash, header.channels.len() as i32);
+                        for (c, channel) in header.channels.iter().enumerate() {
+                            add_name(&mut hash, &channel.name);
+                            add_number(&mut hash, channel.pixel_type);
+                            add_number(&mut hash, channel.x_sampling);
+                            add_number(&mut hash, channel.y_sampling);
+                            add_number(&mut hash, i32::from(channel.p_linear));
+                            add_number(&mut hash, header.pixel_types[c]);
+                            add_number(&mut hash, header.requested_pixel_types[c]);
+                        }
+                        add_number(&mut hash, header.compression_type);
+                        add_name(&mut hash, &header.name);
+
+                        large = tinyexr_left(&header);
+                        if large {
+                            left += 1;
+                        } else {
+                            // (A damaged file that is not compressed is read with halves as
+                            // floats: tinyexr reads its halves as halves without a look at
+                            // the length of a block, past the end of the file.)
+                            if wish & 1 != 0 || (wish & 2 != 0 && header.compression_type == tinyexr::COMPRESSIONTYPE_NONE) {
+                                for c in 0..header.channels.len() {
+                                    if header.pixel_types[c] == tinyexr::PIXELTYPE_HALF {
+                                        header.requested_pixel_types[c] = tinyexr::PIXELTYPE_FLOAT;
+                                    }
+                                }
+                            }
+                            let loaded = tinyexr::load_exr_image_from_memory(&mut header, bytes);
+                            match (wish & 4 != 0, loaded) {
+                                // Where tinyexr stops (it throws, and nothing catches it),
+                                // the port has to refuse the file.
+                                (true, loaded) => {
+                                    hash.add(&0xfffffffcu32.to_le_bytes());
+                                    stopped += 1;
+                                    if loaded.is_ok() {
+                                        hash.add(b"read where tinyexr stops");
+                                    }
+                                }
+                                (false, Err(error)) => {
+                                    add_error(&mut hash, &error);
+                                    refused += 1;
+                                }
+                                (false, Ok(image)) => {
+                                    add_number(&mut hash, 0);
+                                    add_message(&mut hash, "");
+                                    images += 1;
+                                    for &pixel_type in &header.pixel_types {
+                                        add_number(&mut hash, pixel_type);
+                                    }
+                                    let mut next: Option<&ExrImage> = Some(&image);
+                                    while let Some(level) = next {
+                                        add_number(&mut hash, level.level_x);
+                                        add_number(&mut hash, level.level_y);
+                                        add_number(&mut hash, level.width);
+                                        add_number(&mut hash, level.height);
+                                        add_number(&mut hash, level.num_channels);
+                                        add_number(&mut hash, level.tiles.len() as i32);
+                                        if !level.tiles.is_empty() {
+                                            for tile in &level.tiles {
+                                                add_number(&mut hash, tile.offset_x);
+                                                add_number(&mut hash, tile.offset_y);
+                                                add_number(&mut hash, tile.level_x);
+                                                add_number(&mut hash, tile.level_y);
+                                                add_number(&mut hash, tile.width);
+                                                add_number(&mut hash, tile.height);
+                                                for values in &tile.images {
+                                                    add_values(&mut hash, values);
+                                                }
+                                            }
+                                        } else {
+                                            for values in &level.images {
+                                                add_values(&mut hash, values);
+                                            }
+                                        }
+                                        next = level.next_level.as_deref();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if !large {
+            continue_with_rgba(&mut hash, wish, bytes, &mut as_rgba);
+        }
+
+        if (i + 1) % 200 == 0 || i + 1 == count {
+            out += &format!("{name} {} {:016x}\n", i + 1, hash.value);
+        }
+    }
+    out + &format!("{name} bytes of files: {file_total}; headers read: {headers}, images read: {images}, refused: {refused}, left: {left}, where tinyexr stops: {stopped}; as red, green, blue and alpha: {as_rgba}\n")
+}

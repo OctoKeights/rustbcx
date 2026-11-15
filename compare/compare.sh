@@ -72,10 +72,18 @@
 # [blocks] as the number of sources (of up to five megabytes each), and zstd_entropy, with
 # [blocks] as the number of rounds.
 #
+# The .exr files (src/tinyexr) are compared with tinyexr (https://github.com/syoyo/tinyexr),
+# whose checkout goes in $TINYEXR. compare/dump_tinyexr.cc is built against its tinyexr.h
+# without threads and with the miniz in $MINIZ (the one src/miniz is the port of), with memory
+# that starts as zeros and with overflow that wraps (-fwrapv), so that the damaged files among
+# those it reads have one answer. Dump: tinyexr_read, with a tenth of [blocks] as the number
+# of made-up images, each saved by tinyexr, a third of them then damaged, and read four ways.
+# The C++ side writes its files to a file, which the Rust side reads.
+#
 # Without the ISPC compiler the bc7e dumps and bc6h_pack are left out, without $BCDEC bc2 and
-# the BC6H dumps, without $ISPCTC bc6h_pack, without $BC6HENC bc6h_enc, without $MINIZ miniz
-# and stb_image, without $STB stb_image_write and stb_image, and without $ZSTD the three zstd
-# dumps; the script says so and fails.
+# the BC6H dumps, without $ISPCTC bc6h_pack, without $BC6HENC bc6h_enc, without $MINIZ miniz,
+# stb_image and tinyexr_read, without $STB stb_image_write and stb_image, without $ZSTD the
+# three zstd dumps, and without $TINYEXR tinyexr_read; the script says so and fails.
 set -u
 if [ $# -lt 1 ]; then
     echo "usage: $0 <folder with bc7enc_rdo's sources> [blocks] [seeds] [dumps]" >&2
@@ -85,7 +93,7 @@ here=$(cd "$(dirname "$0")/.." && pwd)
 source=$1
 blocks=${2:-200000}
 seeds=${3:-3}
-dumps=${4:-bc7decomp unpack bc1 bc345 bc7enc bc7block ert rdo bc7e_presets bc7e_settings rdo_bc7e bc2 bc6h_unpack bc6h_pack bc6h_enc miniz stb_image_write stb_image zstd_decode zstd_compress zstd_entropy}
+dumps=${4:-bc7decomp unpack bc1 bc345 bc7enc bc7block ert rdo bc7e_presets bc7e_settings rdo_bc7e bc2 bc6h_unpack bc6h_pack bc6h_enc miniz stb_image_write stb_image zstd_decode zstd_compress zstd_entropy tinyexr_read}
 tmp=${TMPDIR:-/tmp}/rustbcx-compare
 mkdir -p "$tmp" || exit 2
 
@@ -101,6 +109,7 @@ built_miniz=0
 built_stbiw=0
 built_stbi=0
 built_zstd=0
+built_tinyexr=0
 built_bc6h_pack=0
 bad=0
 # (ert.h uses the fixed-width integer types without including their header; no contraction of
@@ -172,6 +181,27 @@ for what in $dumps; do
         fi
         reference=$tmp/dump-miniz
         count=$((blocks / 100))
+        ;;
+    tinyexr_read)
+        if [ "$built_tinyexr" -eq 0 ]; then
+            if [ -z "${TINYEXR:-}" ] || [ ! -f "$TINYEXR/tinyexr.h" ]; then
+                echo "$what: NOT COMPARED, no tinyexr (put its checkout in \$TINYEXR)"
+                bad=$((bad + 1))
+                continue
+            fi
+            if [ -z "${MINIZ:-}" ] || [ ! -f "$MINIZ/miniz_tdef.c" ]; then
+                echo "$what: NOT COMPARED, no miniz (put its checkout in \$MINIZ)"
+                bad=$((bad + 1))
+                continue
+            fi
+            mkdir -p "$tmp/miniz" "$tmp/tinyexr-obj" && echo "#define MINIZ_EXPORT" > "$tmp/miniz/miniz_export.h" || exit 2
+            (cd "$tmp/tinyexr-obj" && ${CC:-cc} -O2 -c -DMINIZ_NO_ARCHIVE_APIS -I "$tmp/miniz" -I "$MINIZ" "$MINIZ/miniz.c" "$MINIZ/miniz_tdef.c" "$MINIZ/miniz_tinfl.c") || exit 2
+            ${CXX:-c++} -O2 -fwrapv -ffp-contract=off -DMINIZ_NO_ARCHIVE_APIS -I "$tmp/miniz" -I "$MINIZ" -I "$TINYEXR" "$here/compare/dump_tinyexr.cc" "$tmp"/tinyexr-obj/*.o -o "$tmp/dump-tinyexr" || exit 2
+            built_tinyexr=1
+        fi
+        reference=$tmp/dump-tinyexr
+        count=$((blocks / 10))
+        extra=$tmp/exr-files.bin
         ;;
     stb_image)
         if [ "$built_stbi" -eq 0 ]; then
@@ -286,7 +316,10 @@ for what in $dumps; do
         "$reference" "$what" "$seed" "$count" $extra > "$tmp/reference.txt" 2> /dev/null
         # shellcheck disable=SC2086
         "$rust" "$what" "$seed" "$count" $extra > "$tmp/rust.txt"
-        if cmp -s "$tmp/reference.txt" "$tmp/rust.txt"; then
+        if [ ! -s "$tmp/reference.txt" ]; then
+            echo "$what, seed $seed: NOT COMPARED, the original's side printed nothing"
+            bad=$((bad + 1))
+        elif cmp -s "$tmp/reference.txt" "$tmp/rust.txt"; then
             echo "$what, seed $seed: the same ($(tail -1 "$tmp/rust.txt"))"
         else
             echo "$what, seed $seed: DIFFERENT"
