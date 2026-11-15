@@ -42,7 +42,21 @@ Version 2.0 (see LICENSE).
    is changed here in that it is translated from C to Rust and gives its pixels back as a
    value. What it computes is kept.
 
-What is around the ports is the crate's own: mip levels (in src/image.rs), src/texture.rs,
+4. The ISPC Texture Compressor, by Intel Corporation
+   (https://github.com/GameTechDev/ISPCTextureCompressor): the BC6H encoder of its
+   ispc_texcomp/kernel.ispc, with the helpers it shares with that file's BC7 encoder, and
+   the five BC6H profiles of ispc_texcomp.cpp (in src/bc6h.rs).
+
+    Copyright 2017 Intel Corporation
+
+   Those files are under the MIT licence; that notice is kept in LICENSE-ispc-texcomp.txt.
+   They are changed here in that they are translated from ISPC and C++ to Rust: one block is
+   packed at a time where the original packs several side by side, and the settings and
+   entry points have Rust's names. What they compute is kept: the same blocks as the
+   original built without fast-math and without fused multiply-add.
+
+What is around the ports is the crate's own: mip levels and the HDR image (in src/image.rs),
+float_to_half (in src/bc6h.rs), src/texture.rs,
 src/dds.rs (its writer after bc7enc_rdo's save_dds), src/ktx.rs and src/parallel.rs. The
 data format descriptor src/ktx.rs writes into a .ktx2 file follows the one the Khronos
 Group's KTX-Software writes (createDFDCompressed in its dfdutils, Apache 2.0).

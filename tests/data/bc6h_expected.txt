@@ -2,3 +2,9 @@ bc6h_unpack 41cbd7ac8810bbe8
 bc6h_unpack blocks unpacked to black: 2506
 bc6h_unpack 733f009fbcaeae5f
 bc6h_unpack blocks unpacked to black: 2552
+veryfast 63be0659f847c917
+fast 0d26b7f9efe39ec7
+basic aae6251633525e19
+slow e5db69a139a83bb3
+veryslow e2aaa00d96320dab
+blocks by mode: 112 667 417 430 420 0 276 271 236 821 2000 413 557 880 0

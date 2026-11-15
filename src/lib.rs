@@ -15,7 +15,9 @@
 //!   takes.
 //!
 //! - [`bc6h`]: BC6H, the format for HDR colour: blocks to pixels (`bcdec.h`, from
-//!   Sergii Kudlai's [bcdec](https://github.com/iOrange/bcdec)).
+//!   Sergii Kudlai's [bcdec](https://github.com/iOrange/bcdec)) and pixels to blocks
+//!   (`kernel.ispc`, from Intel's
+//!   [ISPC Texture Compressor](https://github.com/GameTechDev/ISPCTextureCompressor)).
 //!
 //! And around the ports, the crate's own: [`texture`], an image packed with its mip levels,
 //! and [`dds`] and [`ktx`], which read and write it as `.dds`, `.ktx` and `.ktx2` files.

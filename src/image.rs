@@ -1,5 +1,6 @@
-//! An image of 8-bit RGBA pixels, and what cutting it into blocks needs.
+//! An image of 8-bit RGBA pixels, one of HDR pixels, and what cutting them into blocks needs.
 
+use crate::bc6h::{float_to_half, half_to_float, RgbHalf};
 use crate::bc7decomp::ColorRgba;
 
 /// An image: `width * height` pixels in rows from the top, each red, green, blue, alpha.
@@ -134,6 +135,76 @@ impl Image {
     }
 }
 
+/// An image of HDR colour: `width * height` pixels in rows from the top, each red, green and
+/// blue as half floats. (The crate's own.)
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct HdrImage {
+    pub width: u32,
+    pub height: u32,
+    pub pixels: Vec<RgbHalf>,
+}
+
+impl HdrImage {
+    /// An image of this size, black.
+    pub fn new(width: u32, height: u32) -> HdrImage {
+        HdrImage { width, height, pixels: vec![[0; 3]; width as usize * height as usize] }
+    }
+
+    /// An image from floats, three to a pixel (red, green, blue). Each is brought into what an
+    /// unsigned BC6H block can hold: below zero and not-a-number become 0, above the largest
+    /// half (65504) becomes it. None when there are not `width * height * 3` of them.
+    pub fn from_rgb_f32(width: u32, height: u32, values: &[f32]) -> Option<HdrImage> {
+        if values.len() != width as usize * height as usize * 3 {
+            return None;
+        }
+        let half = |value: f32| if value > 0.0 { float_to_half(value).min(0x7bff) } else { 0 };
+        Some(HdrImage { width, height, pixels: values.chunks_exact(3).map(|pixel| [half(pixel[0]), half(pixel[1]), half(pixel[2])]).collect() })
+    }
+
+    /// The pixels as floats, three to a pixel.
+    pub fn to_rgb_f32(&self) -> Vec<f32> {
+        self.pixels.as_flattened().iter().map(|&half| half_to_float(half)).collect()
+    }
+
+    /// The pixel at a place.
+    pub fn pixel(&self, x: u32, y: u32) -> RgbHalf {
+        self.pixels[x as usize + y as usize * self.width as usize]
+    }
+
+    /// The 4x4 block at a place counted in blocks; past the right and bottom edges the last
+    /// column and row are repeated.
+    pub fn get_block(&self, bx: u32, by: u32) -> [RgbHalf; 16] {
+        let mut block = [[0u16; 3]; 16];
+        for y in 0..4 {
+            for x in 0..4 {
+                block[(y * 4 + x) as usize] = self.pixel((bx * 4 + x).min(self.width - 1), (by * 4 + y).min(self.height - 1));
+            }
+        }
+        block
+    }
+
+    /// The image at half the size each way (rounded down, but never to nothing), each pixel the
+    /// average of the two by two it covers, worked out in floats: the next mip level.
+    pub fn half(&self) -> HdrImage {
+        let (width, height) = ((self.width / 2).max(1), (self.height / 2).max(1));
+        let mut half = HdrImage::new(width, height);
+        for y in 0..height {
+            for x in 0..width {
+                let (x0, y0) = ((x * 2).min(self.width - 1), (y * 2).min(self.height - 1));
+                let (x1, y1) = ((x * 2 + 1).min(self.width - 1), (y * 2 + 1).min(self.height - 1));
+                let (a, b, c, d) = (self.pixel(x0, y0), self.pixel(x1, y0), self.pixel(x0, y1), self.pixel(x1, y1));
+                let mut pixel = [0u16; 3];
+                for (channel, value) in pixel.iter_mut().enumerate() {
+                    let sum = half_to_float(a[channel]) + half_to_float(b[channel]) + half_to_float(c[channel]) + half_to_float(d[channel]);
+                    *value = float_to_half(sum * 0.25);
+                }
+                half.pixels[(x + y * width) as usize] = pixel;
+            }
+        }
+        half
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -166,6 +237,23 @@ mod tests {
         assert_eq!(last.half(), last);
         // An odd side leaves its last column out.
         assert_eq!(Image::new(5, 3).half().width, 2);
+    }
+
+    #[test]
+    fn hdr_images_take_floats_and_halve() {
+        let image = HdrImage::from_rgb_f32(2, 2, &[1.0, 0.5, 0.0, 3.0, -2.0, f32::NAN, 0.0, 1e9, 2.0, 4.0, 0.25, f32::INFINITY]).unwrap();
+        // Below zero and not-a-number are 0; too large is the largest half.
+        assert_eq!(image.pixels, [[0x3c00, 0x3800, 0], [0x4200, 0, 0], [0, 0x7bff, 0x4000], [0x4400, 0x3400, 0x7bff]]);
+        assert_eq!(image.to_rgb_f32()[..4], [1.0, 0.5, 0.0, 3.0]);
+        let half = image.half();
+        assert_eq!((half.width, half.height), (1, 1));
+        assert_eq!(half_to_float(half.pixels[0][0]), 2.0);
+        // Past the edge a block repeats the last column and row.
+        let block = image.get_block(0, 0);
+        assert_eq!(block[0], image.pixels[0]);
+        assert_eq!(block[3], image.pixels[1]);
+        assert_eq!(block[15], image.pixels[3]);
+        assert!(HdrImage::from_rgb_f32(2, 2, &[0.0; 11]).is_none());
     }
 
     #[test]

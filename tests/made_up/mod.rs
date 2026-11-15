@@ -4,7 +4,7 @@
 // (The arithmetic is written as dump.cpp has it; not every user of this module uses all of it.)
 #![allow(clippy::manual_is_multiple_of, clippy::needless_range_loop, dead_code)]
 
-use rustbcx::bc6h;
+use rustbcx::bc6h::{self, Bc6hEncSettings};
 use rustbcx::bc7decomp;
 use rustbcx::bc7enc::{Bc7Enc, CompressBlockParams};
 use rustbcx::dds;
@@ -475,4 +475,100 @@ pub fn bc6h_unpack(seed: u64, blocks: u32) -> String {
         }
     }
     format!("bc6h_unpack {:016x}\nbc6h_unpack blocks unpacked to black: {black}\n", hash.value)
+}
+
+/// Sixteen made-up HDR pixels, four halves each (the fourth is not packed): noise over all the
+/// halves, values near one, a ramp between two colours, one colour, tiny values, two colours,
+/// a smooth patch, very bright values.
+pub fn make_hdr_block(r: &mut Random) -> [bc6h::RgbHalf; 16] {
+    let kind = r.next() % 8;
+    let mut px = [[0u16; 4]; 16];
+    let half = |r: &mut Random, top: u32| (r.next() % (top + 1)) as u16;
+    match kind {
+        0 => {
+            for value in px.as_flattened_mut() {
+                *value = half(r, 0x7bff);
+            }
+        }
+        1 => {
+            for value in px.as_flattened_mut() {
+                *value = (0x3800 + r.next() % 0x800) as u16;
+            }
+        }
+        2 => {
+            let (mut a, mut b) = ([0u32; 3], [0u32; 3]);
+            for c in 0..3 {
+                a[c] = u32::from(half(r, 0x7bff));
+                b[c] = u32::from(half(r, 0x7bff));
+            }
+            for pixel in &mut px {
+                let t = r.next() % 256;
+                for c in 0..3 {
+                    pixel[c] = ((a[c] * (255 - t) + b[c] * t) / 255) as u16;
+                }
+                pixel[3] = 0x3c00;
+            }
+        }
+        3 => {
+            let mut a = [0u16; 3];
+            for value in &mut a {
+                *value = half(r, 0x7bff);
+            }
+            for pixel in &mut px {
+                *pixel = [a[0], a[1], a[2], 0x3c00];
+            }
+        }
+        4 => {
+            for value in px.as_flattened_mut() {
+                *value = half(r, 40);
+            }
+        }
+        5 => {
+            let mut a = [[0u16; 3]; 2];
+            for value in a.as_flattened_mut() {
+                *value = half(r, 0x7bff);
+            }
+            for pixel in &mut px {
+                let k = (r.next() % 2) as usize;
+                *pixel = [a[k][0], a[k][1], a[k][2], 0];
+            }
+        }
+        6 => {
+            let base = u32::from(half(r, 0x7000));
+            for value in px.as_flattened_mut() {
+                *value = (base + r.next() % 64) as u16;
+            }
+        }
+        _ => {
+            for value in px.as_flattened_mut() {
+                *value = (0x7000 + r.next() % 0xbff) as u16;
+            }
+        }
+    }
+    px.map(|pixel| [pixel[0], pixel[1], pixel[2]])
+}
+
+/// The `bc6h_pack` dump: made-up HDR pixels packed with each of the packer's five profiles, and
+/// unpacked again. What `compare/dump_bc6h.cpp` prints for the same seed and count.
+pub fn bc6h_pack(seed: u64, blocks: u32) -> String {
+    let mut random = Random { state: seed };
+    let pixels: Vec<[bc6h::RgbHalf; 16]> = (0..blocks).map(|_| make_hdr_block(&mut random)).collect();
+    let mut packed = vec![[0u8; 16]; pixels.len()];
+    let profiles: [(&str, Bc6hEncSettings); 5] = [("veryfast", Bc6hEncSettings::veryfast()), ("fast", Bc6hEncSettings::fast()), ("basic", Bc6hEncSettings::basic()), ("slow", Bc6hEncSettings::slow()), ("veryslow", Bc6hEncSettings::veryslow())];
+    let mut modes = [0u32; 15];
+    let mut printed = String::new();
+    for (name, settings) in profiles {
+        bc6h::compress_blocks_bc6h(&mut packed, &pixels, &settings);
+        let mut hash = Hash::new();
+        for block in &packed {
+            hash.add(block);
+            for value in bc6h::unpack_bc6h_half(block, false).as_flattened() {
+                hash.add(&value.to_le_bytes());
+            }
+            let bits = if block[0] & 3 < 2 { block[0] & 3 } else { block[0] & 31 };
+            modes[BC6H_MODE_BITS.iter().position(|&mode_bits| mode_bits == bits).unwrap_or(14)] += 1;
+        }
+        printed += &format!("{name} {:016x}\n", hash.value);
+    }
+    printed + &format!("blocks by mode:{}\n", modes.map(|count| format!(" {count}")).concat())
 }

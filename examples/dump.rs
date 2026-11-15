@@ -28,6 +28,10 @@
 //!   dump bc6h_unpack <seed> <blocks>   made-up BC6H blocks of every mode (and of none)
 //!                                      unpacked as unsigned and as signed, to halves and to
 //!                                      floats
+//!   dump bc6h_pack <seed> <blocks>     made-up HDR pixels packed with each of the packer's
+//!                                      five profiles, and unpacked again, as
+//!                                      `compare/dump_bc6h.cpp` does with Intel's ISPC Texture
+//!                                      Compressor
 //!
 //! And of the comparison with bc7e.ispc, as `compare/dump_bc7e.cpp` does with the ISPC encoder:
 //!
@@ -514,6 +518,7 @@ fn main() {
         "rdo" => print!("{}", made_up::rdo(seed, blocks, false)),
         "rdo_bc7e" => print!("{}", made_up::rdo(seed, blocks, true)),
         "bc6h_unpack" => print!("{}", made_up::bc6h_unpack(seed, blocks)),
+        "bc6h_pack" => print!("{}", made_up::bc6h_pack(seed, blocks)),
         "bc7e_presets" => dump_bc7e(true, seed, blocks, args.get(4)),
         "bc7e_settings" => dump_bc7e(false, seed, blocks, args.get(4)),
         _ => std::process::exit(2),

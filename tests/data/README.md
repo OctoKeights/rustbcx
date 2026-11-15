@@ -30,12 +30,14 @@ same. To make it again:
     tmp="${TMPDIR:-/tmp}/rustbcx-compare"
     { "$tmp/dump-cpp" rdo 9 800; "$tmp/dump-cpp-bc7e" rdo_bc7e 2 800; "$tmp/dump-cpp-bc7e" rdo_bc7e 14 800; } > tests/data/rdo_expected.txt
 
-`bc6h_expected.txt` is what bcdec makes of made-up BC6H blocks; `tests/bc6h_golden.rs` checks
-that the port prints the same. To make it again:
+`bc6h_expected.txt` is what bcdec makes of made-up BC6H blocks, and what the ISPC Texture
+Compressor's BC6H packer, built the strict way, makes of made-up HDR pixels;
+`tests/bc6h_golden.rs` checks that the port prints the same. To make it again:
 
-    BCDEC=<folder holding bcdec.h> compare/compare.sh <checkout of bc7enc_rdo> 3000 1 "bc6h_unpack"
-    ref="${TMPDIR:-/tmp}/rustbcx-compare/dump-bc6h"
-    { "$ref" bc6h_unpack 5 20000; "$ref" bc6h_unpack 11 20000; } > tests/data/bc6h_expected.txt
+    BCDEC=<folder holding bcdec.h> ISPCTC=<checkout of ISPCTextureCompressor> \
+        compare/compare.sh <checkout of bc7enc_rdo> 3000 1 "bc6h_unpack bc6h_pack"
+    tmp="${TMPDIR:-/tmp}/rustbcx-compare"
+    { "$tmp/dump-bc6h" bc6h_unpack 5 20000; "$tmp/dump-bc6h" bc6h_unpack 11 20000; "$tmp/dump-bc6h-ispc" bc6h_pack 4 1500; } > tests/data/bc6h_expected.txt
 
 No texture from anywhere is in this repository: every block the tests and the comparison pack
 is made up from a seed.

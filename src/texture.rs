@@ -3,8 +3,10 @@
 //!
 //! (The crate's own: bc7enc_rdo stops at the blocks of one image.)
 
+use crate::bc6h::{self, Bc6hEncSettings};
 use crate::bc7decomp;
-use crate::image::Image;
+use crate::image::{HdrImage, Image};
+use crate::parallel;
 use crate::{dds, ktx};
 use std::path::Path;
 use crate::rdo_bc_encoder::{BlockFormat, RdoBcEncoder, RdoBcParams};
@@ -152,8 +154,39 @@ impl Texture {
         std::fs::write(path, file)
     }
 
-    /// Unpacks a level to an image of its size. None for the HDR formats, for a level that is
-    /// not there or not whole, and for a BC7 block of no mode. BC4 unpacks to red and BC5 to red and green, on black.
+    /// Unpacks a level of a BC6H texture, of either kind, to an HDR image of its size. None for
+    /// the other formats and for a level that is not there or not whole.
+    pub fn unpack_level_hdr(&self, level: usize) -> Option<HdrImage> {
+        let is_signed = match self.format {
+            TextureFormat::Bc6hUnsigned => false,
+            TextureFormat::Bc6hSigned => true,
+            _ => return None,
+        };
+        let blocks = self.levels.get(level)?;
+        if blocks.len() != self.level_bytes(level) {
+            return None;
+        }
+        let (width, height) = self.level_size(level);
+        let blocks_x = width.div_ceil(4);
+        let mut image = HdrImage::new(width, height);
+        for (i, block) in blocks.chunks_exact(16).enumerate() {
+            let pixels = bc6h::unpack_bc6h_half(block.try_into().ok()?, is_signed);
+            let (bx, by) = (i as u32 % blocks_x, i as u32 / blocks_x);
+            for y in 0..4 {
+                for x in 0..4 {
+                    let (px, py) = (bx * 4 + x, by * 4 + y);
+                    if px < width && py < height {
+                        image.pixels[(px + py * width) as usize] = pixels[(y * 4 + x) as usize];
+                    }
+                }
+            }
+        }
+        Some(image)
+    }
+
+    /// Unpacks a level to an image of its size. None for the HDR formats (see
+    /// [`Texture::unpack_level_hdr`]), for a level that is not there or not whole, and for a BC7
+    /// block of no mode. BC4 unpacks to red and BC5 to red and green, on black.
     pub fn unpack_level(&self, level: usize, bc1_mode: Bc1ApproxMode) -> Option<Image> {
         let blocks = self.levels.get(level)?;
         if blocks.len() != self.level_bytes(level) {
@@ -219,6 +252,42 @@ pub fn compress(image: &Image, params: &RdoBcParams, mipmaps: bool) -> Option<Te
     Some(Texture { format: params.format.into(), srgb: false, width: image.width, height: image.height, levels })
 }
 
+/// Packs an HDR image into an unsigned BC6H texture ([`bc6h::compress_block_bc6h`]), on
+/// `threads` threads (0 for all the machine has; the blocks do not depend on it). The image is
+/// padded to whole blocks by repeating its last column and row. With `mipmaps`, every level
+/// down to one pixel is made from the one before by averaging and packed the same way.
+///
+/// A pixel value the format cannot hold is brought into range first: a negative half becomes
+/// 0, and infinity and not-a-number the largest half. None for an image with no pixels.
+pub fn compress_hdr(image: &HdrImage, settings: &Bc6hEncSettings, mipmaps: bool, threads: u32) -> Option<Texture> {
+    if image.width == 0 || image.height == 0 || image.pixels.len() != image.width as usize * image.height as usize {
+        return None;
+    }
+    let mut first = image.clone();
+    for value in first.pixels.as_flattened_mut() {
+        *value = if *value & 0x8000 != 0 { 0 } else { (*value).min(0x7bff) };
+    }
+    let mut levels = Vec::new();
+    let mut current = first;
+    loop {
+        let blocks_x = current.width.div_ceil(4) as usize;
+        let mut blocks = vec![0u8; blocks_x * current.height.div_ceil(4) as usize * 16];
+        let rows: Vec<(u32, &mut [u8])> = blocks.chunks_exact_mut(blocks_x * 16).enumerate().map(|(by, row)| (by as u32, row)).collect();
+        let level = &current;
+        parallel::for_each(rows, parallel::worker_count(threads), |(by, row)| {
+            for (bx, block) in row.chunks_exact_mut(16).enumerate() {
+                bc6h::compress_block_bc6h(block.try_into().expect("16 bytes"), &level.get_block(bx as u32, by), settings);
+            }
+        });
+        levels.push(blocks);
+        if !mipmaps || (current.width == 1 && current.height == 1) {
+            break;
+        }
+        current = current.half();
+    }
+    Some(Texture { format: TextureFormat::Bc6hUnsigned, srgb: false, width: image.width, height: image.height, levels })
+}
+
 // What the file modules share.
 
 /// Reads little-endian numbers out of a file's bytes.
@@ -258,6 +327,31 @@ pub(crate) fn check_size(width: u32, height: u32, levels: u32) -> Result<u32, Te
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_hdr_image_packs_to_every_level_and_back() {
+        // A smooth field, 22 by 9.
+        let values: Vec<f32> = (0..22 * 9).flat_map(|i| [1.0 + (i % 22) as f32 * 0.02, 2.0 + (i / 22) as f32 * 0.03, 0.25]).collect();
+        let image = HdrImage::from_rgb_f32(22, 9, &values).unwrap();
+        let texture = compress_hdr(&image, &Bc6hEncSettings::basic(), true, 0).unwrap();
+        assert!(texture.is_valid());
+        assert_eq!((texture.format, texture.levels.len()), (TextureFormat::Bc6hUnsigned, 5));
+        let unpacked = texture.unpack_level_hdr(0).unwrap();
+        assert_eq!((unpacked.width, unpacked.height), (22, 9));
+        for (a, b) in image.to_rgb_f32().iter().zip(unpacked.to_rgb_f32()) {
+            assert!((a - b).abs() <= 0.01 + a * 0.03, "{a} {b}");
+        }
+        // The number of threads changes nothing.
+        assert_eq!(compress_hdr(&image, &Bc6hEncSettings::basic(), true, 1).unwrap(), texture);
+        assert_eq!(compress_hdr(&image, &Bc6hEncSettings::basic(), true, 3).unwrap(), texture);
+        // What the format cannot hold is brought into range and does not upset the rest.
+        let mut odd = image.clone();
+        odd.pixels[0] = [0x8001, 0xfc00, 0x7e00];
+        assert!(compress_hdr(&odd, &Bc6hEncSettings::veryfast(), false, 0).unwrap().is_valid());
+        // The LDR unpacker says no to it, and the HDR one to an LDR texture.
+        assert!(texture.unpack_level(0, Bc1ApproxMode::Ideal).is_none());
+        assert!(compress_hdr(&HdrImage::new(0, 0), &Bc6hEncSettings::fast(), true, 0).is_none());
+    }
 
     #[test]
     fn levels_halve_down_to_one_pixel() {
