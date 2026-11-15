@@ -23,8 +23,9 @@
 //!   which is the encoder of Microsoft's DirectXTex).
 //! - [`miniz`]: zlib and deflate, both ways (Rich Geldreich's
 //!   [miniz](https://github.com/richgel999/miniz)), for the files below.
-//! - [`zstd`]: Zstandard frames to bytes (the reference decoder that comes with
-//!   [zstd](https://github.com/facebook/zstd), `doc/educational_decoder`), for the same files.
+//! - [`zstd`]: Zstandard, both ways, for the same files: bytes to frames at zstd's levels 1 to
+//!   3 and its negative ones (part of the compressor of [zstd](https://github.com/facebook/zstd)),
+//!   and frames to bytes (the reference decoder that comes with it, `doc/educational_decoder`).
 //! - [`stb_image`] and [`stb_image_write`]: `.png`, `.bmp` and `.jpg` files to images and
 //!   back (`stb_image.h` and `stb_image_write.h`, from Sean Barrett's
 //!   [stb](https://github.com/nothings/stb)).

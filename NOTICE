@@ -99,18 +99,28 @@ Version 2.0 (see LICENSE).
    refusals as stb_image.h built with STBI_NO_SIMD, with memory that starts as zeros and
    with integer overflow that wraps.
 
-8. Zstandard, by Meta Platforms, Inc. and affiliates (https://github.com/facebook/zstd): the
-   reference decoder of its doc/educational_decoder/zstd_decompress.c
-   (src/zstd/zstd_decompress.rs).
+8. Zstandard, by Meta Platforms, Inc. and affiliates (https://github.com/facebook/zstd),
+   v1.5.7: the reference decoder of its doc/educational_decoder/zstd_decompress.c
+   (src/zstd/zstd_decompress.rs), and of its compressor, in lib/compress and lib/common, the
+   parts that one call of ZSTD_compress uses with the strategies ZSTD_fast and ZSTD_dfast:
+   bitstream.h, fse.h and fse_compress.c, hist.c, huf_compress.c, zstd_compress_literals.c,
+   zstd_compress_sequences.c, zstd_fast.c, zstd_double_fast.c, zstd_preSplit.c, clevels.h,
+   zstd_compress_internal.h and zstd_compress.c (the files of the same names in src/zstd,
+   with common.rs for what they share).
 
     Copyright (c) Meta Platforms, Inc. and affiliates. All rights reserved.
 
    Offered by its authors under a BSD licence or the GNU General Public License, version 2,
    whichever the user prefers; it is taken here under the BSD licence, which is kept in
-   LICENSE-zstd.txt. The file is changed here in that it is translated from C to Rust: where
-   the original stops the program with a message, the port gives the message back, and its
-   output grows as it is written. What it computes is kept: the same bytes from every frame,
-   and the same message for a frame it refuses.
+   LICENSE-zstd.txt. The files are changed here in that they are translated from C to Rust.
+   Where the decoder stops the program with a message, the port gives the message back, and
+   its output grows as it is written; what it computes is kept: the same bytes from every
+   frame, and the same message for a frame it refuses. Of the compressor, what a frame made
+   in one call from a source that is all there does not use is left out (the other seven
+   strategies, dictionaries, checksums, streaming, long-distance matching, threads), places
+   in the source stand for pointers, and the work areas the original carves out of one block
+   of memory are fields and local arrays; what it computes is kept: the same frame, byte for
+   byte, as ZSTD_compress gives for a source and a level.
 
 What is around the ports is the crate's own: mip levels, the HDR image and the reading and
 writing of picture files by the ports of stb (in src/image.rs),

@@ -10,10 +10,10 @@
 # layers, faces and levels, and a hash of every image of every level. Then:
 #
 # - Every .ktx2 file goes through the Khronos validator (`ktx validate`, warnings as errors),
-#   those with ZLIB supercompression (.zlib.ktx2) among them.
+#   those with ZLIB and with Zstandard supercompression (.zlib.ktx2, .zstd.ktx2) among them.
 # - Every .ktx and .ktx2 file is read by the Khronos library (compare/files_ktx.c, built
 #   against libktx), which has to find the same; from a supercompressed file, after
-#   decompressing it with its own zlib.
+#   decompressing it with its own zlib or zstd.
 # - Every .ktx2 file is compressed again by the Khronos tool (`ktx deflate --zstd`, at levels
 #   from 1 to 19), and what it writes is read by the crate, which has to find the same.
 # - Every .dds file is read by tinyddsloader (compare/files_dds.cpp), which has to find the
@@ -89,6 +89,9 @@ else
     # shellcheck disable=SC2086
     "$tmp/files-ktx" "$tmp/out" zlib.ktx2 $names > "$tmp/zlib-ktx2.txt" 2>&1
     same ".ktx2 with ZLIB supercompression by the Khronos library" "$tmp/zlib-ktx2.txt"
+    # shellcheck disable=SC2086
+    "$tmp/files-ktx" "$tmp/out" zstd.ktx2 $names > "$tmp/zstd-ktx2.txt" 2>&1
+    same ".ktx2 with Zstandard supercompression by the Khronos library" "$tmp/zstd-ktx2.txt"
     if [ -x "$lib/ktx" ]; then
         level=0
         for name in $names; do

@@ -65,11 +65,17 @@
 # so that a damaged frame gives its message back in place of stopping the program. Dump:
 # zstd_decode, with a tenth of [blocks] as the number of frames. The C side writes its frames
 # to a file, which the Rust side reads.
+# The compressor is compared with that library's own: compare/dump_zstd_compress.c has
+# ZSTD_compress make frames of made-up data at the levels that are ported, and
+# compare/dump_zstd_entropy.c asks the entropy coders inside it one function at a time, for
+# what a whole frame seldom or never asks of them. Dumps: zstd_compress, with a hundredth of
+# [blocks] as the number of sources (of up to five megabytes each), and zstd_entropy, with
+# [blocks] as the number of rounds.
 #
 # Without the ISPC compiler the bc7e dumps and bc6h_pack are left out, without $BCDEC bc2 and
 # the BC6H dumps, without $ISPCTC bc6h_pack, without $BC6HENC bc6h_enc, without $MINIZ miniz
-# and stb_image, without $STB stb_image_write and stb_image, and without $ZSTD zstd_decode;
-# the script says so and fails.
+# and stb_image, without $STB stb_image_write and stb_image, and without $ZSTD the three zstd
+# dumps; the script says so and fails.
 set -u
 if [ $# -lt 1 ]; then
     echo "usage: $0 <folder with bc7enc_rdo's sources> [blocks] [seeds] [dumps]" >&2
@@ -79,7 +85,7 @@ here=$(cd "$(dirname "$0")/.." && pwd)
 source=$1
 blocks=${2:-200000}
 seeds=${3:-3}
-dumps=${4:-bc7decomp unpack bc1 bc345 bc7enc bc7block ert rdo bc7e_presets bc7e_settings rdo_bc7e bc2 bc6h_unpack bc6h_pack bc6h_enc miniz stb_image_write stb_image zstd_decode}
+dumps=${4:-bc7decomp unpack bc1 bc345 bc7enc bc7block ert rdo bc7e_presets bc7e_settings rdo_bc7e bc2 bc6h_unpack bc6h_pack bc6h_enc miniz stb_image_write stb_image zstd_decode zstd_compress zstd_entropy}
 tmp=${TMPDIR:-/tmp}/rustbcx-compare
 mkdir -p "$tmp" || exit 2
 
@@ -104,7 +110,7 @@ cpp_sources="$source/bc7decomp.cpp $source/bc7decomp_ref.cpp $source/bc7enc.cpp 
 for what in $dumps; do
     extra=
     case $what in
-    zstd_decode)
+    zstd_decode | zstd_compress | zstd_entropy)
         if [ "$built_zstd" -eq 0 ]; then
             if [ -z "${ZSTD:-}" ] || [ ! -f "$ZSTD/doc/educational_decoder/zstd_decompress.c" ]; then
                 echo "$what: NOT COMPARED, no zstd (put its checkout in \$ZSTD)"
@@ -115,11 +121,25 @@ for what in $dumps; do
             (cd "$tmp/zstd-obj" && ${CC:-cc} -O2 -c -DZSTD_DISABLE_ASM -I "$ZSTD/lib" -I "$ZSTD/lib/common" "$ZSTD"/lib/common/*.c "$ZSTD"/lib/compress/*.c "$ZSTD"/lib/decompress/*.c "$ZSTD"/lib/dictBuilder/*.c) || exit 2
             ${CC:-cc} -O2 -c -I "$ZSTD/doc/educational_decoder" "$here/compare/dump_zstd_edu.c" -o "$tmp/dump_zstd_edu.o" || exit 2
             ${CC:-cc} -O2 -I "$ZSTD/lib" -I "$ZSTD/lib/dictBuilder" "$here/compare/dump_zstd.c" "$tmp/dump_zstd_edu.o" "$tmp"/zstd-obj/*.o -o "$tmp/dump-zstd" || exit 2
+            ${CC:-cc} -O2 -I "$ZSTD/lib" "$here/compare/dump_zstd_compress.c" "$tmp"/zstd-obj/*.o -o "$tmp/dump-zstd-compress" || exit 2
+            ${CC:-cc} -O2 -I "$ZSTD/lib" "$here/compare/dump_zstd_entropy.c" "$tmp"/zstd-obj/*.o -o "$tmp/dump-zstd-entropy" || exit 2
             built_zstd=1
         fi
-        reference=$tmp/dump-zstd
-        count=$((blocks / 10))
-        extra=$tmp/zstd-frames.bin
+        case $what in
+        zstd_decode)
+            reference=$tmp/dump-zstd
+            count=$((blocks / 10))
+            extra=$tmp/zstd-frames.bin
+            ;;
+        zstd_compress)
+            reference=$tmp/dump-zstd-compress
+            count=$((blocks / 100))
+            ;;
+        *)
+            reference=$tmp/dump-zstd-entropy
+            count=$blocks
+            ;;
+        esac
         ;;
     bc7e_* | rdo_bc7e)
         if [ "$built_ispc" -eq 0 ]; then

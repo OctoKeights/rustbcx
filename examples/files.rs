@@ -1,8 +1,9 @@
 //! The crate's half of the check of its files against other readers (`compare/files.sh`).
 //!
 //!   files <folder>            writes textures of every format and shape as `.dds`, `.ktx`
-//!                             and `.ktx2` into the folder (and as `.zlib.ktx2`, a `.ktx2`
-//!                             file with ZLIB supercompression), reads each back, and prints
+//!                             and `.ktx2` into the folder (and as `.zlib.ktx2` and
+//!                             `.zstd.ktx2`, `.ktx2` files with ZLIB and with Zstandard
+//!                             supercompression), reads each back, and prints
 //!                             what a reader should find in each: its size, layers, faces
 //!                             and levels, and a hash of every image of every level
 //!   files <folder> <ending>   reads the files of that ending that another program made of
@@ -105,6 +106,9 @@ fn main() {
                     }
                     let file = format!("{out}/{name}.zlib.ktx2");
                     t.save_ktx2(&file, Supercompression::Zlib(1 + (state >> 50) as i32 % 9)).unwrap();
+                    assert_eq!(Texture::load(&file).unwrap(), t, "{file}");
+                    let file = format!("{out}/{name}.zstd.ktx2");
+                    t.save_ktx2(&file, Supercompression::Zstd([1, 2, 3, 0, -1, -7][(state >> 45) as usize % 6])).unwrap();
                     assert_eq!(Texture::load(&file).unwrap(), t, "{file}");
                     // What a reader should find.
                     describe(&name, &t);

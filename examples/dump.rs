@@ -561,6 +561,8 @@ fn main() {
             };
             print!("{}", made_up::zstd_decode(what, blocks, &file));
         }
+        "zstd_compress" | "zstd_compress_small" => print!("{}", made_up::zstd_compress(what, seed, blocks, false)),
+        "zstd_entropy" => print!("{}", made_up::zstd_entropy(seed, blocks)),
         "bc6h_unpack" => print!("{}", made_up::bc6h_unpack(seed, blocks)),
         "bc6h_pack" => print!("{}", made_up::bc6h_pack(seed, blocks)),
         "bc7e_presets" => dump_bc7e(true, seed, blocks, args.get(4)),

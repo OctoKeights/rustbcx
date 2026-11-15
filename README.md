@@ -70,7 +70,7 @@ The ports, each checked byte for byte against its original:
 | `bc6h` (packing) | Intel's [ISPC Texture Compressor](https://github.com/GameTechDev/ISPCTextureCompressor), `kernel.ispc` | HDR pixels to unsigned BC6H, five profiles |
 | `bc6h_enc` | [bc6h_enc](https://github.com/0xc0de/bc6h_enc), which is DirectXTex's BC6H encoder as one file | HDR pixels to signed or unsigned BC6H, the thorough and slow way |
 | `miniz` | Rich Geldreich's [miniz](https://github.com/richgel999/miniz): its compressor, its decompressor and its checksums | zlib and deflate, both ways, for `.ktx2` files with ZLIB supercompression |
-| `zstd` | The reference decoder that comes with [zstd](https://github.com/facebook/zstd), `doc/educational_decoder` | Zstandard frames to bytes, for `.ktx2` files with Zstandard supercompression |
+| `zstd` | [zstd](https://github.com/facebook/zstd): of its compressor (`lib/compress`), the two fastest strategies and the entropy coders; and the reference decoder that comes with it, `doc/educational_decoder` | Zstandard, both ways, for `.ktx2` files with Zstandard supercompression: bytes to frames at levels 1 to 3 and the negative ones, and frames of any level to bytes |
 | `stb_image` | Sean Barrett's [stb](https://github.com/nothings/stb), `stb_image.h`: its PNG, BMP and JPEG readers and its zlib decoder | `.png`, `.bmp` and `.jpg` files to pixels, at 8 or 16 bits a channel |
 | `stb_image_write` | stb's `stb_image_write.h`: its PNG, BMP and JPEG writers | Pixels of 8 bits a channel to `.png`, `.bmp` and `.jpg` files |
 
@@ -82,7 +82,7 @@ And around them, the crate's own code, which has no original to match:
 | `image` | `Image` (8-bit RGBA) and `HdrImage` (half-float RGB), and the next mip level of each. `Image::load` and `save` read and write `.png`, `.bmp` and `.jpg` files |
 | `texture` | `Texture`: a format, a size and the blocks of every mip level, for one image or for a texture array, a cube map or a volume texture. `compress` and `compress_hdr` make one from an image, `compress_many` and `compress_hdr_many` from several; `load` and `save` read and write files |
 | `dds` | `.dds` files, both ways, with either header. For one level its writer gives the bytes bc7enc_rdo's `save_dds` writes |
-| `ktx` | `.ktx` (KTX 1) and `.ktx2` (KTX 2) files, both ways; `.ktx2` with its levels as they are or supercompressed with zlib, and read when they are supercompressed with Zstandard |
+| `ktx` | `.ktx` (KTX 1) and `.ktx2` (KTX 2) files, both ways; `.ktx2` with its levels as they are or supercompressed with zlib or with Zstandard |
 
 ## Examples
 
@@ -358,6 +358,8 @@ and fails.
 | `stb_image_write` | stb's `stb_image_write.h` | Made-up images of one to four channels written as `.png` with made-up compression levels and filters, as `.bmp`, and as `.jpg` with made-up qualities, some upside down and some with rows further apart than they are wide; and made-up data through its zlib compressor |
 | `stb_image` | stb's `stb_image.h`, built with `STBI_NO_SIMD` | Made-up files asked their size and read at 8 and 16 bits a channel, with every number of channels asked for: pictures written by stb_image_write, and files put together with every kind of header the readers take and made-up bytes for the picture (PNG of every depth and colour type, with palettes, transparent colours and interlacing; BMP of every header size and depth, with palettes and bit masks; JPEG baseline and progressive, of one to four components sampled every way, with restart markers). A third of them are damaged first, and for those the reason for refusing is compared. And made-up zlib streams, whole and damaged, through its zlib decoder |
 | `zstd_decode` | zstd's reference decoder | Frames the zstd library made of made-up data: every level from the fastest to 22, with and without checksums and sizes in the header, with small windows, long-distance matching, blocks of a size aimed for and flushes, and with dictionaries of plain content and trained ones. A third of them are damaged first, and for those the message is compared |
+| `zstd_compress` | zstd's library, `ZSTD_compress` | Made-up data of thirteen kinds, from nothing to five megabytes (noise, text, runs, copies, parts of different kinds one after the other, the same few bytes over and over), compressed at levels 1 to 3, at the default, at level 4 where it is ported and at negative levels down to the lowest. Each frame also decoded |
+| `zstd_entropy` | zstd's library, from the inside | The entropy coders one function at a time, for what a whole frame seldom or never asks of them: made-up counts normalized, written into room that may be too little and coded with (FSE); made-up bytes Huffman coded with one or four streams, with and without the table of the call before, into room that may be too little; and the literals section of a block |
 
 The two ISPC originals pack several blocks at once in the lanes of a vector register; the ports
 pack them one after another with the same arithmetic in the same order. Built for SSE2 without
@@ -384,6 +386,8 @@ These comparisons were run on Linux (x86-64), the C++ built with gcc and the ISP
 | `stb_image_write` | 9,000 images, 32 million pixels, each as three files; the C built by gcc and by clang at several optimisation levels |
 | `stb_image` | 60,000 files, of which 46,500 were read (105 million pixels) and 13,300 refused, each for the same reason; the C built by gcc and by clang at several optimisation levels |
 | `zstd_decode` | 20,000 frames, 200 megabytes, of which 14,700 were decoded and 5,300 refused with the same message; the C built by gcc and by clang at several optimisation levels |
+| `zstd_compress` | 33,000 sources, 3.4 gigabytes, every frame the same; the C built by gcc and by clang |
+| `zstd_entropy` | 3.3 million rounds, of which a little over a fifth end in a refusal, the same one on both sides; the C built by gcc and by clang |
 
 The JPEG reader is the one port with a choice of original to match. stb_image has two
 versions of its inverse transform: plain C, and SSE2 or NEON where the processor has them. For
@@ -392,13 +396,13 @@ were compared on 20,000 such files). For a damaged file, whose values can be one
 writes, they can differ, since the SIMD version keeps fewer bits along the way. The port
 follows the plain C, which gives one answer on every processor.
 
-`cargo test` needs neither a C++ compiler nor ISPC. Among its tests, eleven run made-up
+`cargo test` needs neither a C++ compiler nor ISPC. Among its tests, thirteen run made-up
 blocks, images and files through the ports and compare their hashes with ones recorded from
-the originals: the ten in `tests/*_golden.rs` and one in `src/bc7enc.rs`.
+the originals: twelve in `tests/*_golden.rs` and one in `src/bc7enc.rs`.
 
 The files have their own check. `compare/files.sh` writes textures of every format and shape
 (plain, texture array, cube map, array of cube maps, volume texture) as `.dds`, `.ktx` and
-`.ktx2`, the last also with ZLIB supercompression, then has other readers read them: the
+`.ktx2`, the last also with ZLIB and with Zstandard supercompression, then has other readers read them: the
 Khronos validator has to pass every `.ktx2` file, and the Khronos library ([KTX-Software](https://github.com/KhronosGroup/KTX-Software))
 and [tinyddsloader](https://github.com/benikabocha/tinyddsloader) have to find in each file the
 same sizes, layers, faces and levels, and the same bytes in every image. The other way round,
@@ -443,10 +447,14 @@ machine and made-up pixels.
 - **No SIMD written by hand.** Stable Rust has no SIMD without `unsafe`, and the crate has no
   `unsafe`. Its speed comes from using every core and from loops the compiler can vectorise by
   itself. On one core, the ISPC originals built for AVX2 are faster.
-- **`.ktx2` supercompression: Zstandard is read but not yet written.** Files are written with
-  zlib or with none.
-  BasisLZ, the third scheme the format has, cannot hold these formats at all: it is the
-  packing of Basis Universal's own ETC1S format.
+- **Zstandard is written at levels 1 to 3 and the negative levels.** zstd has nine ways to
+  look for matches, and each level uses one of them; the two fastest are ported, which is
+  what those levels use (level 4 uses one of them for some sizes of source, and
+  `zstd::level_is_ported` says which). The levels above, up to 22, are refused until their
+  strategies are ported: the crate does not stand a weaker one in for them. Frames of every
+  level are read. Frames are written whole, with no dictionary and no checksum.
+- **No BasisLZ.** The third supercompression scheme `.ktx2` has cannot hold these formats at
+  all: it is the packing of Basis Universal's own ETC1S format.
 - **Picture files: `.png`, `.bmp` and `.jpg`.** Those are read and written. `.exr`, for HDR
   images, is not yet: use an image crate for that and hand over the floats. Of the other
   formats stb_image reads (`.tga`, `.gif`, `.psd`, `.hdr`, `.pnm`), none is ported.
@@ -469,8 +477,8 @@ Rust:
   `bc6h_enc` by Microsoft (DirectXTex), made into one file by Alexander Samusev as
   [bc6h_enc](https://github.com/0xc0de/bc6h_enc).
 - zlib is by Rich Geldreich and others, from [miniz](https://github.com/richgel999/miniz).
-- The Zstandard decoder is by Meta Platforms, Inc. and affiliates, from
-  [zstd](https://github.com/facebook/zstd).
+- The Zstandard compressor and decoder are by Meta Platforms, Inc. and affiliates, from
+  [zstd](https://github.com/facebook/zstd), which is Yann Collet's.
 - The `.png`, `.bmp` and `.jpg` readers and writers are by Sean Barrett and others, from
   [stb](https://github.com/nothings/stb); the JPEG writer is after Jon Olick's `jo_jpeg.cpp`.
 

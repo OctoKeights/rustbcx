@@ -35,6 +35,15 @@
   of the reference decoder that comes with zstd (its `doc/educational_decoder`), with
   `decompress_with_dict` and `Dictionary::parse` for frames made with a dictionary.
   `read_ktx2` uses it for files whose levels are compressed with Zstandard.
+- **`.ktx2` files are written with Zstandard supercompression**
+  (`ktx::Supercompression::Zstd(level)`), and **`zstd::compress` makes Zstandard frames.** It
+  is the port of part of zstd's own compressor, v1.5.7: the two fastest of its nine
+  strategies, `ZSTD_fast` and `ZSTD_dfast`, with the block splitting, the Huffman and FSE
+  coders and the framing that all strategies share. A frame is byte for byte the one
+  `ZSTD_compress` gives for the same source and level. The two strategies are the ones
+  levels 1 to 3 and the negative levels use for a source of any size, and level 4 for some
+  sizes; `zstd::level_is_ported` says whether a level is taken, and the others are refused
+  until their strategies are ported.
 - Fixed: a `.ktx2` file of an sRGB texture in BC3 did not mark its alpha as linear in its data
   format descriptor, as the Khronos tools do and their validator requires.
 - Changed: `Texture` has three more fields, so one written out by hand needs them;

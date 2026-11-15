@@ -229,9 +229,10 @@ impl Texture {
 
     /// Writes the texture to disk as a `.ktx2` file with its levels supercompressed as asked,
     /// whatever the name ends in. A texture that is not whole is an error of the kind
-    /// `InvalidInput`.
+    /// `InvalidInput`, and so is a Zstandard level the compressor does not take.
     pub fn save_ktx2(&self, path: impl AsRef<Path>, supercompression: ktx::Supercompression) -> std::io::Result<()> {
-        let file = ktx::write_ktx2_with(self, supercompression).ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, "the texture's levels are not the sizes its format and size need"))?;
+        let file = ktx::write_ktx2_with(self, supercompression)
+            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, if self.is_valid() { "the Zstandard level is not one the compressor takes" } else { "the texture's levels are not the sizes its format and size need" }))?;
         std::fs::write(path, file)
     }
 

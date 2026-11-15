@@ -2,8 +2,8 @@
 //! and write. (The crate's own: bc7enc_rdo writes `.dds` only.)
 //!
 //! A `.ktx2` file can hold its levels as they are or compressed again, which the format calls
-//! supercompression: [`Supercompression`] says how, and [`write_ktx2_with`] takes one.
-//! [`read_ktx2`] reads either, and files whose levels are compressed with Zstandard as well.
+//! supercompression: [`Supercompression`] says how, with zlib or with Zstandard, and
+//! [`write_ktx2_with`] takes one. [`read_ktx2`] reads all three.
 //! Its data format descriptor is the one the Khronos tools write for each format.
 
 use crate::miniz;
@@ -18,6 +18,10 @@ pub enum Supercompression {
     /// As zlib streams ([`crate::miniz`]), at a level from 1, the quickest, to 9, the
     /// smallest (10 tries harder still, and below 0 is miniz's default).
     Zlib(i32),
+    /// As Zstandard frames ([`crate::zstd`]), at one of zstd's levels: 1 to 3, or a negative
+    /// one, which is quicker and compresses less; 0 is zstd's default, 3. (The port of the
+    /// compressor has these levels for a level of any size; see [`crate::zstd::compress`].)
+    Zstd(i32),
 }
 
 impl Supercompression {
@@ -25,6 +29,7 @@ impl Supercompression {
     fn scheme(self) -> u32 {
         match self {
             Supercompression::None => 0,
+            Supercompression::Zstd(_) => 2,
             Supercompression::Zlib(_) => 3,
         }
     }
@@ -240,7 +245,8 @@ pub fn write_ktx2(texture: &Texture) -> Option<Vec<u8>> {
 }
 
 /// The bytes of a `.ktx2` file (KTX version 2) for a texture, its levels supercompressed as
-/// asked. None when the texture is not whole ([`Texture::is_valid`]).
+/// asked. None when the texture is not whole ([`Texture::is_valid`]), or when Zstandard is
+/// asked for at a level the compressor does not take ([`crate::zstd::level_is_ported`]).
 pub fn write_ktx2_with(texture: &Texture, supercompression: Supercompression) -> Option<Vec<u8>> {
     if !texture.is_valid() {
         return None;
@@ -253,10 +259,11 @@ pub fn write_ktx2_with(texture: &Texture, supercompression: Supercompression) ->
         .levels
         .iter()
         .map(|level| match supercompression {
-            Supercompression::None => std::borrow::Cow::Borrowed(&level[..]),
-            Supercompression::Zlib(zlib_level) => std::borrow::Cow::Owned(miniz::compress(level, zlib_level)),
+            Supercompression::None => Some(std::borrow::Cow::Borrowed(&level[..])),
+            Supercompression::Zlib(zlib_level) => Some(std::borrow::Cow::Owned(miniz::compress(level, zlib_level))),
+            Supercompression::Zstd(zstd_level) => zstd::compress(level, zstd_level).ok().map(std::borrow::Cow::Owned),
         })
-        .collect();
+        .collect::<Option<_>>()?;
     // A level starts at a multiple of the block's bytes (and of four); a supercompressed one
     // anywhere.
     let alignment = if supercompression == Supercompression::None { texture.format.bytes_per_block() } else { 1 };
@@ -484,6 +491,22 @@ mod tests {
             assert_eq!(read_ktx2(&wrong), Err(TextureError::Invalid("a level is not the size its pixels need")));
         }
         assert_eq!(write_ktx2_with(&out, Supercompression::None).unwrap(), plain);
+
+        // The same with Zstandard: the scheme is 2, and each level is one frame.
+        for zstd_level in [-5, 1, 3] {
+            let file = write_ktx2_with(&out, Supercompression::Zstd(zstd_level)).unwrap();
+            assert!(file.len() < plain.len() / 4, "{zstd_level}: {} {}", file.len(), plain.len());
+            assert_eq!(read_ktx2(&file).unwrap(), out, "{zstd_level}");
+            assert_eq!(u32::from_le_bytes(file[44..48].try_into().unwrap()), 2);
+            let entry = |level: usize, field: usize| u64::from_le_bytes(file[80 + level * 24 + field * 8..88 + level * 24 + field * 8].try_into().unwrap()) as usize;
+            for level in 0..4 {
+                assert_eq!(entry(level, 2), out.levels[level].len());
+                assert_eq!(zstd::decompress(&file[entry(level, 0)..entry(level, 0) + entry(level, 1)], out.levels[level].len()).unwrap(), out.levels[level]);
+            }
+            assert_eq!(entry(0, 0) + entry(0, 1), file.len());
+        }
+        // A level the port of the compressor does not have.
+        assert_eq!(write_ktx2_with(&out, Supercompression::Zstd(19)), None);
     }
 
     #[test]
