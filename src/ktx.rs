@@ -5,7 +5,7 @@
 //! Basis) the format allows: that would take a compressor, and this crate has no dependencies.
 //! Its data format descriptor is the one the Khronos tools write for each format.
 
-use crate::texture::{check_size, level_bytes, Reader, Texture, TextureError, TextureFormat};
+use crate::texture::{texture_from_header, Reader, Texture, TextureError, TextureFormat};
 
 const KTX1_IDENTIFIER: [u8; 12] = [0xAB, b'K', b'T', b'X', b' ', b'1', b'1', 0xBB, b'\r', b'\n', 0x1A, b'\n'];
 const KTX2_IDENTIFIER: [u8; 12] = [0xAB, b'K', b'T', b'X', b' ', b'2', b'0', 0xBB, b'\r', b'\n', 0x1A, b'\n'];
@@ -84,22 +84,34 @@ pub fn write_ktx1(texture: &Texture) -> Option<Vec<u8>> {
     let mut file = Vec::with_capacity(64 + texture.levels.iter().map(|level| level.len() + 4).sum::<usize>());
     file.extend_from_slice(&KTX1_IDENTIFIER);
     // Endianness; no type, a type size of 1 and no format, as for all compressed textures; the
-    // two internal formats; the size; no depth, no array, one face; the levels; no key and
-    // value data.
-    for value in [KTX1_ENDIANNESS, 0, 1, 0, internal_format, base_internal_format, texture.width, texture.height, 0, 0, 1, texture.levels.len() as u32, 0] {
+    // two internal formats; the size, with the depth of a volume; the layers of an array; the
+    // faces; the levels; no key and value data.
+    for value in [KTX1_ENDIANNESS, 0, 1, 0, internal_format, base_internal_format, texture.width, texture.height, texture.depth, texture.layers, if texture.cube { 6 } else { 1 }, texture.levels.len() as u32, 0] {
         put_u32(&mut file, value);
     }
-    for level in &texture.levels {
-        put_u32(&mut file, level.len() as u32);
+    for (i, level) in texture.levels.iter().enumerate() {
+        // (For a cube map that is not an array, the size is that of one face.)
+        put_u32(&mut file, ktx1_image_size(texture, i) as u32);
         file.extend_from_slice(level);
-        // (Blocks are 8 or 16 bytes, so a level never needs padding to four.)
+        // (Blocks are 8 or 16 bytes, so neither a face nor a level needs padding to four.)
     }
     Some(file)
 }
 
+/// The size a `.ktx` file gives before a level: of the whole level, except for a cube map that
+/// is not an array, where it is of one face.
+fn ktx1_image_size(texture: &Texture, level: usize) -> usize {
+    if texture.cube && texture.layers == 0 {
+        texture.image_bytes(level)
+    } else {
+        texture.level_bytes(level)
+    }
+}
+
 /// Reads a `.ktx` file (KTX version 1): a 2D texture in BC1, BC2, BC3, BC4, BC5, BC6H or BC7,
-/// with its mip levels. A file written on a big-endian machine, cube maps, arrays, volumes and
-/// other formats are refused as unsupported.
+/// with its mip levels; a cube map, a texture array, an array of cube maps or a volume texture
+/// as well as a plain one. A file written on a big-endian machine and other formats are refused
+/// as unsupported.
 pub fn read_ktx1(file: &[u8]) -> Result<Texture, TextureError> {
     if file.len() < 12 || file[..12] != KTX1_IDENTIFIER {
         return Err(TextureError::Invalid("no KTX identifier"));
@@ -131,30 +143,23 @@ pub fn read_ktx1(file: &[u8]) -> Result<Texture, TextureError> {
         GL_COMPRESSED_SRGB_ALPHA_BPTC_UNORM => (TextureFormat::Bc7, true),
         _ => return Err(TextureError::Unsupported("an OpenGL format other than BC1 to BC7")),
     };
-    if depth > 1 {
-        return Err(TextureError::Unsupported("a volume texture"));
+    if faces != 1 && faces != 6 {
+        return Err(TextureError::Invalid("faces that are neither one nor six"));
     }
-    if array_elements > 0 {
-        return Err(TextureError::Unsupported("a texture array"));
-    }
-    if faces != 1 {
-        return Err(TextureError::Unsupported("a cube map"));
-    }
-    let level_count = check_size(width, height, level_count)?;
+    let mut texture = texture_from_header(format, srgb, width, height, depth, array_elements, faces == 6, level_count)?;
 
     let mut at = reader.at.checked_add(key_value_bytes as usize).ok_or(TextureError::Invalid("the file is cut short"))?;
-    let mut levels = Vec::with_capacity(level_count as usize);
-    for level in 0..level_count as usize {
+    for level in 0..texture.levels.len() {
         reader.at = at;
-        let size = reader.u32()? as usize;
-        if size != level_bytes(format, width, height, level) {
+        if reader.u32()? as usize != ktx1_image_size(&texture, level) {
             return Err(TextureError::Invalid("a level is not the size its pixels need"));
         }
-        let blocks = file.get(reader.at..reader.at + size).ok_or(TextureError::Invalid("the file is cut short"))?;
-        levels.push(blocks.to_vec());
+        let size = texture.level_bytes(level);
+        let blocks = reader.at.checked_add(size).and_then(|end| file.get(reader.at..end)).ok_or(TextureError::Invalid("the file is cut short"))?;
+        texture.levels[level] = blocks.to_vec();
         at = reader.at + size.next_multiple_of(4);
     }
-    Ok(Texture { format, srgb, width, height, levels })
+    Ok(texture)
 }
 
 /// The data format descriptor of a format, as the Khronos tools write it (`createDFDCompressed`
@@ -163,6 +168,8 @@ pub fn read_ktx1(file: &[u8]) -> Result<Texture, TextureError> {
 fn data_format_descriptor(format: TextureFormat, srgb: bool) -> Vec<u8> {
     const FLOAT: u32 = 1 << 7;
     const SIGNED: u32 = 1 << 6;
+    const LINEAR: u32 = 1 << 4;
+    const ALPHA: u32 = 15;
     // The colour model, and for each sample its channel and where its bits start.
     let (model, samples): (u32, &[(u32, u32)]) = match format {
         TextureFormat::Bc1 => (128, &[(0, 0)]),
@@ -196,7 +203,9 @@ fn data_format_descriptor(format: TextureFormat, srgb: bool) -> Vec<u8> {
         0,
     ];
     for &(channel, bit_offset) in samples {
-        words.extend_from_slice(&[bit_offset | ((sample_bits - 1) << 16) | ((channel | flags) << 24), 0, lower, upper]);
+        // (The alpha of an sRGB texture is not sRGB, and its sample has to say so.)
+        let linear = if srgb && channel == ALPHA { LINEAR } else { 0 };
+        words.extend_from_slice(&[bit_offset | ((sample_bits - 1) << 16) | ((channel | flags | linear) << 24), 0, lower, upper]);
     }
     words.iter().flat_map(|word| word.to_le_bytes()).collect()
 }
@@ -225,9 +234,9 @@ pub fn write_ktx2(texture: &Texture) -> Option<Vec<u8>> {
 
     let mut file = Vec::with_capacity(at);
     file.extend_from_slice(&KTX2_IDENTIFIER);
-    // The format; a type size of 1, as for all block formats; the size; no depth, no layers,
-    // one face; the levels; no supercompression.
-    for value in [vk_format(texture.format, srgb), 1, texture.width, texture.height, 0, 0, 1, level_count as u32, 0] {
+    // The format; a type size of 1, as for all block formats; the size, with the depth of a
+    // volume; the layers of an array; the faces; the levels; no supercompression.
+    for value in [vk_format(texture.format, srgb), 1, texture.width, texture.height, texture.depth, texture.layers, if texture.cube { 6 } else { 1 }, level_count as u32, 0] {
         put_u32(&mut file, value);
     }
     // The descriptor's place and size; no key and value data; no supercompression data.
@@ -250,8 +259,9 @@ pub fn write_ktx2(texture: &Texture) -> Option<Vec<u8>> {
 }
 
 /// Reads a `.ktx2` file (KTX version 2): a 2D texture in BC1, BC2, BC3, BC4, BC5, BC6H or BC7,
-/// with its mip levels. Supercompressed levels (zstd, zlib, Basis), cube maps, arrays, volumes and
-/// other formats are refused as unsupported.
+/// with its mip levels; a cube map, a texture array, an array of cube maps or a volume texture
+/// as well as a plain one. Supercompressed levels (zstd, zlib, Basis) and other formats are
+/// refused as unsupported.
 pub fn read_ktx2(file: &[u8]) -> Result<Texture, TextureError> {
     if file.len() < 12 || file[..12] != KTX2_IDENTIFIER {
         return Err(TextureError::Invalid("no KTX 2 identifier"));
@@ -277,33 +287,26 @@ pub fn read_ktx2(file: &[u8]) -> Result<Texture, TextureError> {
         146 => (TextureFormat::Bc7, true),
         _ => return Err(TextureError::Unsupported("a Vulkan format other than BC1 to BC7")),
     };
-    if depth > 1 {
-        return Err(TextureError::Unsupported("a volume texture"));
-    }
-    if layers > 0 {
-        return Err(TextureError::Unsupported("a texture array"));
-    }
-    if faces != 1 {
-        return Err(TextureError::Unsupported("a cube map"));
+    if faces != 1 && faces != 6 {
+        return Err(TextureError::Invalid("faces that are neither one nor six"));
     }
     if supercompression != 0 {
         return Err(TextureError::Unsupported("supercompressed levels"));
     }
-    let level_count = check_size(width, height, level_count)?;
+    let mut texture = texture_from_header(format, srgb, width, height, depth, layers, faces == 6, level_count)?;
 
     // (Past the places of the descriptor, the key and value data and the supercompression
     // data, none of which is needed.)
     reader.at = 80;
-    let mut levels = Vec::with_capacity(level_count as usize);
-    for level in 0..level_count as usize {
+    for level in 0..texture.levels.len() {
         let (offset, length, _uncompressed) = (reader.u64()?, reader.u64()?, reader.u64()?);
-        if length != level_bytes(format, width, height, level) as u64 {
+        if length != texture.level_bytes(level) as u64 {
             return Err(TextureError::Invalid("a level is not the size its pixels need"));
         }
         let blocks = usize::try_from(offset).ok().and_then(|offset| file.get(offset..offset.checked_add(length as usize)?)).ok_or(TextureError::Invalid("the file is cut short"))?;
-        levels.push(blocks.to_vec());
+        texture.levels[level] = blocks.to_vec();
     }
-    Ok(Texture { format, srgb, width, height, levels })
+    Ok(texture)
 }
 
 #[cfg(test)]
@@ -313,10 +316,19 @@ mod tests {
     const FORMATS: [TextureFormat; 8] = [TextureFormat::Bc1, TextureFormat::Bc2, TextureFormat::Bc3, TextureFormat::Bc4, TextureFormat::Bc5, TextureFormat::Bc6hUnsigned, TextureFormat::Bc6hSigned, TextureFormat::Bc7];
 
     fn texture(format: TextureFormat, levels: usize) -> Texture {
-        let (width, height) = (9, 6);
-        let levels = (0..levels).map(|level| (0..level_bytes(format, width, height, level)).map(|i| (i * 7 + level) as u8).collect()).collect();
-        Texture { format, srgb: false, width, height, levels }
+        shaped(format, levels, 9, 6, 0, 0, false)
     }
+
+    /// A texture of a shape, every byte of it saying where it is.
+    fn shaped(format: TextureFormat, levels: usize, width: u32, height: u32, depth: u32, layers: u32, cube: bool) -> Texture {
+        let mut texture = Texture { format, srgb: false, width, height, depth, layers, cube, levels: Vec::new() };
+        texture.levels = (0..levels).map(|level| (0..texture.level_bytes(level)).map(|i| (i * 7 + i / texture.image_bytes(level) * 31 + level * 3) as u8).collect()).collect();
+        assert!(texture.is_valid());
+        texture
+    }
+
+    /// Plain, an array of three and of one, a cube map, an array of two cube maps, a volume.
+    const SHAPES: [(u32, u32, u32, u32, bool); 6] = [(9, 6, 0, 0, false), (9, 6, 0, 3, false), (9, 6, 0, 1, false), (8, 8, 0, 0, true), (8, 8, 0, 2, true), (9, 6, 5, 0, false)];
 
     #[test]
     fn every_format_goes_out_and_comes_back() {
@@ -332,6 +344,62 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn every_shape_goes_out_and_comes_back() {
+        for format in [TextureFormat::Bc1, TextureFormat::Bc3, TextureFormat::Bc6hUnsigned] {
+            for (width, height, depth, layers, cube) in SHAPES {
+                for levels in [1, 3] {
+                    let out = shaped(format, levels, width, height, depth, layers, cube);
+                    assert_eq!(read_ktx1(&write_ktx1(&out).unwrap()).unwrap(), out, "{format:?} {width} {height} {depth} {layers} {cube} {levels}");
+                    assert_eq!(read_ktx2(&write_ktx2(&out).unwrap()).unwrap(), out, "{format:?} {width} {height} {depth} {layers} {cube} {levels}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_shapes_are_laid_out_as_the_formats_say() {
+        let word = |file: &[u8], at: usize| u32::from_le_bytes(file[at..at + 4].try_into().unwrap());
+
+        // A cube map: six faces in the header, and before each level the size of one face.
+        let cube = shaped(TextureFormat::Bc1, 2, 8, 8, 0, 0, true);
+        let file = write_ktx1(&cube).unwrap();
+        assert_eq!([word(&file, 44), word(&file, 48), word(&file, 52)], [0, 0, 6]);
+        assert_eq!(word(&file, 64), 32);
+        assert_eq!(&file[68..68 + 192], &cube.levels[0][..]);
+        assert_eq!(word(&file, 68 + 192), 8);
+        assert_eq!(file.len(), 64 + 4 + 192 + 4 + 48);
+        let file = write_ktx2(&cube).unwrap();
+        assert_eq!([word(&file, 28), word(&file, 32), word(&file, 36)], [0, 0, 6]);
+        assert_eq!(u64::from_le_bytes(file[88..96].try_into().unwrap()), 192);
+
+        // An array of two cube maps: the size before a level is of the whole level.
+        let cubes = shaped(TextureFormat::Bc1, 1, 8, 8, 0, 2, true);
+        let file = write_ktx1(&cubes).unwrap();
+        assert_eq!([word(&file, 48), word(&file, 52), word(&file, 64)], [2, 6, 384]);
+
+        // A volume: its depth in the header, and each level with its slices.
+        let volume = shaped(TextureFormat::Bc7, 2, 9, 6, 5, 0, false);
+        let file = write_ktx1(&volume).unwrap();
+        assert_eq!([word(&file, 44), word(&file, 48), word(&file, 52), word(&file, 64)], [5, 0, 1, 5 * 96]);
+        let file = write_ktx2(&volume).unwrap();
+        assert_eq!([word(&file, 28), word(&file, 32), word(&file, 36)], [5, 0, 1]);
+        assert_eq!(u64::from_le_bytes(file[88..96].try_into().unwrap()), 5 * 96);
+        assert_eq!(u64::from_le_bytes(file[112..120].try_into().unwrap()), 2 * 16);
+
+        // Faces that are neither one nor six, a cube map that is not square and an array of
+        // volumes are not read.
+        let mut faces = write_ktx1(&cube).unwrap();
+        faces[52] = 5;
+        assert!(matches!(read_ktx1(&faces), Err(TextureError::Invalid(_))));
+        let mut oblong = write_ktx2(&cube).unwrap();
+        oblong[24] = 4;
+        assert_eq!(read_ktx2(&oblong), Err(TextureError::Invalid("a cube map that is not square")));
+        let mut stacked = write_ktx2(&volume).unwrap();
+        stacked[32] = 2;
+        assert!(matches!(read_ktx2(&stacked), Err(TextureError::Unsupported(_))));
     }
 
     #[test]
@@ -372,6 +440,13 @@ mod tests {
         let words: Vec<u32> = data_format_descriptor(TextureFormat::Bc5, false).chunks_exact(4).map(|word| u32::from_le_bytes(word.try_into().unwrap())).collect();
         assert_eq!(words[..7], [60, 0, 2 | (56 << 16), 132 | (1 << 8) | (1 << 16), 0x0303, 16, 0]);
         assert_eq!(words[7..], [63 << 16, 0, 0, u32::MAX, 64 | (63 << 16) | (1 << 24), 0, 0, u32::MAX]);
+        // BC3, sRGB: alpha at bit 0, marked linear, and colour at bit 64.
+        let words: Vec<u32> = data_format_descriptor(TextureFormat::Bc3, true).chunks_exact(4).map(|word| u32::from_le_bytes(word.try_into().unwrap())).collect();
+        assert_eq!(words[3], 130 | (1 << 8) | (2 << 16));
+        assert_eq!(words[7..], [(63 << 16) | (0x1F << 24), 0, 0, u32::MAX, 64 | (63 << 16), 0, 0, u32::MAX]);
+        let words: Vec<u32> = data_format_descriptor(TextureFormat::Bc2, false).chunks_exact(4).map(|word| u32::from_le_bytes(word.try_into().unwrap())).collect();
+        assert_eq!(words[3], 129 | (1 << 8) | (1 << 16));
+        assert_eq!(words[7], (63 << 16) | (0x0F << 24));
         // BC6H, signed: a float sample from -1 to 1.
         let words: Vec<u32> = data_format_descriptor(TextureFormat::Bc6hSigned, false).chunks_exact(4).map(|word| u32::from_le_bytes(word.try_into().unwrap())).collect();
         assert_eq!(words[7..], [(127 << 16) | (0xC0 << 24), 0, 0xBF80_0000, 0x3F80_0000]);
@@ -388,9 +463,6 @@ mod tests {
         let mut big_endian = ktx1.clone();
         big_endian[12..16].copy_from_slice(&[4, 3, 2, 1]);
         assert_eq!(read_ktx1(&big_endian), Err(TextureError::Unsupported("a big-endian file")));
-        let mut cube = ktx1;
-        cube[52] = 6;
-        assert_eq!(read_ktx1(&cube), Err(TextureError::Unsupported("a cube map")));
         let mut compressed = ktx2.clone();
         compressed[44] = 2;
         assert_eq!(read_ktx2(&compressed), Err(TextureError::Unsupported("supercompressed levels")));

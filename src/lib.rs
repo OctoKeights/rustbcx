@@ -20,8 +20,9 @@
 //!   [ISPC Texture Compressor](https://github.com/GameTechDev/ISPCTextureCompressor)).
 //!
 //! And around the ports, the crate's own: [`bc2`], the one block format of the family none of
-//! the originals has; [`texture`], an image packed with its mip levels; and [`dds`] and
-//! [`ktx`], which read and write it as `.dds`, `.ktx` and `.ktx2` files.
+//! the originals has; [`texture`], an image packed with its mip levels, or several as a texture
+//! array, a cube map or a volume texture; and [`dds`] and [`ktx`], which read and write it as
+//! `.dds`, `.ktx` and `.ktx2` files.
 //!
 //! The ports keep the originals' behaviour, so a block comes out as the same bytes from both
 //! (for the two ISPC originals, `bc7e.ispc` and Intel's `kernel.ispc`, as built without

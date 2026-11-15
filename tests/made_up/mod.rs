@@ -427,7 +427,7 @@ pub fn rdo(seed: u64, blocks: u32, with_bc7e: bool) -> String {
             hash.add(encoder.blocks());
             hash.add(unpacked.as_rgba8());
             // The .dds file for it, with the DX10 header forced for every other image.
-            let texture = Texture { format: p.format.into(), srgb: false, width: encoder.orig_width(), height: encoder.orig_height(), levels: vec![encoder.blocks().to_vec()] };
+            let texture = Texture::new(p.format.into(), encoder.orig_width(), encoder.orig_height(), vec![encoder.blocks().to_vec()]);
             hash.add(&dds::write(&texture, images % 2 == 1).expect("a whole texture"));
         } else {
             refused += 1;

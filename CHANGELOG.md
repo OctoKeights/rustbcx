@@ -7,6 +7,16 @@
   with the rate-distortion pass, and `.dds`, `.ktx` and `.ktx2` files hold it. None of the
   originals has BC2, so this is the crate's own; the comparison checks it against bc7enc_rdo's
   rgbcx and bcdec (the `bc2` dump).
+- **Cube maps, texture arrays and volume textures.** A `Texture` can be any of them (its new
+  `depth`, `layers` and `cube`), and `.dds`, `.ktx` and `.ktx2` files are read and written
+  with them. `texture::compress_many` and `compress_hdr_many` pack several images into one,
+  with mip levels; a volume's levels halve its slices too (`Image::half_volume`).
+  `Texture::image` and `unpack_image` give one image of a level.
+- Fixed: a `.ktx2` file of an sRGB texture in BC3 did not mark its alpha as linear in its data
+  format descriptor, as the Khronos tools do and their validator requires.
+- Changed: `Texture` has three more fields, so one written out by hand needs them;
+  `Texture::new` makes a plain one. `Texture::level_bytes` is now the bytes of a whole level,
+  and `image_bytes` those of one image in it (the same for a plain texture).
 
 ## 0.2.0
 

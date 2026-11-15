@@ -16,7 +16,8 @@ with nothing else to install.
 - **No `unsafe` code.** The crate is built with `#![forbid(unsafe_code)]`.
 - **Every format.** BC1, BC2, BC3, BC4, BC5 and BC7 both ways, and BC6H for HDR colour.
 - **Whole textures.** Hand it an image and get back a texture with its mip levels, ready to
-  write as a `.dds`, `.ktx` or `.ktx2` file.
+  write as a `.dds`, `.ktx` or `.ktx2` file. Hand it several and get a texture array, a cube
+  map or a volume texture.
 - **All your cores.** Images are packed on every core the machine has unless you say
   otherwise, and the result does not depend on how many that is.
 - **Rate-distortion optimisation.** bc7enc_rdo's pass that makes a texture smaller on disk
@@ -70,8 +71,8 @@ And around them, the crate's own code, which has no original to match:
 |---|---|
 | `bc2` | BC2 (DXT3), which none of the originals has: the colours by `rgbcx` as BC3's are, the alphas at four bits a pixel. Its unpacker is checked against bcdec's |
 | `image` | `Image` (8-bit RGBA) and `HdrImage` (half-float RGB), and the next mip level of each |
-| `texture` | `Texture`: a format, a size and the blocks of every mip level. `compress` and `compress_hdr` make one from an image; `load` and `save` read and write files |
-| `dds` | `.dds` files, both ways. For one level its writer gives the bytes bc7enc_rdo's `save_dds` writes |
+| `texture` | `Texture`: a format, a size and the blocks of every mip level, for one image or for a texture array, a cube map or a volume texture. `compress` and `compress_hdr` make one from an image, `compress_many` and `compress_hdr_many` from several; `load` and `save` read and write files |
+| `dds` | `.dds` files, both ways, with either header. For one level its writer gives the bytes bc7enc_rdo's `save_dds` writes |
 | `ktx` | `.ktx` (KTX 1) and `.ktx2` (KTX 2) files, both ways |
 
 ## Examples
@@ -139,6 +140,27 @@ assert_eq!(texture.format, TextureFormat::Bc6hUnsigned);
 // Back to an image of floats.
 let unpacked = texture.unpack_level_hdr(0).unwrap().to_rgb_f32();
 assert_eq!(unpacked.len(), rgb.len());
+```
+
+Six images to a cube map (a texture array and a volume texture go the same way):
+
+```rust
+use rustbcx::image::Image;
+use rustbcx::rdo_bc_encoder::{BlockFormat, RdoBcParams};
+use rustbcx::texture::{self, Layout};
+
+// The faces in the order +X, -X, +Y, -Y, +Z, -Z, each square and all one size.
+let faces: Vec<Image> = (0..6u8).map(|face| Image::from_pixels(16, 16, vec![[face * 40, 90, 200, 255]; 256]).unwrap()).collect();
+
+let mut params = RdoBcParams::new();
+params.format = BlockFormat::Bc1;
+let cube = texture::compress_many(&faces, Layout::Cube, &params, true).unwrap();
+assert!(cube.cube);
+assert_eq!((cube.levels.len(), cube.images_per_level(0)), (5, 6));
+
+// One face of one level, back as an image.
+let face = cube.unpack_image(0, 3, rustbcx::rgbcx::Bc1ApproxMode::Ideal).unwrap();
+assert_eq!((face.width, face.height), (16, 16));
 ```
 
 Block by block, when you want to do the rest yourself. A block is sixteen pixels, left to right
@@ -298,12 +320,25 @@ These comparisons were run on Linux (x86-64), the C++ built with gcc and the ISP
 | `bc7e` | 1.68 million blocks through the seven profiles, 780,000 through about 24,000 made-up settings |
 | `ert` | 160,000 blocks in runs of five formats |
 | `rdo`, `rdo_bc7e` | Over 100 seeds of images, 2,500 to 10,000 blocks each, the Rust on all cores, one thread and three in turn |
+| `bc2` | 600,000 blocks unpacked each way and as many packed twice |
 | `bc6h_unpack` | 1.5 million blocks, each as signed and as unsigned |
 | `bc6h_pack` | 240,000 blocks through each of the five profiles |
 
-`cargo test` needs neither a C++ compiler nor ISPC. Among its tests, five pack and unpack
+`cargo test` needs neither a C++ compiler nor ISPC. Among its tests, six pack and unpack
 made-up blocks and images and compare their hashes with ones recorded from the originals: the
-four in `tests/*_golden.rs` and one in `src/bc7enc.rs`.
+five in `tests/*_golden.rs` and one in `src/bc7enc.rs`.
+
+The files have their own check. `compare/files.sh` writes textures of every format and shape
+(plain, texture array, cube map, array of cube maps, volume texture) as `.dds`, `.ktx` and
+`.ktx2`, then has other readers read them: the Khronos validator has to pass every `.ktx2`
+file, and the Khronos library ([KTX-Software](https://github.com/KhronosGroup/KTX-Software))
+and [tinyddsloader](https://github.com/benikabocha/tinyddsloader) have to find in each file the
+same sizes, layers, faces and levels, and the same bytes in every image:
+
+```text
+KTX=<checkout of KTX-Software> KTX_BUILD=<its build folder> TINYDDS=<checkout of tinyddsloader> \
+    compare/files.sh
+```
 
 ## Speed
 
@@ -339,9 +374,9 @@ machine and made-up pixels.
   `unsafe`. Its speed comes from using every core and from loops the compiler can vectorise by
   itself. On one core, the ISPC originals built for AVX2 are faster.
 - **BC6H: no packing of the signed kind**, since Intel's encoder has none. It unpacks.
-- **Files: 2D textures only.** Cube maps, texture arrays and volume textures are refused when
-  read and cannot be written. `.ktx2` files are written and read without supercompression
-  (zstd, zlib, Basis), which would need a compressor.
+- **`.ktx2` files without supercompression.** They are written and read with their levels as
+  they are; the supercompression the format allows (zstd, zlib, Basis) would need a
+  compressor.
 - **Images come in as pixels.** The crate does not read `.png`, `.jpg` or `.exr` files: use an
   image crate for that and hand over the pixels.
 - **x86's float-to-int rules are built in.** Where an original turns a float that does not fit

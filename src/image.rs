@@ -123,6 +123,42 @@ impl Image {
         half
     }
 
+    /// The image at half the size each way, each pixel the average of the two by two it covers
+    /// in this image and in `behind`, an image of the same size: two slices of a volume to one
+    /// of its next mip level. With itself behind it, [`Image::half`].
+    ///
+    /// # Panics
+    ///
+    /// When the two are not of one size.
+    pub fn half_with(&self, behind: &Image) -> Image {
+        assert_eq!((self.width, self.height), (behind.width, behind.height), "two slices of one size");
+        let (width, height) = ((self.width / 2).max(1), (self.height / 2).max(1));
+        let mut half = Image::new(width, height);
+        for y in 0..height {
+            for x in 0..width {
+                let (x0, y0) = ((x * 2).min(self.width - 1), (y * 2).min(self.height - 1));
+                let (x1, y1) = ((x * 2 + 1).min(self.width - 1), (y * 2 + 1).min(self.height - 1));
+                let mut pixel = [0u8; 4];
+                for (channel, value) in pixel.iter_mut().enumerate() {
+                    let sum: u32 = [self, behind].iter().flat_map(|slice| [slice.pixel(x0, y0), slice.pixel(x1, y0), slice.pixel(x0, y1), slice.pixel(x1, y1)]).map(|pixel| u32::from(pixel[channel])).sum();
+                    *value = ((sum + 4) / 8) as u8;
+                }
+                half.pixels[(x + y * width) as usize] = pixel;
+            }
+        }
+        half
+    }
+
+    /// The next mip level of a volume, given as its slices from the front: half as many slices
+    /// (rounded down, but never none), each the average of two ([`Image::half_with`]; a last
+    /// slice with none behind it counts twice).
+    pub fn half_volume(slices: &[Image]) -> Vec<Image> {
+        if slices.is_empty() {
+            return Vec::new();
+        }
+        (0..(slices.len() / 2).max(1)).map(|z| slices[(z * 2).min(slices.len() - 1)].half_with(&slices[(z * 2 + 1).min(slices.len() - 1)])).collect()
+    }
+
     /// The image upside down.
     pub fn flipped_y(&self) -> Image {
         let mut flipped = Image::new(self.width, self.height);
@@ -203,6 +239,42 @@ impl HdrImage {
         }
         half
     }
+
+    /// The image at half the size each way, each pixel the average of the two by two it covers
+    /// in this image and in `behind`, an image of the same size: two slices of a volume to one
+    /// of its next mip level. With itself behind it, [`HdrImage::half`].
+    ///
+    /// # Panics
+    ///
+    /// When the two are not of one size.
+    pub fn half_with(&self, behind: &HdrImage) -> HdrImage {
+        assert_eq!((self.width, self.height), (behind.width, behind.height), "two slices of one size");
+        let (width, height) = ((self.width / 2).max(1), (self.height / 2).max(1));
+        let mut half = HdrImage::new(width, height);
+        for y in 0..height {
+            for x in 0..width {
+                let (x0, y0) = ((x * 2).min(self.width - 1), (y * 2).min(self.height - 1));
+                let (x1, y1) = ((x * 2 + 1).min(self.width - 1), (y * 2 + 1).min(self.height - 1));
+                let mut pixel = [0u16; 3];
+                for (channel, value) in pixel.iter_mut().enumerate() {
+                    let sum_of = |slice: &HdrImage| half_to_float(slice.pixel(x0, y0)[channel]) + half_to_float(slice.pixel(x1, y0)[channel]) + half_to_float(slice.pixel(x0, y1)[channel]) + half_to_float(slice.pixel(x1, y1)[channel]);
+                    *value = float_to_half((sum_of(self) + sum_of(behind)) * 0.125);
+                }
+                half.pixels[(x + y * width) as usize] = pixel;
+            }
+        }
+        half
+    }
+
+    /// The next mip level of a volume, given as its slices from the front: half as many slices
+    /// (rounded down, but never none), each the average of two ([`HdrImage::half_with`]; a
+    /// last slice with none behind it counts twice).
+    pub fn half_volume(slices: &[HdrImage]) -> Vec<HdrImage> {
+        if slices.is_empty() {
+            return Vec::new();
+        }
+        (0..(slices.len() / 2).max(1)).map(|z| slices[(z * 2).min(slices.len() - 1)].half_with(&slices[(z * 2 + 1).min(slices.len() - 1)])).collect()
+    }
 }
 
 #[cfg(test)]
@@ -254,6 +326,32 @@ mod tests {
         assert_eq!(block[3], image.pixels[1]);
         assert_eq!(block[15], image.pixels[3]);
         assert!(HdrImage::from_rgb_f32(2, 2, &[0.0; 11]).is_none());
+    }
+
+    #[test]
+    fn a_volume_halves_its_slices_too() {
+        let slice = |value: u8| Image::from_pixels(2, 2, vec![[value, 0, 0, 255]; 4]).unwrap();
+        // Five slices to two: the first two and the next two; the fifth is left out, as an odd
+        // column is.
+        let level = Image::half_volume(&[slice(10), slice(20), slice(30), slice(41), slice(200)]);
+        assert_eq!(level.len(), 2);
+        assert_eq!((level[0].width, level[0].height), (1, 1));
+        assert_eq!((level[0].pixels[0][0], level[1].pixels[0][0]), (15, 36));
+        // One slice halves as an image by itself does.
+        let mut lone = Image::new(5, 3);
+        for (i, pixel) in lone.pixels.iter_mut().enumerate() {
+            *pixel = [(i * 17) as u8, (i * 5) as u8, 3, 255];
+        }
+        assert_eq!(Image::half_volume(std::slice::from_ref(&lone)), [lone.half()]);
+        assert!(Image::half_volume(&[]).is_empty());
+
+        let hdr = |value: f32| HdrImage::from_rgb_f32(2, 2, &[value; 12]).unwrap();
+        let level = HdrImage::half_volume(&[hdr(1.0), hdr(2.0), hdr(8.0)]);
+        assert_eq!(level.len(), 1);
+        assert_eq!(half_to_float(level[0].pixels[0][1]), 1.5);
+        let lone = HdrImage::from_rgb_f32(2, 2, &[0.1, 0.2, 0.3, 1.5, 2.5, 3.5, 7.0, 9.0, 11.0, 0.7, 0.9, 1.1]).unwrap();
+        assert_eq!(HdrImage::half_volume(std::slice::from_ref(&lone)), [lone.half()]);
+        assert!(HdrImage::half_volume(&[]).is_empty());
     }
 
     #[test]
