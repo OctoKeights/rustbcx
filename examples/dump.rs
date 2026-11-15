@@ -60,6 +60,11 @@
 //!                                   damaged, asked their size and read at 8 and 16 bits a
 //!                                   channel; and made-up data through its zlib decoder
 //!
+//! And of the comparison with zstd's reference decoder, as `compare/dump_zstd.c` does:
+//!
+//!   dump zstd_decode <seed> <count> <file>         the frames that program wrote to the file,
+//!   dump zstd_decode_small <seed> <count> <file>   each asked its size and decoded
+//!
 //! And of the comparison with bc7e.ispc, as `compare/dump_bc7e.cpp` does with the ISPC encoder:
 //!
 //!   dump bc7e_presets <seed> <blocks> [file]    made-up blocks packed with each of the seven
@@ -549,6 +554,13 @@ fn main() {
         "miniz" => print!("{}", made_up::miniz(seed, blocks)),
         "stb_image_write" => print!("{}", made_up::stb_image_write(seed, blocks)),
         "stb_image" => print!("{}", made_up::stb_image(seed, blocks)),
+        "zstd_decode" | "zstd_decode_small" => {
+            let Some(file) = args.get(4).and_then(|path| std::fs::read(path).ok()) else {
+                eprintln!("usage: dump {what} <seed> <count> <file of frames from compare/dump_zstd.c>");
+                std::process::exit(2);
+            };
+            print!("{}", made_up::zstd_decode(what, blocks, &file));
+        }
         "bc6h_unpack" => print!("{}", made_up::bc6h_unpack(seed, blocks)),
         "bc6h_pack" => print!("{}", made_up::bc6h_pack(seed, blocks)),
         "bc7e_presets" => dump_bc7e(true, seed, blocks, args.get(4)),

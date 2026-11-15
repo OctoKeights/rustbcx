@@ -77,5 +77,13 @@ prints the same. To make it again:
     ref="${TMPDIR:-/tmp}/rustbcx-compare/dump-stb-image"
     { "$ref" stb_image 4 600; "$ref" stb_image 10 600; } > tests/data/stb_image_expected.txt
 
+`zstd_frames.bin` holds Zstandard frames that the zstd library made of made-up data, as
+`compare/dump_zstd.c` wrote them, and `zstd_decode_expected.txt` what zstd's reference decoder
+makes of each, as the same program prints it; `tests/zstd_golden.rs` checks that the port
+prints the same from the same frames. To make them again:
+
+    ZSTD=<checkout of zstd> compare/compare.sh <checkout of bc7enc_rdo> 3000 1 "zstd_decode"
+    "${TMPDIR:-/tmp}/rustbcx-compare/dump-zstd" zstd_decode_small 6 120 tests/data/zstd_frames.bin > tests/data/zstd_decode_expected.txt
+
 No texture or picture from anywhere is in this repository: every block the tests and the
 comparison pack, and every file they read, is made up from a seed.

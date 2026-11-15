@@ -1734,3 +1734,58 @@ pub fn stb_image(seed: u64, count: u32) -> String {
         kinds[1], kinds[2], kinds[3], kinds[0]
     )
 }
+
+/// The `zstd_decode` dumps: the frames `compare/dump_zstd.c` made with the zstd library and
+/// wrote to a file (for each: the room to decode into, a dictionary or none, and the frame),
+/// each asked its size and decoded, as that program does with the reference decoder.
+pub fn zstd_decode(name: &str, count: u32, file: &[u8]) -> String {
+    use rustbcx::zstd::{decompress_with_dict, get_decompressed_size, Dictionary};
+    let mut hash = Hash::new();
+    let (mut decoded, mut refused) = (0u32, 0u32);
+    let mut frame_total = 0u64;
+    let mut out = String::new();
+    let mut at = 0;
+    let number = |at: &mut usize| {
+        let value = u32::from_le_bytes(file[*at..*at + 4].try_into().unwrap()) as usize;
+        *at += 4;
+        value
+    };
+    for i in 0..count {
+        let dst_len = number(&mut at);
+        let dict_size = number(&mut at);
+        let dict = &file[at..at + dict_size];
+        at += dict_size;
+        let frame_size = number(&mut at);
+        let frame = &file[at..at + frame_size];
+        at += frame_size;
+        frame_total += frame_size as u64;
+
+        match get_decompressed_size(frame) {
+            Ok(size) => hash.add(&(size.map_or(-2i64, |size| size as i64)).to_le_bytes()),
+            Err(error) => {
+                hash.add(&(-1i64).to_le_bytes());
+                hash.add(error.0.as_bytes());
+                hash.add(&[0]);
+            }
+        }
+        let parsed = if dict_size != 0 { Dictionary::parse(dict) } else { Ok(Dictionary::default()) };
+        match parsed.and_then(|parsed| decompress_with_dict(frame, dst_len, &parsed)) {
+            Ok(bytes) => {
+                hash.add(&(bytes.len() as u32).to_le_bytes());
+                hash.add(&bytes);
+                decoded += 1;
+            }
+            Err(error) => {
+                hash.add(&0xffffffffu32.to_le_bytes());
+                hash.add(error.0.as_bytes());
+                hash.add(&[0]);
+                refused += 1;
+            }
+        }
+
+        if (i + 1) % 200 == 0 || i + 1 == count {
+            out += &format!("{name} {} {:016x}\n", i + 1, hash.value);
+        }
+    }
+    out + &format!("{name} bytes of frames: {frame_total}; decoded: {decoded}, refused: {refused}\n")
+}

@@ -31,6 +31,10 @@
   `stb_image_write` is stb_image_write.h's three writers, `write_png`, `write_bmp` and
   `write_jpg`, each giving the bytes of the file, the same as the original writes;
   `zlib_compress` is the small zlib compressor its PNG writer uses.
+- **`.ktx2` files with Zstandard supercompression are read.** `zstd::decompress` is the port
+  of the reference decoder that comes with zstd (its `doc/educational_decoder`), with
+  `decompress_with_dict` and `Dictionary::parse` for frames made with a dictionary.
+  `read_ktx2` uses it for files whose levels are compressed with Zstandard.
 - Fixed: a `.ktx2` file of an sRGB texture in BC3 did not mark its alpha as linear in its data
   format descriptor, as the Khronos tools do and their validator requires.
 - Changed: `Texture` has three more fields, so one written out by hand needs them;

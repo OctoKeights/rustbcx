@@ -99,6 +99,19 @@ Version 2.0 (see LICENSE).
    refusals as stb_image.h built with STBI_NO_SIMD, with memory that starts as zeros and
    with integer overflow that wraps.
 
+8. Zstandard, by Meta Platforms, Inc. and affiliates (https://github.com/facebook/zstd): the
+   reference decoder of its doc/educational_decoder/zstd_decompress.c
+   (src/zstd/zstd_decompress.rs).
+
+    Copyright (c) Meta Platforms, Inc. and affiliates. All rights reserved.
+
+   Offered by its authors under a BSD licence or the GNU General Public License, version 2,
+   whichever the user prefers; it is taken here under the BSD licence, which is kept in
+   LICENSE-zstd.txt. The file is changed here in that it is translated from C to Rust: where
+   the original stops the program with a message, the port gives the message back, and its
+   output grows as it is written. What it computes is kept: the same bytes from every frame,
+   and the same message for a frame it refuses.
+
 What is around the ports is the crate's own: mip levels, the HDR image and the reading and
 writing of picture files by the ports of stb (in src/image.rs),
 float_to_half (in src/bc6h.rs), src/bc2.rs (BC2, its colours packed and unpacked by the

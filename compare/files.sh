@@ -14,6 +14,8 @@
 # - Every .ktx and .ktx2 file is read by the Khronos library (compare/files_ktx.c, built
 #   against libktx), which has to find the same; from a supercompressed file, after
 #   decompressing it with its own zlib.
+# - Every .ktx2 file is compressed again by the Khronos tool (`ktx deflate --zstd`, at levels
+#   from 1 to 19), and what it writes is read by the crate, which has to find the same.
 # - Every .dds file is read by tinyddsloader (compare/files_dds.cpp), which has to find the
 #   same.
 #
@@ -87,6 +89,18 @@ else
     # shellcheck disable=SC2086
     "$tmp/files-ktx" "$tmp/out" zlib.ktx2 $names > "$tmp/zlib-ktx2.txt" 2>&1
     same ".ktx2 with ZLIB supercompression by the Khronos library" "$tmp/zlib-ktx2.txt"
+    if [ -x "$lib/ktx" ]; then
+        level=0
+        for name in $names; do
+            level=$((level % 19 + 1))
+            "$lib/ktx" deflate --zstd "$level" "$tmp/out/$name.ktx2" "$tmp/out/$name.khronos-zstd.ktx2" > /dev/null 2>&1
+        done
+        "$rust" "$tmp/out" khronos-zstd.ktx2 > "$tmp/khronos-zstd.txt" 2>&1
+        same ".ktx2 with Zstandard supercompression from the Khronos tool, by the crate" "$tmp/khronos-zstd.txt"
+    else
+        echo ".ktx2 with Zstandard supercompression from the Khronos tool: NOT COMPARED, no ktx tool in $lib"
+        bad=$((bad + 1))
+    fi
 fi
 
 if [ -z "${TINYDDS:-}" ] || [ ! -f "$TINYDDS/tinyddsloader.h" ]; then

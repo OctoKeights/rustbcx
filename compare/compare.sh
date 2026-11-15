@@ -58,9 +58,18 @@
 # $MINIZ too, to compress the files it makes up. Dump: stb_image, with a tenth of [blocks] as
 # the number of made-up files, each asked its size and read once or twice.
 #
+# Zstandard (src/zstd) is compared with zstd (https://github.com/facebook/zstd), whose checkout
+# goes in $ZSTD. Its library is built from that (without assembly and without threads), and
+# compare/dump_zstd.c against it, to make frames of every kind; the decoder is compared with
+# the reference decoder in its doc/educational_decoder, which compare/dump_zstd_edu.c wraps
+# so that a damaged frame gives its message back in place of stopping the program. Dump:
+# zstd_decode, with a tenth of [blocks] as the number of frames. The C side writes its frames
+# to a file, which the Rust side reads.
+#
 # Without the ISPC compiler the bc7e dumps and bc6h_pack are left out, without $BCDEC bc2 and
 # the BC6H dumps, without $ISPCTC bc6h_pack, without $BC6HENC bc6h_enc, without $MINIZ miniz
-# and stb_image, and without $STB stb_image_write and stb_image; the script says so and fails.
+# and stb_image, without $STB stb_image_write and stb_image, and without $ZSTD zstd_decode;
+# the script says so and fails.
 set -u
 if [ $# -lt 1 ]; then
     echo "usage: $0 <folder with bc7enc_rdo's sources> [blocks] [seeds] [dumps]" >&2
@@ -70,7 +79,7 @@ here=$(cd "$(dirname "$0")/.." && pwd)
 source=$1
 blocks=${2:-200000}
 seeds=${3:-3}
-dumps=${4:-bc7decomp unpack bc1 bc345 bc7enc bc7block ert rdo bc7e_presets bc7e_settings rdo_bc7e bc2 bc6h_unpack bc6h_pack bc6h_enc miniz stb_image_write stb_image}
+dumps=${4:-bc7decomp unpack bc1 bc345 bc7enc bc7block ert rdo bc7e_presets bc7e_settings rdo_bc7e bc2 bc6h_unpack bc6h_pack bc6h_enc miniz stb_image_write stb_image zstd_decode}
 tmp=${TMPDIR:-/tmp}/rustbcx-compare
 mkdir -p "$tmp" || exit 2
 
@@ -85,6 +94,7 @@ built_bc6h_enc=0
 built_miniz=0
 built_stbiw=0
 built_stbi=0
+built_zstd=0
 built_bc6h_pack=0
 bad=0
 # (ert.h uses the fixed-width integer types without including their header; no contraction of
@@ -92,7 +102,25 @@ bad=0
 cpp_flags="-O2 -ffp-contract=off -include stdint.h"
 cpp_sources="$source/bc7decomp.cpp $source/bc7decomp_ref.cpp $source/bc7enc.cpp $source/rgbcx.cpp $source/ert.cpp $source/rdo_bc_encoder.cpp $source/utils.cpp $source/lodepng.cpp"
 for what in $dumps; do
+    extra=
     case $what in
+    zstd_decode)
+        if [ "$built_zstd" -eq 0 ]; then
+            if [ -z "${ZSTD:-}" ] || [ ! -f "$ZSTD/doc/educational_decoder/zstd_decompress.c" ]; then
+                echo "$what: NOT COMPARED, no zstd (put its checkout in \$ZSTD)"
+                bad=$((bad + 1))
+                continue
+            fi
+            mkdir -p "$tmp/zstd-obj" || exit 2
+            (cd "$tmp/zstd-obj" && ${CC:-cc} -O2 -c -DZSTD_DISABLE_ASM -I "$ZSTD/lib" -I "$ZSTD/lib/common" "$ZSTD"/lib/common/*.c "$ZSTD"/lib/compress/*.c "$ZSTD"/lib/decompress/*.c "$ZSTD"/lib/dictBuilder/*.c) || exit 2
+            ${CC:-cc} -O2 -c -I "$ZSTD/doc/educational_decoder" "$here/compare/dump_zstd_edu.c" -o "$tmp/dump_zstd_edu.o" || exit 2
+            ${CC:-cc} -O2 -I "$ZSTD/lib" -I "$ZSTD/lib/dictBuilder" "$here/compare/dump_zstd.c" "$tmp/dump_zstd_edu.o" "$tmp"/zstd-obj/*.o -o "$tmp/dump-zstd" || exit 2
+            built_zstd=1
+        fi
+        reference=$tmp/dump-zstd
+        count=$((blocks / 10))
+        extra=$tmp/zstd-frames.bin
+        ;;
     bc7e_* | rdo_bc7e)
         if [ "$built_ispc" -eq 0 ]; then
             if ! command -v "${ISPC:-ispc}" > /dev/null 2>&1; then
@@ -234,8 +262,10 @@ for what in $dumps; do
     esac
     seed=1
     while [ "$seed" -le "$seeds" ]; do
-        "$reference" "$what" "$seed" "$count" > "$tmp/reference.txt" 2> /dev/null
-        "$rust" "$what" "$seed" "$count" > "$tmp/rust.txt"
+        # shellcheck disable=SC2086
+        "$reference" "$what" "$seed" "$count" $extra > "$tmp/reference.txt" 2> /dev/null
+        # shellcheck disable=SC2086
+        "$rust" "$what" "$seed" "$count" $extra > "$tmp/rust.txt"
         if cmp -s "$tmp/reference.txt" "$tmp/rust.txt"; then
             echo "$what, seed $seed: the same ($(tail -1 "$tmp/rust.txt"))"
         else

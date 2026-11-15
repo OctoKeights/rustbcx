@@ -3,10 +3,11 @@
 //!
 //! A `.ktx2` file can hold its levels as they are or compressed again, which the format calls
 //! supercompression: [`Supercompression`] says how, and [`write_ktx2_with`] takes one.
-//! [`read_ktx2`] reads either. Its data format descriptor is the one the Khronos tools write
-//! for each format.
+//! [`read_ktx2`] reads either, and files whose levels are compressed with Zstandard as well.
+//! Its data format descriptor is the one the Khronos tools write for each format.
 
 use crate::miniz;
+use crate::zstd;
 use crate::texture::{texture_from_header, Reader, Texture, TextureError, TextureFormat};
 
 /// How the levels of a `.ktx2` file are compressed again, each by itself.
@@ -299,9 +300,9 @@ pub fn write_ktx2_with(texture: &Texture, supercompression: Supercompression) ->
 
 /// Reads a `.ktx2` file (KTX version 2): a 2D texture in BC1, BC2, BC3, BC4, BC5, BC6H or BC7,
 /// with its mip levels; a cube map, a texture array, an array of cube maps or a volume texture
-/// as well as a plain one, its levels as they are or supercompressed with zlib. Other formats
-/// and the other supercompressions (Zstandard, and BasisLZ, which is only for Basis's own
-/// formats) are refused as unsupported.
+/// as well as a plain one, its levels as they are or supercompressed with zlib or with
+/// Zstandard. Other formats and the supercompression that is left (BasisLZ, which is only for
+/// Basis's own formats) are refused as unsupported.
 pub fn read_ktx2(file: &[u8]) -> Result<Texture, TextureError> {
     if file.len() < 12 || file[..12] != KTX2_IDENTIFIER {
         return Err(TextureError::Invalid("no KTX 2 identifier"));
@@ -331,9 +332,8 @@ pub fn read_ktx2(file: &[u8]) -> Result<Texture, TextureError> {
         return Err(TextureError::Invalid("faces that are neither one nor six"));
     }
     match supercompression {
-        0 | 3 => {}
+        0 | 2 | 3 => {}
         1 => return Err(TextureError::Unsupported("BasisLZ supercompression, which is not for block formats")),
-        2 => return Err(TextureError::Unsupported("Zstandard supercompression")),
         _ => return Err(TextureError::Unsupported("a supercompression that is not known")),
     }
     let mut texture = texture_from_header(format, srgb, width, height, depth, layers, faces == 6, level_count)?;
@@ -350,6 +350,7 @@ pub fn read_ktx2(file: &[u8]) -> Result<Texture, TextureError> {
         let bytes = usize::try_from(offset).ok().zip(usize::try_from(length).ok()).and_then(|(offset, length)| file.get(offset..offset.checked_add(length)?)).ok_or(TextureError::Invalid("the file is cut short"))?;
         texture.levels[level] = match supercompression {
             0 => bytes.to_vec(),
+            2 => zstd::decompress(bytes, size).ok().filter(|blocks| blocks.len() == size).ok_or(TextureError::Invalid("a level's compressed bytes are damaged"))?,
             _ => miniz::uncompress(bytes, size).filter(|blocks| blocks.len() == size).ok_or(TextureError::Invalid("a level's compressed bytes are damaged"))?,
         };
     }
@@ -547,8 +548,9 @@ mod tests {
         big_endian[12..16].copy_from_slice(&[4, 3, 2, 1]);
         assert_eq!(read_ktx1(&big_endian), Err(TextureError::Unsupported("a big-endian file")));
         let mut compressed = ktx2.clone();
+        // Said to be compressed with Zstandard, which the blocks are not.
         compressed[44] = 2;
-        assert_eq!(read_ktx2(&compressed), Err(TextureError::Unsupported("Zstandard supercompression")));
+        assert_eq!(read_ktx2(&compressed), Err(TextureError::Invalid("a level's compressed bytes are damaged")));
         compressed[44] = 1;
         assert!(matches!(read_ktx2(&compressed), Err(TextureError::Unsupported(_))));
         let mut wrong_size = ktx2;
