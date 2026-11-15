@@ -68,6 +68,19 @@ Version 2.0 (see LICENSE).
    What it computes is kept: the same blocks as the original built with
    BC6H_SSE_INTRINSICS.
 
+6. miniz, by Rich Geldreich and others (https://github.com/richgel999/miniz): its
+   compressor (miniz_tdef.c), its decompressor (miniz_tinfl.c) and the two checksums of
+   miniz.c (src/miniz).
+
+    Copyright 2013-2014 RAD Game Tools and Valve Software
+    Copyright 2010-2014 Rich Geldreich and Tenacious Software LLC
+
+   Under the MIT licence; that notice is kept in LICENSE-miniz.txt. The files are changed
+   here in that they are translated from C to Rust: the compressor writes through its own
+   buffer only, and the decompressor is the original's one function as it runs when given
+   all its input and all its room at once. What they compute is kept: the same compressed
+   bytes as the original as it builds by default, and the same streams taken and refused.
+
 What is around the ports is the crate's own: mip levels and the HDR image (in src/image.rs),
 float_to_half (in src/bc6h.rs), src/bc2.rs (BC2, its colours packed and unpacked by the
 port of rgbcx), BC2 in src/rdo_bc_encoder.rs, src/texture.rs,

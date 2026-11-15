@@ -9,9 +9,11 @@
 # all of them, as .dds, .ktx and .ktx2, and prints for each what a reader should find: its size,
 # layers, faces and levels, and a hash of every image of every level. Then:
 #
-# - Every .ktx2 file goes through the Khronos validator (`ktx validate`, warnings as errors).
+# - Every .ktx2 file goes through the Khronos validator (`ktx validate`, warnings as errors),
+#   those with ZLIB supercompression (.zlib.ktx2) among them.
 # - Every .ktx and .ktx2 file is read by the Khronos library (compare/files_ktx.c, built
-#   against libktx), which has to find the same.
+#   against libktx), which has to find the same; from a supercompressed file, after
+#   decompressing it with its own zlib.
 # - Every .dds file is read by tinyddsloader (compare/files_dds.cpp), which has to find the
 #   same.
 #
@@ -66,7 +68,7 @@ else
             fi
         done
         if [ "$invalid" -eq 0 ]; then
-            echo ".ktx2 by the Khronos validator: all valid"
+            echo ".ktx2 by the Khronos validator: all $(ls "$tmp/out"/*.ktx2 | wc -l | tr -d ' ') valid"
         else
             echo ".ktx2 by the Khronos validator: $invalid NOT VALID"
             bad=$((bad + 1))
@@ -82,6 +84,9 @@ else
     # shellcheck disable=SC2086
     "$tmp/files-ktx" "$tmp/out" ktx2 $names > "$tmp/ktx2.txt" 2>&1
     same ".ktx2 by the Khronos library" "$tmp/ktx2.txt"
+    # shellcheck disable=SC2086
+    "$tmp/files-ktx" "$tmp/out" zlib.ktx2 $names > "$tmp/zlib-ktx2.txt" 2>&1
+    same ".ktx2 with ZLIB supercompression by the Khronos library" "$tmp/zlib-ktx2.txt"
 fi
 
 if [ -z "${TINYDDS:-}" ] || [ ! -f "$TINYDDS/tinyddsloader.h" ]; then

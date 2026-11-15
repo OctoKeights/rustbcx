@@ -41,9 +41,15 @@
 # since 2013 have). Dump: bc6h_enc, with a fortieth of [blocks], since it is a slow encoder and
 # packs every block twice.
 #
+# zlib and deflate (src/miniz) are compared with miniz (https://github.com/richgel999/miniz),
+# whose checkout goes in $MINIZ; compare/dump_miniz.c is built against its compressor and its
+# decompressor as they build by default. Dump: miniz, with a hundredth of [blocks] as the
+# number of made-up files, each some tens of thousands of bytes, compressed three ways and
+# decompressed seven.
+#
 # Without the ISPC compiler the bc7e dumps and bc6h_pack are left out, without $BCDEC bc2 and
-# the BC6H dumps, without $ISPCTC bc6h_pack, and without $BC6HENC bc6h_enc; the script says so
-# and fails.
+# the BC6H dumps, without $ISPCTC bc6h_pack, without $BC6HENC bc6h_enc, and without $MINIZ
+# miniz; the script says so and fails.
 set -u
 if [ $# -lt 1 ]; then
     echo "usage: $0 <folder with bc7enc_rdo's sources> [blocks] [seeds] [dumps]" >&2
@@ -53,7 +59,7 @@ here=$(cd "$(dirname "$0")/.." && pwd)
 source=$1
 blocks=${2:-200000}
 seeds=${3:-3}
-dumps=${4:-bc7decomp unpack bc1 bc345 bc7enc bc7block ert rdo bc7e_presets bc7e_settings rdo_bc7e bc2 bc6h_unpack bc6h_pack bc6h_enc}
+dumps=${4:-bc7decomp unpack bc1 bc345 bc7enc bc7block ert rdo bc7e_presets bc7e_settings rdo_bc7e bc2 bc6h_unpack bc6h_pack bc6h_enc miniz}
 tmp=${TMPDIR:-/tmp}/rustbcx-compare
 mkdir -p "$tmp" || exit 2
 
@@ -65,6 +71,7 @@ built_ispc=0
 built_bc2=0
 built_bc6h=0
 built_bc6h_enc=0
+built_miniz=0
 built_bc6h_pack=0
 bad=0
 # (ert.h uses the fixed-width integer types without including their header; no contraction of
@@ -89,6 +96,21 @@ for what in $dumps; do
         reference=$tmp/dump-ispc
         [ "$what" = rdo_bc7e ] && reference=$tmp/dump-cpp-bc7e
         count=$((blocks / 10))
+        ;;
+    miniz)
+        if [ "$built_miniz" -eq 0 ]; then
+            if [ -z "${MINIZ:-}" ] || [ ! -f "$MINIZ/miniz_tdef.c" ]; then
+                echo "$what: NOT COMPARED, no miniz (put its checkout in \$MINIZ)"
+                bad=$((bad + 1))
+                continue
+            fi
+            # (The header its build would make, and no .zip code, which is not ported.)
+            mkdir -p "$tmp/miniz" && echo "#define MINIZ_EXPORT" > "$tmp/miniz/miniz_export.h" || exit 2
+            ${CC:-cc} -O2 -DMINIZ_NO_ARCHIVE_APIS -I "$tmp/miniz" -I "$MINIZ" "$here/compare/dump_miniz.c" "$MINIZ/miniz.c" "$MINIZ/miniz_tdef.c" "$MINIZ/miniz_tinfl.c" -o "$tmp/dump-miniz" || exit 2
+            built_miniz=1
+        fi
+        reference=$tmp/dump-miniz
+        count=$((blocks / 100))
         ;;
     bc6h_enc)
         if [ "$built_bc6h_enc" -eq 0 ]; then

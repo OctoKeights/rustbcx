@@ -227,6 +227,14 @@ impl Texture {
         std::fs::write(path, file)
     }
 
+    /// Writes the texture to disk as a `.ktx2` file with its levels supercompressed as asked,
+    /// whatever the name ends in. A texture that is not whole is an error of the kind
+    /// `InvalidInput`.
+    pub fn save_ktx2(&self, path: impl AsRef<Path>, supercompression: ktx::Supercompression) -> std::io::Result<()> {
+        let file = ktx::write_ktx2_with(self, supercompression).ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, "the texture's levels are not the sizes its format and size need"))?;
+        std::fs::write(path, file)
+    }
+
     /// Unpacks a level of a BC6H texture, of either kind, to an HDR image of its size: the
     /// first image of the level, for a texture with several ([`Texture::unpack_image_hdr`]
     /// for the others). None for the other formats and for a level that is not there or not

@@ -1,6 +1,7 @@
 //! The crate's half of the check of its files against other readers (`compare/files.sh`):
-//! writes textures of every format and shape as `.dds`, `.ktx` and `.ktx2` into a folder, reads
-//! each back, and prints what a reader should find in each: its size, layers, faces and levels,
+//! writes textures of every format and shape as `.dds`, `.ktx` and `.ktx2` into a folder (and
+//! as `.zlib.ktx2`, a `.ktx2` file with ZLIB supercompression), reads each back, and prints
+//! what a reader should find in each: its size, layers, faces and levels,
 //! and a hash of every image of every level.
 //!
 //!   files <folder>
@@ -8,6 +9,7 @@
 //! The blocks are made up from a seed; BC6H and BC7 blocks are given a mode, so that a
 //! validator that looks into them finds nothing wrong.
 
+use rustbcx::ktx::Supercompression;
 use rustbcx::texture::{Texture, TextureFormat};
 
 fn fnv(data: &[u8]) -> u64 {
@@ -42,6 +44,17 @@ fn main() {
                             state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
                             *b = (state >> 40) as u8;
                         }
+                        // Textures with all their levels are made of a few blocks over and over,
+                        // so that the supercompressed files have something to compress.
+                        if levels == 0 {
+                            let size = format.bytes_per_block();
+                            for i in 8 * size..bytes.len() {
+                                if i % size == 0 {
+                                    state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                                }
+                                bytes[i] = bytes[((state >> 40) % 8) as usize * size + i % size];
+                            }
+                        }
                         // BC7 and BC6H blocks have to be of a mode: mode 6 for BC7 and mode 11 for
                         // BC6H.
                         if format == TextureFormat::Bc7 {
@@ -67,6 +80,9 @@ fn main() {
                         }
                         assert_eq!(back, t, "{name}");
                     }
+                    let name = format!("{fname}-{sname}-{count}{}.zlib.ktx2", if srgb { "-srgb" } else { "" });
+                    t.save_ktx2(format!("{out}/{name}"), Supercompression::Zlib(1 + (state >> 50) as i32 % 9)).unwrap();
+                    assert_eq!(Texture::load(format!("{out}/{name}")).unwrap(), t, "{name}");
                     // What a reader should find.
                     let name = format!("{fname}-{sname}-{count}{}", if srgb { "-srgb" } else { "" });
                     println!("{name} {}x{}x{} layers {} cube {} mips {}", width, height, depth.max(1), layers.max(1), u8::from(cube), count);

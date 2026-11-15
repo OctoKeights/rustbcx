@@ -40,6 +40,14 @@
 //!                                      unsigned BC6H by the port of bc6h_enc, as
 //!                                      `compare/dump_bc6h_enc.cpp` does with the original
 //!
+//! And of the comparison with miniz, as `compare/dump_miniz.c` does:
+//!
+//!   dump miniz <seed> <count>   made-up data compressed with flags from every level and
+//!                               strategy and with made-up flags, in one go and in pieces;
+//!                               each stream decompressed whole, into too little room,
+//!                               damaged, cut short and with bytes after it; and made-up
+//!                               bytes decompressed
+//!
 //! And of the comparison with bc7e.ispc, as `compare/dump_bc7e.cpp` does with the ISPC encoder:
 //!
 //!   dump bc7e_presets <seed> <blocks> [file]    made-up blocks packed with each of the seven
@@ -526,6 +534,7 @@ fn main() {
         "rdo_bc7e" => print!("{}", made_up::rdo(seed, blocks, true)),
         "bc2" => print!("{}", made_up::bc2(seed, blocks)),
         "bc6h_enc" => print!("{}", made_up::bc6h_enc(seed, blocks)),
+        "miniz" => print!("{}", made_up::miniz(seed, blocks)),
         "bc6h_unpack" => print!("{}", made_up::bc6h_unpack(seed, blocks)),
         "bc6h_pack" => print!("{}", made_up::bc6h_pack(seed, blocks)),
         "bc7e_presets" => dump_bc7e(true, seed, blocks, args.get(4)),

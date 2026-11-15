@@ -66,6 +66,7 @@ The ports, each checked byte for byte against its original:
 | `bc6h` (unpacking) | [bcdec](https://github.com/iOrange/bcdec)'s `bcdec.h` | BC6H blocks, signed and unsigned, to half floats or floats |
 | `bc6h` (packing) | Intel's [ISPC Texture Compressor](https://github.com/GameTechDev/ISPCTextureCompressor), `kernel.ispc` | HDR pixels to unsigned BC6H, five profiles |
 | `bc6h_enc` | [bc6h_enc](https://github.com/0xc0de/bc6h_enc), which is DirectXTex's BC6H encoder as one file | HDR pixels to signed or unsigned BC6H, the thorough and slow way |
+| `miniz` | Rich Geldreich's [miniz](https://github.com/richgel999/miniz): its compressor, its decompressor and its checksums | zlib and deflate, both ways, for `.ktx2` files with ZLIB supercompression |
 
 And around them, the crate's own code, which has no original to match:
 
@@ -75,7 +76,7 @@ And around them, the crate's own code, which has no original to match:
 | `image` | `Image` (8-bit RGBA) and `HdrImage` (half-float RGB), and the next mip level of each |
 | `texture` | `Texture`: a format, a size and the blocks of every mip level, for one image or for a texture array, a cube map or a volume texture. `compress` and `compress_hdr` make one from an image, `compress_many` and `compress_hdr_many` from several; `load` and `save` read and write files |
 | `dds` | `.dds` files, both ways, with either header. For one level its writer gives the bytes bc7enc_rdo's `save_dds` writes |
-| `ktx` | `.ktx` (KTX 1) and `.ktx2` (KTX 2) files, both ways |
+| `ktx` | `.ktx` (KTX 1) and `.ktx2` (KTX 2) files, both ways; `.ktx2` with its levels as they are or supercompressed with zlib |
 
 ## Examples
 
@@ -286,7 +287,8 @@ through this crate, and confirms that the results match byte for byte:
 
 ```text
 ISPC=<the ispc compiler> BCDEC=<checkout of bcdec> ISPCTC=<checkout of ISPCTextureCompressor> \
-    BC6HENC=<checkout of bc6h_enc> compare/compare.sh <checkout of bc7enc_rdo> [blocks] [seeds] [dumps]
+    BC6HENC=<checkout of bc6h_enc> MINIZ=<checkout of miniz> \
+    compare/compare.sh <checkout of bc7enc_rdo> [blocks] [seeds] [dumps]
 ```
 
 It needs a C++ compiler; the [ISPC compiler](https://github.com/ispc/ispc/releases) for the two
@@ -308,6 +310,7 @@ and fails.
 | `bc6h_unpack` | bcdec | BC6H blocks of every mode, and of none, unpacked as signed and unsigned |
 | `bc6h_pack` | Intel's `kernel.ispc`, strict build | HDR pixels packed with each of the five profiles |
 | `bc6h_enc` | bc6h_enc, built with `BC6H_SSE_INTRINSICS` | HDR pixels of both signs packed as signed and as unsigned BC6H |
+| `miniz` | miniz | Made-up files compressed at every level, with every strategy and with made-up flags, in one go and in pieces with flushes between; each stream decompressed whole, into too little room, damaged, cut short and with bytes after it |
 
 The two ISPC originals pack several blocks at once in the lanes of a vector register; the ports
 pack them one after another with the same arithmetic in the same order. Built for SSE2 without
@@ -330,15 +333,16 @@ These comparisons were run on Linux (x86-64), the C++ built with gcc and the ISP
 | `bc6h_unpack` | 1.5 million blocks, each as signed and as unsigned |
 | `bc6h_pack` | 240,000 blocks through each of the five profiles |
 | `bc6h_enc` | 60,000 blocks, each as signed and as unsigned; the C++ built by gcc and by clang |
+| `miniz` | 30,000 files, 800 megabytes in all, each compressed two or three ways and decompressed seven |
 
-`cargo test` needs neither a C++ compiler nor ISPC. Among its tests, seven pack and unpack
-made-up blocks and images and compare their hashes with ones recorded from the originals: the
-six in `tests/*_golden.rs` and one in `src/bc7enc.rs`.
+`cargo test` needs neither a C++ compiler nor ISPC. Among its tests, eight run made-up blocks,
+images and files through the ports and compare their hashes with ones recorded from the
+originals: the seven in `tests/*_golden.rs` and one in `src/bc7enc.rs`.
 
 The files have their own check. `compare/files.sh` writes textures of every format and shape
 (plain, texture array, cube map, array of cube maps, volume texture) as `.dds`, `.ktx` and
-`.ktx2`, then has other readers read them: the Khronos validator has to pass every `.ktx2`
-file, and the Khronos library ([KTX-Software](https://github.com/KhronosGroup/KTX-Software))
+`.ktx2`, the last also with ZLIB supercompression, then has other readers read them: the
+Khronos validator has to pass every `.ktx2` file, and the Khronos library ([KTX-Software](https://github.com/KhronosGroup/KTX-Software))
 and [tinyddsloader](https://github.com/benikabocha/tinyddsloader) have to find in each file the
 same sizes, layers, faces and levels, and the same bytes in every image:
 
@@ -380,9 +384,9 @@ machine and made-up pixels.
 - **No SIMD written by hand.** Stable Rust has no SIMD without `unsafe`, and the crate has no
   `unsafe`. Its speed comes from using every core and from loops the compiler can vectorise by
   itself. On one core, the ISPC originals built for AVX2 are faster.
-- **`.ktx2` files without supercompression.** They are written and read with their levels as
-  they are; the supercompression the format allows (zstd, zlib, Basis) would need a
-  compressor.
+- **`.ktx2` supercompression: zlib only, so far.** Zstandard is not written or read yet.
+  BasisLZ, the third scheme the format has, cannot hold these formats at all: it is the
+  packing of Basis Universal's own ETC1S format.
 - **Images come in as pixels.** The crate does not read `.png`, `.jpg` or `.exr` files: use an
   image crate for that and hand over the pixels.
 - **x86's float-to-int rules are built in.** Where an original turns a float that does not fit

@@ -16,6 +16,11 @@
   one file: `encode_bc6hs` packs signed blocks and `encode_bc6hu` unsigned ones, thoroughly
   and slowly. `texture::compress_hdr_signed` and `compress_hdr_many_signed` pack images with
   it, and `HdrImage::from_rgb_f32_signed` makes an image that keeps what is below zero.
+- **zlib, and `.ktx2` with ZLIB supercompression.** `miniz` is the port of miniz's compressor
+  and decompressor: `miniz::compress` and `uncompress` for zlib streams, and the compressor
+  and decompressor themselves under `miniz::tdef` and `miniz::tinfl`. `ktx::write_ktx2_with`
+  and `Texture::save_ktx2` write a `.ktx2` file with each level compressed
+  (`ktx::Supercompression::Zlib`), and `read_ktx2` reads one.
 - Fixed: a `.ktx2` file of an sRGB texture in BC3 did not mark its alpha as linear in its data
   format descriptor, as the Khronos tools do and their validator requires.
 - Changed: `Texture` has three more fields, so one written out by hand needs them;

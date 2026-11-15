@@ -54,5 +54,12 @@ the same. To make it again:
     BC6HENC=<folder holding bc6h_enc.h> compare/compare.sh <checkout of bc7enc_rdo> 3000 1 "bc6h_enc"
     "${TMPDIR:-/tmp}/rustbcx-compare/dump-bc6h-enc" bc6h_enc 9 240 > tests/data/bc6h_enc_expected.txt
 
+`miniz_expected.txt` is what miniz makes of made-up data, as `compare/dump_miniz.c` prints it;
+`tests/miniz_golden.rs` checks that the port prints the same. To make it again:
+
+    MINIZ=<checkout of miniz> compare/compare.sh <checkout of bc7enc_rdo> 3000 1 "miniz"
+    ref="${TMPDIR:-/tmp}/rustbcx-compare/dump-miniz"
+    { "$ref" miniz 3 120; "$ref" miniz 8 120; } > tests/data/miniz_expected.txt
+
 No texture from anywhere is in this repository: every block the tests and the comparison pack
 is made up from a seed.

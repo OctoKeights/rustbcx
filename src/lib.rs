@@ -21,6 +21,8 @@
 //! - [`bc6h_enc`]: BC6H again, pixels to blocks the thorough way, and to signed blocks as well
 //!   as unsigned (`bc6h_enc.h`, Alexander Samusev's [bc6h_enc](https://github.com/0xc0de/bc6h_enc),
 //!   which is the encoder of Microsoft's DirectXTex).
+//! - [`miniz`]: zlib and deflate, both ways (Rich Geldreich's
+//!   [miniz](https://github.com/richgel999/miniz)), for the files below.
 //!
 //! And around the ports, the crate's own: [`bc2`], the one block format of the family none of
 //! the originals has; [`texture`], an image packed with its mip levels, or several as a texture
@@ -47,6 +49,7 @@ pub mod ert;
 mod fmath;
 pub mod image;
 pub mod ktx;
+pub mod miniz;
 mod parallel;
 pub mod rdo_bc_encoder;
 pub mod rgbcx;
