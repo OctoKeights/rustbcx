@@ -34,8 +34,16 @@
 # rounds its colours another way than any of rgbcx's four, so the dump only checks that they
 # are near). Dump: bc2.
 #
+# The other BC6H packer, of signed blocks as well as unsigned, is compared with bc6h_enc
+# (https://github.com/0xc0de/bc6h_enc), DirectXTex's encoder as one file, whose folder goes in
+# $BC6HENC; compare/dump_bc6h_enc.cpp is built against it with BC6H_SSE_INTRINSICS, the build
+# that does what DirectXTex does (it needs an x86-64 processor with SSE4.1 and F16C, which all
+# since 2013 have). Dump: bc6h_enc, with a fortieth of [blocks], since it is a slow encoder and
+# packs every block twice.
+#
 # Without the ISPC compiler the bc7e dumps and bc6h_pack are left out, without $BCDEC bc2 and
-# the BC6H dumps, and without $ISPCTC bc6h_pack; the script says so and fails.
+# the BC6H dumps, without $ISPCTC bc6h_pack, and without $BC6HENC bc6h_enc; the script says so
+# and fails.
 set -u
 if [ $# -lt 1 ]; then
     echo "usage: $0 <folder with bc7enc_rdo's sources> [blocks] [seeds] [dumps]" >&2
@@ -45,7 +53,7 @@ here=$(cd "$(dirname "$0")/.." && pwd)
 source=$1
 blocks=${2:-200000}
 seeds=${3:-3}
-dumps=${4:-bc7decomp unpack bc1 bc345 bc7enc bc7block ert rdo bc7e_presets bc7e_settings rdo_bc7e bc2 bc6h_unpack bc6h_pack}
+dumps=${4:-bc7decomp unpack bc1 bc345 bc7enc bc7block ert rdo bc7e_presets bc7e_settings rdo_bc7e bc2 bc6h_unpack bc6h_pack bc6h_enc}
 tmp=${TMPDIR:-/tmp}/rustbcx-compare
 mkdir -p "$tmp" || exit 2
 
@@ -56,6 +64,7 @@ built_cpp=0
 built_ispc=0
 built_bc2=0
 built_bc6h=0
+built_bc6h_enc=0
 built_bc6h_pack=0
 bad=0
 # (ert.h uses the fixed-width integer types without including their header; no contraction of
@@ -80,6 +89,19 @@ for what in $dumps; do
         reference=$tmp/dump-ispc
         [ "$what" = rdo_bc7e ] && reference=$tmp/dump-cpp-bc7e
         count=$((blocks / 10))
+        ;;
+    bc6h_enc)
+        if [ "$built_bc6h_enc" -eq 0 ]; then
+            if [ -z "${BC6HENC:-}" ] || [ ! -f "$BC6HENC/bc6h_enc.h" ]; then
+                echo "$what: NOT COMPARED, no bc6h_enc (put the folder that holds bc6h_enc.h in \$BC6HENC)"
+                bad=$((bad + 1))
+                continue
+            fi
+            ${CXX:-c++} -O2 -ffp-contract=off -msse4.1 -mf16c -I "$BC6HENC" "$here/compare/dump_bc6h_enc.cpp" -o "$tmp/dump-bc6h-enc" || exit 2
+            built_bc6h_enc=1
+        fi
+        reference=$tmp/dump-bc6h-enc
+        count=$((blocks / 40))
         ;;
     bc6h_pack)
         if [ "$built_bc6h_pack" -eq 0 ]; then

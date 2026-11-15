@@ -8,6 +8,7 @@
 
 use crate::bc2;
 use crate::bc6h::{self, Bc6hEncSettings};
+use crate::bc6h_enc;
 use crate::bc7decomp;
 use crate::image::{HdrImage, Image};
 use crate::parallel;
@@ -401,27 +402,77 @@ pub fn compress_many(images: &[Image], layout: Layout, params: &RdoBcParams, mip
     Some(Texture { format: params.format.into(), srgb: false, width, height, depth, layers, cube, levels })
 }
 
-/// Packs an HDR image to unsigned BC6H blocks, in rows.
-fn pack_hdr_image(image: &HdrImage, settings: &Bc6hEncSettings, threads: u32) -> Vec<u8> {
+/// Which packer of BC6H, and so which kind of block.
+#[derive(Clone, Copy)]
+enum HdrPacker<'a> {
+    /// Unsigned, by the port of Intel's encoder.
+    Unsigned(&'a Bc6hEncSettings),
+    /// Signed, by the port of bc6h_enc.
+    Signed,
+}
+
+/// Packs an HDR image to BC6H blocks, in rows.
+fn pack_hdr_image(image: &HdrImage, packer: HdrPacker, threads: u32) -> Vec<u8> {
     let blocks_x = image.width.div_ceil(4) as usize;
     let mut blocks = vec![0u8; blocks_x * image.height.div_ceil(4) as usize * 16];
     let rows: Vec<(u32, &mut [u8])> = blocks.chunks_exact_mut(blocks_x * 16).enumerate().map(|(by, row)| (by as u32, row)).collect();
     parallel::for_each(rows, parallel::worker_count(threads), |(by, row)| {
         for (bx, block) in row.chunks_exact_mut(16).enumerate() {
-            bc6h::compress_block_bc6h(block.try_into().expect("16 bytes"), &image.get_block(bx as u32, by), settings);
+            let block: &mut [u8; 16] = block.try_into().expect("16 bytes");
+            let pixels = image.get_block(bx as u32, by);
+            match packer {
+                HdrPacker::Unsigned(settings) => bc6h::compress_block_bc6h(block, &pixels, settings),
+                HdrPacker::Signed => {
+                    let floats = pixels.map(|pixel| [bc6h::half_to_float(pixel[0]), bc6h::half_to_float(pixel[1]), bc6h::half_to_float(pixel[2]), 1.0]);
+                    bc6h_enc::encode_bc6hs(block, &floats);
+                }
+            }
         }
     });
     blocks
 }
 
-/// An HDR image with what unsigned BC6H cannot hold brought into range: a negative half becomes
-/// 0, and infinity and not-a-number the largest half.
-fn in_unsigned_range(image: &HdrImage) -> HdrImage {
+/// An HDR image with what the kind of BC6H cannot hold brought into range: infinity and
+/// not-a-number become the largest half (of their sign), and for the unsigned kind a negative
+/// half becomes 0.
+fn in_range(image: &HdrImage, packer: HdrPacker) -> HdrImage {
     let mut image = image.clone();
     for value in image.pixels.as_flattened_mut() {
-        *value = if *value & 0x8000 != 0 { 0 } else { (*value).min(0x7bff) };
+        *value = match packer {
+            HdrPacker::Unsigned(_) if *value & 0x8000 != 0 => 0,
+            _ => (*value & 0x8000) | (*value & 0x7fff).min(0x7bff),
+        };
     }
     image
+}
+
+/// Packs HDR images of one size into a BC6H texture: one image by itself (no `layout`), or
+/// several as an array, a cube map or a volume.
+fn compress_hdr_with(images: &[HdrImage], layout: Option<Layout>, packer: HdrPacker, mipmaps: bool, threads: u32) -> Option<Texture> {
+    let first = images.first()?;
+    let (width, height) = (first.width, first.height);
+    if width == 0 || height == 0 || images.iter().any(|image| image.width != width || image.height != height || image.pixels.len() != width as usize * height as usize) {
+        return None;
+    }
+    let (depth, layers, cube) = match layout {
+        Some(layout) => shape_of(layout, images.len(), width, height)?,
+        None => (0, 0, false),
+    };
+    let volume = layout == Some(Layout::Volume);
+    let mut levels = Vec::new();
+    let mut current: Vec<HdrImage> = images.iter().map(|image| in_range(image, packer)).collect();
+    loop {
+        levels.push(current.iter().flat_map(|image| pack_hdr_image(image, packer, threads)).collect());
+        if !mipmaps || (current[0].width == 1 && current[0].height == 1 && (!volume || current.len() == 1)) {
+            break;
+        }
+        current = if volume { HdrImage::half_volume(&current) } else { current.iter().map(HdrImage::half).collect() };
+    }
+    let format = match packer {
+        HdrPacker::Unsigned(_) => TextureFormat::Bc6hUnsigned,
+        HdrPacker::Signed => TextureFormat::Bc6hSigned,
+    };
+    Some(Texture { format, srgb: false, width, height, depth, layers, cube, levels })
 }
 
 /// Packs an HDR image into an unsigned BC6H texture ([`bc6h::compress_block_bc6h`]), on
@@ -432,41 +483,30 @@ fn in_unsigned_range(image: &HdrImage) -> HdrImage {
 /// A pixel value the format cannot hold is brought into range first: a negative half becomes
 /// 0, and infinity and not-a-number the largest half. None for an image with no pixels.
 pub fn compress_hdr(image: &HdrImage, settings: &Bc6hEncSettings, mipmaps: bool, threads: u32) -> Option<Texture> {
-    if image.width == 0 || image.height == 0 || image.pixels.len() != image.width as usize * image.height as usize {
-        return None;
-    }
-    let mut levels = Vec::new();
-    let mut current = in_unsigned_range(image);
-    loop {
-        levels.push(pack_hdr_image(&current, settings, threads));
-        if !mipmaps || (current.width == 1 && current.height == 1) {
-            break;
-        }
-        current = current.half();
-    }
-    Some(Texture::new(TextureFormat::Bc6hUnsigned, image.width, image.height, levels))
+    compress_hdr_with(std::slice::from_ref(image), None, HdrPacker::Unsigned(settings), mipmaps, threads)
 }
 
 /// Packs several HDR images of one size into one unsigned BC6H texture: the layers of an array,
 /// the faces of a cube map or the slices of a volume texture, as `layout` says. Each image is
 /// packed as [`compress_hdr`] packs one. None as for [`compress_many`].
 pub fn compress_hdr_many(images: &[HdrImage], layout: Layout, settings: &Bc6hEncSettings, mipmaps: bool, threads: u32) -> Option<Texture> {
-    let first = images.first()?;
-    let (width, height) = (first.width, first.height);
-    if width == 0 || height == 0 || images.iter().any(|image| image.width != width || image.height != height || image.pixels.len() != width as usize * height as usize) {
-        return None;
-    }
-    let (depth, layers, cube) = shape_of(layout, images.len(), width, height)?;
-    let mut levels = Vec::new();
-    let mut current: Vec<HdrImage> = images.iter().map(in_unsigned_range).collect();
-    loop {
-        levels.push(current.iter().flat_map(|image| pack_hdr_image(image, settings, threads)).collect());
-        if !mipmaps || (current[0].width == 1 && current[0].height == 1 && (layout != Layout::Volume || current.len() == 1)) {
-            break;
-        }
-        current = if layout == Layout::Volume { HdrImage::half_volume(&current) } else { current.iter().map(HdrImage::half).collect() };
-    }
-    Some(Texture { format: TextureFormat::Bc6hUnsigned, srgb: false, width, height, depth, layers, cube, levels })
+    compress_hdr_with(images, Some(layout), HdrPacker::Unsigned(settings), mipmaps, threads)
+}
+
+/// Packs an HDR image into a signed BC6H texture, which holds values below zero as well
+/// ([`bc6h_enc::encode_bc6hs`]): for the rest as [`compress_hdr`], but with the thorough
+/// encoder, which has no settings and takes far longer.
+///
+/// Infinity and not-a-number are packed as the largest half of their sign. None for an image
+/// with no pixels.
+pub fn compress_hdr_signed(image: &HdrImage, mipmaps: bool, threads: u32) -> Option<Texture> {
+    compress_hdr_with(std::slice::from_ref(image), None, HdrPacker::Signed, mipmaps, threads)
+}
+
+/// Packs several HDR images of one size into one signed BC6H texture, as `layout` says. Each
+/// image is packed as [`compress_hdr_signed`] packs one. None as for [`compress_many`].
+pub fn compress_hdr_many_signed(images: &[HdrImage], layout: Layout, mipmaps: bool, threads: u32) -> Option<Texture> {
+    compress_hdr_with(images, Some(layout), HdrPacker::Signed, mipmaps, threads)
 }
 
 // What the file modules share.
@@ -645,6 +685,36 @@ mod tests {
         // Slices 2 and 3 (2.5 and 3.5) make the second slice of the next level.
         assert!((volume.unpack_image_hdr(1, 1).unwrap().to_rgb_f32()[0] - 3.0).abs() < 0.05);
         assert!(compress_hdr_many(&faces[..5], Layout::Cube, &Bc6hEncSettings::veryfast(), true, 0).is_none());
+    }
+
+    #[test]
+    fn an_hdr_image_of_both_signs_packs_to_signed_blocks() {
+        // A smooth field that is below zero in red, 13 by 6.
+        let values: Vec<f32> = (0..13 * 6).flat_map(|i| [-1.0 - (i % 13) as f32 * 0.02, 2.0 + (i / 13) as f32 * 0.03, 0.25]).collect();
+        let mut image = HdrImage::from_rgb_f32_signed(13, 6, &values).unwrap();
+        let texture = compress_hdr_signed(&image, true, 0).unwrap();
+        assert!(texture.is_valid());
+        assert_eq!((texture.format, texture.levels.len()), (TextureFormat::Bc6hSigned, 4));
+        let unpacked = texture.unpack_level_hdr(0).unwrap();
+        for (a, b) in image.to_rgb_f32().iter().zip(unpacked.to_rgb_f32()) {
+            assert!((a - b).abs() <= 0.01 + a.abs() * 0.03, "{a} {b}");
+        }
+        // The number of threads changes nothing; the unsigned packer has the red as nothing.
+        assert_eq!(compress_hdr_signed(&image, true, 1).unwrap(), texture);
+        let unsigned = compress_hdr(&image, &Bc6hEncSettings::veryfast(), false, 0).unwrap();
+        assert_eq!(unsigned.unpack_level_hdr(0).unwrap().to_rgb_f32()[0], 0.0);
+        // Infinity of either sign is the largest half of that sign.
+        image.pixels.fill([0xfc00, 0x7c00, 0x7e00]);
+        let texture = compress_hdr_signed(&image, false, 0).unwrap();
+        let back = texture.unpack_level_hdr(0).unwrap().to_rgb_f32();
+        assert!(back[0] < -60000.0 && back[1] > 60000.0 && back[2] > 60000.0, "{:?}", &back[..3]);
+        // Several images, as a cube map.
+        let faces: Vec<HdrImage> = (0..6).map(|i| HdrImage::from_rgb_f32_signed(4, 4, &[i as f32 - 2.5; 48]).unwrap()).collect();
+        let cube = compress_hdr_many_signed(&faces, Layout::Cube, true, 0).unwrap();
+        assert!(cube.is_valid() && cube.cube && cube.format == TextureFormat::Bc6hSigned);
+        for i in 0..6 {
+            assert!((cube.unpack_image_hdr(0, i).unwrap().to_rgb_f32()[0] - (i as f32 - 2.5)).abs() < 0.05);
+        }
     }
 
     #[test]

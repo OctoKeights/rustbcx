@@ -197,6 +197,17 @@ impl HdrImage {
         Some(HdrImage { width, height, pixels: values.chunks_exact(3).map(|pixel| [half(pixel[0]), half(pixel[1]), half(pixel[2])]).collect() })
     }
 
+    /// An image from floats, three to a pixel, with what is below zero kept: for signed BC6H.
+    /// Each is brought into what a half holds: beyond the largest half (65504) either way
+    /// becomes it, and not-a-number 0. None when there are not `width * height * 3` of them.
+    pub fn from_rgb_f32_signed(width: u32, height: u32, values: &[f32]) -> Option<HdrImage> {
+        if values.len() != width as usize * height as usize * 3 {
+            return None;
+        }
+        let half = |value: f32| if value.is_nan() { 0 } else { float_to_half(value.clamp(-65504.0, 65504.0)) };
+        Some(HdrImage { width, height, pixels: values.chunks_exact(3).map(|pixel| [half(pixel[0]), half(pixel[1]), half(pixel[2])]).collect() })
+    }
+
     /// The pixels as floats, three to a pixel.
     pub fn to_rgb_f32(&self) -> Vec<f32> {
         self.pixels.as_flattened().iter().map(|&half| half_to_float(half)).collect()
@@ -326,6 +337,11 @@ mod tests {
         assert_eq!(block[3], image.pixels[1]);
         assert_eq!(block[15], image.pixels[3]);
         assert!(HdrImage::from_rgb_f32(2, 2, &[0.0; 11]).is_none());
+        // With the sign kept: below zero stays, and the ends are the largest halves.
+        let signed = HdrImage::from_rgb_f32_signed(1, 2, &[-1.0, 0.5, f32::NAN, -1e9, f32::INFINITY, -0.0]).unwrap();
+        assert_eq!(signed.pixels, [[0xbc00, 0x3800, 0], [0xfbff, 0x7bff, 0x8000]]);
+        assert_eq!(signed.to_rgb_f32()[..2], [-1.0, 0.5]);
+        assert!(HdrImage::from_rgb_f32_signed(1, 2, &[0.0; 5]).is_none());
     }
 
     #[test]

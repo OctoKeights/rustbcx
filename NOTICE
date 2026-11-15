@@ -1,6 +1,6 @@
 rustbcx
 
-This crate is a port to Rust of two works. It is offered as a whole under the Apache License,
+This crate is a port to Rust of the works below. It is offered as a whole under the Apache License,
 Version 2.0 (see LICENSE).
 
 1. bc7e.ispc, the BC7 texture encoder by Binomial LLC (src/bc7e.rs):
@@ -54,6 +54,19 @@ Version 2.0 (see LICENSE).
    packed at a time where the original packs several side by side, and the settings and
    entry points have Rust's names. What they compute is kept: the same blocks as the
    original built without fast-math and without fused multiply-add.
+
+5. bc6h_enc, by Alexander Samusev (https://github.com/0xc0de/bc6h_enc), which is the BC6H
+   encoder of DirectXTex, by Microsoft (https://github.com/microsoft/DirectXTex,
+   BC6HBC7.cpp), made into one file: the encoder of its bc6h_enc.h, with its tables
+   (src/bc6h_enc.rs, src/bc6h_enc_tables.rs).
+
+    Copyright (c) 2022 Alexander Samusev
+    Copyright (c) 2011-2022 Microsoft Corp
+
+   Both are under the MIT licence; those notices are kept in LICENSE-bc6h_enc.txt. The file
+   is changed here in that it is translated from C++ to Rust, and its decoder is left out.
+   What it computes is kept: the same blocks as the original built with
+   BC6H_SSE_INTRINSICS.
 
 What is around the ports is the crate's own: mip levels and the HDR image (in src/image.rs),
 float_to_half (in src/bc6h.rs), src/bc2.rs (BC2, its colours packed and unpacked by the

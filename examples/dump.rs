@@ -36,6 +36,9 @@
 //!                                      five profiles, and unpacked again, as
 //!                                      `compare/dump_bc6h.cpp` does with Intel's ISPC Texture
 //!                                      Compressor
+//!   dump bc6h_enc <seed> <blocks>      made-up HDR pixels of both signs packed as signed and as
+//!                                      unsigned BC6H by the port of bc6h_enc, as
+//!                                      `compare/dump_bc6h_enc.cpp` does with the original
 //!
 //! And of the comparison with bc7e.ispc, as `compare/dump_bc7e.cpp` does with the ISPC encoder:
 //!
@@ -522,6 +525,7 @@ fn main() {
         "rdo" => print!("{}", made_up::rdo(seed, blocks, false)),
         "rdo_bc7e" => print!("{}", made_up::rdo(seed, blocks, true)),
         "bc2" => print!("{}", made_up::bc2(seed, blocks)),
+        "bc6h_enc" => print!("{}", made_up::bc6h_enc(seed, blocks)),
         "bc6h_unpack" => print!("{}", made_up::bc6h_unpack(seed, blocks)),
         "bc6h_pack" => print!("{}", made_up::bc6h_pack(seed, blocks)),
         "bc7e_presets" => dump_bc7e(true, seed, blocks, args.get(4)),

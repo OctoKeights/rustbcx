@@ -12,6 +12,10 @@
   with them. `texture::compress_many` and `compress_hdr_many` pack several images into one,
   with mip levels; a volume's levels halve its slices too (`Image::half_volume`).
   `Texture::image` and `unpack_image` give one image of a level.
+- **Signed BC6H packing.** `bc6h_enc` is the port of bc6h_enc, DirectXTex's BC6H encoder as
+  one file: `encode_bc6hs` packs signed blocks and `encode_bc6hu` unsigned ones, thoroughly
+  and slowly. `texture::compress_hdr_signed` and `compress_hdr_many_signed` pack images with
+  it, and `HdrImage::from_rgb_f32_signed` makes an image that keeps what is below zero.
 - Fixed: a `.ktx2` file of an sRGB texture in BC3 did not mark its alpha as linear in its data
   format descriptor, as the Khronos tools do and their validator requires.
 - Changed: `Texture` has three more fields, so one written out by hand needs them;

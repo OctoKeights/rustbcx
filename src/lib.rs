@@ -18,6 +18,9 @@
 //!   Sergii Kudlai's [bcdec](https://github.com/iOrange/bcdec)) and pixels to blocks
 //!   (`kernel.ispc`, from Intel's
 //!   [ISPC Texture Compressor](https://github.com/GameTechDev/ISPCTextureCompressor)).
+//! - [`bc6h_enc`]: BC6H again, pixels to blocks the thorough way, and to signed blocks as well
+//!   as unsigned (`bc6h_enc.h`, Alexander Samusev's [bc6h_enc](https://github.com/0xc0de/bc6h_enc),
+//!   which is the encoder of Microsoft's DirectXTex).
 //!
 //! And around the ports, the crate's own: [`bc2`], the one block format of the family none of
 //! the originals has; [`texture`], an image packed with its mip levels, or several as a texture
@@ -34,6 +37,8 @@
 
 pub mod bc2;
 pub mod bc6h;
+pub mod bc6h_enc;
+mod bc6h_enc_tables;
 pub mod bc7decomp;
 pub mod bc7e;
 pub mod bc7enc;

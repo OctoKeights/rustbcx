@@ -14,7 +14,8 @@ with nothing else to install.
 - **No dependencies.** The crate uses only the Rust standard library. There is no C++ to
   build and no ISPC compiler to install.
 - **No `unsafe` code.** The crate is built with `#![forbid(unsafe_code)]`.
-- **Every format.** BC1, BC2, BC3, BC4, BC5 and BC7 both ways, and BC6H for HDR colour.
+- **Every format.** BC1, BC2, BC3, BC4, BC5 and BC7 both ways, and BC6H for HDR colour, signed
+  and unsigned.
 - **Whole textures.** Hand it an image and get back a texture with its mip levels, ready to
   write as a `.dds`, `.ktx` or `.ktx2` file. Hand it several and get a texture array, a cube
   map or a volume texture.
@@ -64,6 +65,7 @@ The ports, each checked byte for byte against its original:
 | `rdo_bc_encoder` | bc7enc_rdo's `rdo_bc_encoder.cpp` | A whole image to blocks of BC1, BC3, BC4, BC5 or BC7, with the rate-distortion pass (and of BC2, which is this crate's addition) |
 | `bc6h` (unpacking) | [bcdec](https://github.com/iOrange/bcdec)'s `bcdec.h` | BC6H blocks, signed and unsigned, to half floats or floats |
 | `bc6h` (packing) | Intel's [ISPC Texture Compressor](https://github.com/GameTechDev/ISPCTextureCompressor), `kernel.ispc` | HDR pixels to unsigned BC6H, five profiles |
+| `bc6h_enc` | [bc6h_enc](https://github.com/0xc0de/bc6h_enc), which is DirectXTex's BC6H encoder as one file | HDR pixels to signed or unsigned BC6H, the thorough and slow way |
 
 And around them, the crate's own code, which has no original to match:
 
@@ -141,6 +143,9 @@ assert_eq!(texture.format, TextureFormat::Bc6hUnsigned);
 let unpacked = texture.unpack_level_hdr(0).unwrap().to_rgb_f32();
 assert_eq!(unpacked.len(), rgb.len());
 ```
+
+For values below zero there is signed BC6H: `HdrImage::from_rgb_f32_signed` keeps them, and
+`texture::compress_hdr_signed` packs them, with the thorough encoder of `bc6h_enc`.
 
 Six images to a cube map (a texture array and a volume texture go the same way):
 
@@ -281,7 +286,7 @@ through this crate, and confirms that the results match byte for byte:
 
 ```text
 ISPC=<the ispc compiler> BCDEC=<checkout of bcdec> ISPCTC=<checkout of ISPCTextureCompressor> \
-    compare/compare.sh <checkout of bc7enc_rdo> [blocks] [seeds] [dumps]
+    BC6HENC=<checkout of bc6h_enc> compare/compare.sh <checkout of bc7enc_rdo> [blocks] [seeds] [dumps]
 ```
 
 It needs a C++ compiler; the [ISPC compiler](https://github.com/ispc/ispc/releases) for the two
@@ -302,6 +307,7 @@ and fails.
 | `bc2` | bc7enc_rdo's rgbcx and bcdec | BC2 blocks unpacked (the alphas against bcdec, the colours against rgbcx's BC1), and pixels packed at every level and with every flag |
 | `bc6h_unpack` | bcdec | BC6H blocks of every mode, and of none, unpacked as signed and unsigned |
 | `bc6h_pack` | Intel's `kernel.ispc`, strict build | HDR pixels packed with each of the five profiles |
+| `bc6h_enc` | bc6h_enc, built with `BC6H_SSE_INTRINSICS` | HDR pixels of both signs packed as signed and as unsigned BC6H |
 
 The two ISPC originals pack several blocks at once in the lanes of a vector register; the ports
 pack them one after another with the same arithmetic in the same order. Built for SSE2 without
@@ -323,10 +329,11 @@ These comparisons were run on Linux (x86-64), the C++ built with gcc and the ISP
 | `bc2` | 600,000 blocks unpacked each way and as many packed twice |
 | `bc6h_unpack` | 1.5 million blocks, each as signed and as unsigned |
 | `bc6h_pack` | 240,000 blocks through each of the five profiles |
+| `bc6h_enc` | 60,000 blocks, each as signed and as unsigned; the C++ built by gcc and by clang |
 
-`cargo test` needs neither a C++ compiler nor ISPC. Among its tests, six pack and unpack
+`cargo test` needs neither a C++ compiler nor ISPC. Among its tests, seven pack and unpack
 made-up blocks and images and compare their hashes with ones recorded from the originals: the
-five in `tests/*_golden.rs` and one in `src/bc7enc.rs`.
+six in `tests/*_golden.rs` and one in `src/bc7enc.rs`.
 
 The files have their own check. `compare/files.sh` writes textures of every format and shape
 (plain, texture array, cube map, array of cube maps, volume texture) as `.dds`, `.ktx` and
@@ -373,7 +380,6 @@ machine and made-up pixels.
 - **No SIMD written by hand.** Stable Rust has no SIMD without `unsafe`, and the crate has no
   `unsafe`. Its speed comes from using every core and from loops the compiler can vectorise by
   itself. On one core, the ISPC originals built for AVX2 are faster.
-- **BC6H: no packing of the signed kind**, since Intel's encoder has none. It unpacks.
 - **`.ktx2` files without supercompression.** They are written and read with their levels as
   they are; the supercompression the format allows (zstd, zlib, Basis) would need a
   compressor.

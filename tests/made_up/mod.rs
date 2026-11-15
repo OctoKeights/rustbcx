@@ -630,3 +630,82 @@ pub fn bc6h_pack(seed: u64, blocks: u32) -> String {
     }
     printed + &format!("blocks by mode:{}\n", modes.map(|count| format!(" {count}")).concat())
 }
+
+/// A whole number from -range to range, as a float.
+fn spread(r: &mut Random, range: u32) -> f32 {
+    ((r.next() % (2 * range + 1)) as i32 - range as i32) as f32
+}
+
+/// Sixteen made-up HDR pixels, four floats each (the fourth is not packed): noise about zero,
+/// a ramp between two colours, one colour, two colours, values past what a half holds, tiny
+/// values, a smooth patch, a ramp above zero.
+pub fn make_float_block(r: &mut Random) -> [[f32; 4]; 16] {
+    let kind = r.next() % 8;
+    let (mut a, mut b, mut c) = ([0.0f32; 3], [0.0f32; 3], [0.0f32; 3]);
+    for k in 0..3 {
+        a[k] = spread(r, 8000) * 0.001;
+        b[k] = spread(r, 8000) * 0.001;
+        c[k] = spread(r, 500) * 0.001;
+    }
+    let mut px = [[0.0f32; 4]; 16];
+    for i in 0..16 {
+        px[i][3] = 1.0;
+        for k in 0..3 {
+            px[i][k] = match kind {
+                0 => spread(r, 2000) * 0.001,
+                1 => a[k] + (b[k] - a[k]) * (i as f32 * (1.0 / 15.0)) + spread(r, 20) * 0.001,
+                2 => a[k],
+                3 => {
+                    if r.next() & 1 != 0 {
+                        a[k]
+                    } else {
+                        b[k]
+                    }
+                }
+                4 => spread(r, 100000),
+                5 => spread(r, 1000) * 0.000001,
+                6 => a[k] + (i % 4) as f32 * c[k] + (i / 4) as f32 * (c[k] * 0.5),
+                _ => (if a[k] < 0.0 { -a[k] } else { a[k] }) + 0.25 + i as f32 * 0.03125,
+            };
+        }
+    }
+    px
+}
+
+/// The mode of a BC6H block, in the order the encoders try them; 14 for none.
+fn bc6h_mode(block: &[u8; 16]) -> usize {
+    const MODES: [i32; 32] = [0, 1, 2, 10, -1, -1, 3, 11, -1, -1, 4, 12, -1, -1, 5, 13, -1, -1, 6, -1, -1, -1, 7, -1, -1, -1, 8, -1, -1, -1, 9, -1];
+    let bits = if block[0] & 2 != 0 { block[0] & 31 } else { block[0] & 3 };
+    usize::try_from(MODES[usize::from(bits)]).unwrap_or(14)
+}
+
+/// The `bc6h_enc` dump: made-up pixels of eight kinds, of both signs, packed as signed and as
+/// unsigned BC6H by the port of bc6h_enc.
+pub fn bc6h_enc(seed: u64, blocks: u32) -> String {
+    let mut random = Random { state: seed };
+    let mut hash = Hash::new();
+    let mut modes = [[0u32; 15]; 2];
+    let mut out = String::new();
+    for i in 0..blocks {
+        let pixels = make_float_block(&mut random);
+        let mut block = [0xEEu8; 16];
+        rustbcx::bc6h_enc::encode_bc6hs(&mut block, &pixels);
+        hash.add(&block);
+        modes[0][bc6h_mode(&block)] += 1;
+        let mut block = [0xEEu8; 16];
+        rustbcx::bc6h_enc::encode_bc6hu(&mut block, &pixels);
+        hash.add(&block);
+        modes[1][bc6h_mode(&block)] += 1;
+        if (i + 1) % 2000 == 0 || i + 1 == blocks {
+            out += &format!("bc6h_enc {} {:016x}\n", i + 1, hash.value);
+        }
+    }
+    for (s, name) in ["signed", "unsigned"].iter().enumerate() {
+        out += &format!("bc6h_enc {name} blocks by mode:");
+        for count in modes[s] {
+            out += &format!(" {count}");
+        }
+        out += "\n";
+    }
+    out
+}

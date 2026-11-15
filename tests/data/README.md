@@ -47,5 +47,12 @@ crate prints the same. To make it again:
     ref="${TMPDIR:-/tmp}/rustbcx-compare/dump-cpp-bc2"
     { "$ref" bc2 6 20000; "$ref" bc2 13 20000; } > tests/data/bc2_expected.txt
 
+`bc6h_enc_expected.txt` is what bc6h_enc.h makes of made-up HDR pixels, as
+`compare/dump_bc6h_enc.cpp` prints it; `tests/bc6h_enc_golden.rs` checks that the port prints
+the same. To make it again:
+
+    BC6HENC=<folder holding bc6h_enc.h> compare/compare.sh <checkout of bc7enc_rdo> 3000 1 "bc6h_enc"
+    "${TMPDIR:-/tmp}/rustbcx-compare/dump-bc6h-enc" bc6h_enc 9 240 > tests/data/bc6h_enc_expected.txt
+
 No texture from anywhere is in this repository: every block the tests and the comparison pack
 is made up from a seed.
