@@ -1,5 +1,5 @@
-//! The B44 and B44A compression of OpenEXR: a port of `DecompressB44` and what is under it
-//! in tinyexr v3.4.0 (`tinyexr.h`).
+//! The B44 and B44A compression of OpenEXR: a port of `DecompressB44`, `CompressB44` and
+//! what is under them in tinyexr v3.4.0 (`tinyexr.h`).
 //!
 //! Halves are packed four by four: a block of sixteen takes fourteen bytes, or three where
 //! all sixteen are the same (which B44A writes and both read). Floats and integers are
@@ -288,4 +288,200 @@ pub(crate) fn decompress_b44(out: &mut [u8], input: &[u8], data_width: i32, num_
     // `exp_table` is the compressor's.
     let _ = &tables.exp_table;
     true
+}
+
+/// `B44ShiftAndRound`.
+#[inline]
+fn b44_shift_and_round(mut x: i32, mut shift: i32) -> i32 {
+    // Compute y = x >> shift, rounding to nearest (ties to even).
+    x <<= 1;
+    let a = (1 << shift) - 1;
+    shift += 1;
+    let b = (x >> shift) & 1;
+    (x + a + b) >> shift
+}
+
+/// `PackB44Block`: sixteen halves, a block of four by four, into 14 bytes of `out`, or into
+/// 3 when they are all the same and `flatfields` allows it. The answer is how many.
+fn pack_b44_block(out: &mut [u8], block: &[u16; 16], flatfields: bool, exactmax: bool) -> usize {
+    let mut d = [0i32; 16];
+    let mut r = [0i32; 15];
+    let mut r_min;
+    let mut r_max;
+    let mut t = [0u16; 16];
+    let mut shift = -1i32;
+    const BIAS: i32 = 0x20;
+
+    // Convert to ordered representation: handle NaN/Inf, then convert signed magnitude to
+    // an ordered unsigned.
+    for i in 0..16 {
+        if (block[i] & 0x7c00) == 0x7c00 {
+            t[i] = 0x8000; // NaN/Inf -> zero
+        } else if block[i] & 0x8000 != 0 {
+            t[i] = !block[i]; // Negative
+        } else {
+            t[i] = block[i] | 0x8000; // Positive
+        }
+    }
+
+    // Find max.
+    let mut t_max = 0u16;
+    for &value in &t {
+        if t_max < value {
+            t_max = value;
+        }
+    }
+
+    // Find the shift value that makes all differences fit in 6 bits.
+    loop {
+        shift += 1;
+
+        for i in 0..16 {
+            d[i] = b44_shift_and_round(i32::from(t_max) - i32::from(t[i]), shift);
+        }
+
+        r[0] = d[0] - d[4] + BIAS;
+        r[1] = d[4] - d[8] + BIAS;
+        r[2] = d[8] - d[12] + BIAS;
+
+        r[3] = d[0] - d[1] + BIAS;
+        r[4] = d[4] - d[5] + BIAS;
+        r[5] = d[8] - d[9] + BIAS;
+        r[6] = d[12] - d[13] + BIAS;
+
+        r[7] = d[1] - d[2] + BIAS;
+        r[8] = d[5] - d[6] + BIAS;
+        r[9] = d[9] - d[10] + BIAS;
+        r[10] = d[13] - d[14] + BIAS;
+
+        r[11] = d[2] - d[3] + BIAS;
+        r[12] = d[6] - d[7] + BIAS;
+        r[13] = d[10] - d[11] + BIAS;
+        r[14] = d[14] - d[15] + BIAS;
+
+        r_min = r[0];
+        r_max = r[0];
+        for &value in &r[1..] {
+            if r_min > value {
+                r_min = value;
+            }
+            if r_max < value {
+                r_max = value;
+            }
+        }
+        if !(r_min < 0 || r_max > 0x3f) {
+            break;
+        }
+    }
+
+    // Check for flat field (all pixels same value).
+    if r_min == BIAS && r_max == BIAS && flatfields {
+        out[0] = (t[0] >> 8) as u8;
+        out[1] = t[0] as u8;
+        out[2] = 0xfc;
+        return 3;
+    }
+
+    if exactmax {
+        // Adjust t[0] so the pixel with max value is represented accurately.
+        t[0] = t_max.wrapping_sub((d[0] << shift) as u16);
+    }
+
+    // Pack into 14 bytes.
+    out[0] = (t[0] >> 8) as u8;
+    out[1] = t[0] as u8;
+
+    out[2] = ((shift << 2) | (r[0] >> 4)) as u8;
+    out[3] = ((r[0] << 4) | (r[1] >> 2)) as u8;
+    out[4] = ((r[1] << 6) | r[2]) as u8;
+
+    out[5] = ((r[3] << 2) | (r[4] >> 4)) as u8;
+    out[6] = ((r[4] << 4) | (r[5] >> 2)) as u8;
+    out[7] = ((r[5] << 6) | r[6]) as u8;
+
+    out[8] = ((r[7] << 2) | (r[8] >> 4)) as u8;
+    out[9] = ((r[8] << 4) | (r[9] >> 2)) as u8;
+    out[10] = ((r[9] << 6) | r[10]) as u8;
+
+    out[11] = ((r[11] << 2) | (r[12] >> 4)) as u8;
+    out[12] = ((r[12] << 4) | (r[13] >> 2)) as u8;
+    out[13] = ((r[13] << 6) | r[14]) as u8;
+
+    14
+}
+
+/// `CompressB44`: a block of `num_lines` lines of `data_width` pixels, one channel after the
+/// other, whose channels are stored as `file_types`: the channels of halves in blocks of four
+/// by four of 14 bytes each (of 3 where a block is all one value, for B44A), the others as
+/// they are.
+pub(crate) fn compress_b44(input: &[u8], data_width: i32, num_lines: i32, file_types: &[i32], is_b44a: bool) -> Vec<u8> {
+    // B44 compresses 4x4 blocks of HALF data: 14 bytes for a regular block, 3 bytes for a
+    // flat block (B44A only).
+    let num_blocks_x = (data_width + 3) / 4;
+    let num_blocks_y = (num_lines + 3) / 4;
+    let pixels = data_width as usize * num_lines as usize;
+
+    // Calculate max output size.
+    let mut max_size = 0usize;
+    for &file_type in file_types {
+        if file_type == PIXELTYPE_HALF {
+            max_size += num_blocks_x as usize * num_blocks_y as usize * 14;
+        } else if file_type == PIXELTYPE_UINT || file_type == PIXELTYPE_FLOAT {
+            max_size += pixels * 4;
+        } else {
+            max_size += pixels * 2;
+        }
+    }
+
+    let mut out_buf = vec![0u8; max_size];
+    let mut out_p = 0usize;
+    let mut in_offset = 0usize;
+
+    // Process each channel.
+    for &file_type in file_types {
+        if file_type != PIXELTYPE_HALF {
+            // Non-HALF channels: copy raw data.
+            let mut ch_bytes = pixels;
+            if file_type == PIXELTYPE_UINT || file_type == PIXELTYPE_FLOAT {
+                ch_bytes *= 4;
+            } else {
+                ch_bytes *= 2;
+            }
+            out_buf[out_p..out_p + ch_bytes].copy_from_slice(&input[in_offset..in_offset + ch_bytes]);
+            out_p += ch_bytes;
+            in_offset += ch_bytes;
+            continue;
+        }
+
+        // HALF channel: compress 4x4 blocks.
+        let half_at = |index: usize| u16::from_le_bytes([input[in_offset + 2 * index], input[in_offset + 2 * index + 1]]);
+
+        for by in 0..num_blocks_y {
+            for bx in 0..num_blocks_x {
+                let mut block = [0u16; 16];
+
+                // Extract the 4x4 block (with edge replication).
+                for dy in 0..4 {
+                    let y = by * 4 + dy;
+                    let src_y = if y >= num_lines { num_lines - 1 } else { y };
+
+                    for dx in 0..4 {
+                        let x = bx * 4 + dx;
+                        let src_x = if x >= data_width { data_width - 1 } else { x };
+
+                        block[(dy * 4 + dx) as usize] = half_at((src_y * data_width + src_x) as usize);
+                    }
+                }
+
+                // Pack block.
+                let bytes_written = pack_b44_block(&mut out_buf[out_p..], &block, is_b44a, true);
+                out_p += bytes_written;
+            }
+        }
+
+        in_offset += pixels * 2;
+    }
+
+    out_buf.truncate(out_p);
+    out_buf
 }

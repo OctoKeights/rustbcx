@@ -1,13 +1,28 @@
-//! The port of tinyexr's reader against results recorded from the original, so that a change
-//! shows without a C++ compiler at hand.
+//! The port of tinyexr against results recorded from the original, so that a change shows
+//! without a C++ compiler at hand.
 //!
-//! `tests/data/exr_files.bin` holds the files `compare/dump_tinyexr.cc` made with tinyexr for
-//! `tinyexr_read_small 11 100` (see `compare/compare.sh`): made-up images saved as scanlines
-//! and as tiles, with every compression tinyexr writes, a third of them damaged.
-//! `tests/data/tinyexr_read_expected.txt` is what that program printed for them: a hash of
-//! what tinyexr reads of each, or of the message it refuses it with.
+//! `tests/data/tinyexr_write_expected.txt` is what `compare/dump_tinyexr.cc` printed for
+//! `tinyexr_write_small 5 300` (see `compare/compare.sh`): a hash of the files tinyexr saves
+//! of made-up images, in scanlines and in tiles, with every compression it writes, or of its
+//! message where it saves none.
+//!
+//! `tests/data/exr_files.bin` holds the files that program made with tinyexr for
+//! `tinyexr_read_small 11 100`: such images saved, a third of them damaged.
+//! `tests/data/tinyexr_read_expected.txt` is what it printed for them: a hash of what tinyexr
+//! reads of each, or of the message it refuses it with.
 
 mod made_up;
+
+#[test]
+fn writes_as_tinyexr_does() {
+    // (And reads each file back: what was stored as it was comes back as it was.)
+    let printed = made_up::tinyexr_write("tinyexr_write_small", 5, 300);
+    let expected = include_str!("data/tinyexr_write_expected.txt");
+    for (line, (ours, theirs)) in printed.lines().zip(expected.lines()).enumerate() {
+        assert_eq!(ours, theirs, "line {}", line + 1);
+    }
+    assert_eq!(printed.lines().count(), expected.lines().count());
+}
 
 #[test]
 fn reads_as_tinyexr_does() {
@@ -66,11 +81,14 @@ fn badly_damaged_files_are_read_or_refused() {
             if made_up::tinyexr_left(&header) {
                 continue;
             }
-            match tinyexr::load_exr_image_from_memory(&mut header, &bytes) {
+            // (Tinyexr's way and the format's, by turns.)
+            let loaded = if r.next().is_multiple_of(2) { tinyexr::load_exr_image_from_memory(&mut header, &bytes) } else { tinyexr::load_exr_image_from_memory_as_tinyexr(&mut header, &bytes) };
+            match loaded {
                 Ok(_) => read += 1,
                 Err(_) => refused += 1,
             }
             let _ = tinyexr::load_exr_from_memory(&bytes);
+            let _ = tinyexr::load_exr_from_memory_as_tinyexr(&bytes);
         }
     }
     assert!(read > 0 && refused > 0);

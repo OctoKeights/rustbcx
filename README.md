@@ -1,8 +1,8 @@
 # rustbcx
 
 GPU texture compression in pure Rust: BC1 to BC7, from single blocks up to whole textures with
-mip levels in `.dds`, `.ktx` and `.ktx2` files, made from `.png`, `.bmp` and `.jpg` pictures or
-from pixels of your own.
+mip levels in `.dds`, `.ktx` and `.ktx2` files, made from `.png`, `.bmp`, `.jpg` and `.exr`
+pictures or from pixels of your own.
 
 The encoders and decoders are ports of well-known C++ and ISPC libraries, chiefly Richard
 Geldreich's [bc7enc_rdo](https://github.com/richgel999/bc7enc_rdo), and the goal of this crate
@@ -21,7 +21,8 @@ with nothing else to install.
   write as a `.dds`, `.ktx` or `.ktx2` file. Hand it several and get a texture array, a cube
   map or a volume texture.
 - **Pictures in and out.** It reads `.png`, `.bmp` and `.jpg` files into images and writes
-  images back out as them, with ports of stb_image and stb_image_write.
+  images back out as them, with ports of stb_image and stb_image_write; and `.exr` files
+  into HDR images and back, with a port of tinyexr.
 - **All your cores.** Images are packed on every core the machine has unless you say
   otherwise, and the result does not depend on how many that is.
 - **Rate-distortion optimisation.** bc7enc_rdo's pass that makes a texture smaller on disk
@@ -73,14 +74,14 @@ The ports, each checked byte for byte against its original:
 | `zstd` | [zstd](https://github.com/facebook/zstd): of its compressor (`lib/compress`), the two fastest strategies and the entropy coders; and the reference decoder that comes with it, `doc/educational_decoder` | Zstandard, both ways, for `.ktx2` files with Zstandard supercompression: bytes to frames at levels 1 to 3 and the negative ones, and frames of any level to bytes |
 | `stb_image` | Sean Barrett's [stb](https://github.com/nothings/stb), `stb_image.h`: its PNG, BMP and JPEG readers and its zlib decoder | `.png`, `.bmp` and `.jpg` files to pixels, at 8 or 16 bits a channel |
 | `stb_image_write` | stb's `stb_image_write.h`: its PNG, BMP and JPEG writers | Pixels of 8 bits a channel to `.png`, `.bmp` and `.jpg` files |
-| `tinyexr` | Syoyo Fujita's [tinyexr](https://github.com/syoyo/tinyexr), `tinyexr.h`: its reader | `.exr` files to halves, floats or integers: scanlines or tiles, with mip and rip levels, uncompressed or compressed any of the seven ways tinyexr reads |
+| `tinyexr` | Syoyo Fujita's [tinyexr](https://github.com/syoyo/tinyexr), `tinyexr.h`: its reader and its writer of files of one part | `.exr` files to halves, floats or integers and back: scanlines or tiles, with mip and rip levels, uncompressed or compressed with RLE, ZIP, PIZ, PXR24 or B44 |
 
 And around them, the crate's own code, which has no original to match:
 
 | Module | What it does |
 |---|---|
 | `bc2` | BC2 (DXT3), which none of the originals has: the colours by `rgbcx` as BC3's are, the alphas at four bits a pixel. Its unpacker is checked against bcdec's |
-| `image` | `Image` (8-bit RGBA) and `HdrImage` (half-float RGB), and the next mip level of each. `Image::load` and `save` read and write `.png`, `.bmp` and `.jpg` files |
+| `image` | `Image` (8-bit RGBA) and `HdrImage` (half-float RGB), and the next mip level of each. `Image::load` and `save` read and write `.png`, `.bmp` and `.jpg` files, and `HdrImage::load` and `save` `.exr` files |
 | `texture` | `Texture`: a format, a size and the blocks of every mip level, for one image or for a texture array, a cube map or a volume texture. `compress` and `compress_hdr` make one from an image, `compress_many` and `compress_hdr_many` from several; `load` and `save` read and write files |
 | `dds` | `.dds` files, both ways, with either header. For one level its writer gives the bytes bc7enc_rdo's `save_dds` writes |
 | `ktx` | `.ktx` (KTX 1) and `.ktx2` (KTX 2) files, both ways; `.ktx2` with its levels as they are or supercompressed with zlib or with Zstandard |
@@ -181,8 +182,12 @@ let unpacked = texture.unpack_level_hdr(0).unwrap().to_rgb_f32();
 assert_eq!(unpacked.len(), rgb.len());
 ```
 
-For values below zero there is signed BC6H: `HdrImage::from_rgb_f32_signed` keeps them, and
-`texture::compress_hdr_signed` packs them, with the thorough encoder of `bc6h_enc`.
+An HDR image comes from a `.exr` file the same way: `HdrImage::load("sky.exr")` reads its red,
+green and blue, whether the file holds halves or floats, and `save` writes one.
+
+For values below zero there is signed BC6H: `HdrImage::from_rgb_f32_signed` (or `load_signed`)
+keeps them, and `texture::compress_hdr_signed` packs them, with the thorough encoder of
+`bc6h_enc`.
 
 Six images to a cube map (a texture array and a volume texture go the same way):
 
@@ -314,13 +319,26 @@ bc7enc_rdo and whose Rust rewrite needed to produce exactly the same blocks.
   reason in the `LoadError`, and a damaged file it reads all the same is read here too. The
   checksums in a `.png` are not checked, as there. `Image` holds 8 bits a channel, so a 16-bit
   `.png` is brought down to 8 on the way in; `stb_image::load_16_from_memory` keeps all 16.
-- **`.exr` files are read as tinyexr reads them**, with the same refusals. Four kinds of
-  damaged file are refused here where tinyexr stops the program or reads past the end of the
-  file: one with a tile size of 0, one with a count of chunks far beyond what the file can
-  hold, one with a compressed tile placed past the image's edge, and one whose last block is
-  not compressed and is shorter than its lines. A damaged header can still ask for a very
-  large image, as with any picture format: look at the header's data window first if the
-  files come from strangers.
+- **`.exr` files are read and written as tinyexr does it, with two exceptions.** The first:
+  the format says that a block which compressing does not make smaller is stored as its
+  pixels. tinyexr does that for RLE, ZIP and PIZ and not for PXR24 and B44, so other readers
+  misread some of its files: every B44 file without a channel of halves, and blocks of a few
+  pixels. And its reader misreads such blocks from other writers, and now and then a PXR24
+  block of its own. Here the format is followed, which ffmpeg's reader confirms; the
+  functions that end in `_as_tinyexr` do exactly as tinyexr does, should you need its bytes.
+  The second: four kinds of damaged file are refused here where tinyexr stops the program or
+  reads past the end of the file (a tile size of 0, a count of chunks far beyond what the
+  file can hold, a compressed tile placed past the image's edge, a last block that is not
+  compressed and shorter than its lines). A damaged header can still ask for a very large
+  image, as with any picture format: look at the header's data window first if the files
+  come from strangers.
+- **`HdrImage` holds red, green and blue as halves**, so `HdrImage::load` brings a file's
+  floats down to halves and leaves its alpha and any other channels; `save` writes halves,
+  with ZIP, which loses nothing. For floats, alpha, more channels, tiles or another
+  compression, use `tinyexr` itself.
+- **PIZ files are the ones tinyexr writes when built with GNU's C++ library.** The lengths of
+  PIZ's Huffman codes depend on how the C++ library orders a heap, so a tinyexr built with
+  another may write other bytes for the same image. Either reads the other's.
 - **A `.jpg` is written as stb_image_write writes it**: baseline, with the colour at half size
   each way up to quality 90 and at full size above it.
 - **The originals' globals are values here.** The tables the C++ and the ISPC fill at start-up
@@ -368,7 +386,12 @@ and fails.
 | `zstd_decode` | zstd's reference decoder | Frames the zstd library made of made-up data: every level from the fastest to 22, with and without checksums and sizes in the header, with small windows, long-distance matching, blocks of a size aimed for and flushes, and with dictionaries of plain content and trained ones. A third of them are damaged first, and for those the message is compared |
 | `zstd_compress` | zstd's library, `ZSTD_compress` | Made-up data of thirteen kinds, from nothing to five megabytes (noise, text, runs, copies, parts of different kinds one after the other, the same few bytes over and over), compressed at levels 1 to 3, at the default, at level 4 where it is ported and at negative levels down to the lowest. Each frame also decoded |
 | `zstd_entropy` | zstd's library, from the inside | The entropy coders one function at a time, for what a whole frame seldom or never asks of them: made-up counts normalized, written into room that may be too little and coded with (FSE); made-up bytes Huffman coded with one or four streams, with and without the table of the call before, into room that may be too little; and the literals section of a block |
-| `tinyexr_read` | tinyexr's `tinyexr.h`, built without threads | `.exr` files tinyexr saved of made-up images: scanlines and tiles with mip and rip levels, channels of halves, floats and integers, each of the eight compressions, attributes of every kind it reads. Now and then the window is moved or the lines' order named the other way, and a third are damaged first: bits turned over, the end cut off, numbers of the header, of the table of offsets and of the blocks made up. For each, the version, the header, every channel or tile (as stored, or halves as floats) and the image as floats of red, green, blue and alpha are compared, and for a refused file the code and the message |
+| `tinyexr_write` | tinyexr's `tinyexr.h`, built without threads | Made-up images saved as `.exr` files: scanlines and tiles with mip and rip levels, channels of halves, floats and integers kept or turned into each other, each of the eight compressions, attributes of the caller's own; and floats of one, three or four to a pixel saved the short way. The bytes of each file are compared, and for an image tinyexr does not save, its message |
+| `tinyexr_read` | tinyexr's `tinyexr.h`, built without threads | Such files as tinyexr saved them. Now and then the window is moved or the lines' order named the other way, and a third are damaged first: bits turned over, the end cut off, numbers of the header, of the table of offsets and of the blocks made up. For each, the version, the header, every channel or tile (as stored, or halves as floats) and the image as floats of red, green, blue and alpha are compared, and for a refused file the code and the message |
+
+The two tinyexr dumps are of the functions that do exactly as tinyexr does. The ones without
+`_as_tinyexr` in their names differ from them in one thing, which `compare/files.sh` checks
+with another reader (see below and [Things to know](#things-to-know)).
 
 The two ISPC originals pack several blocks at once in the lanes of a vector register; the ports
 pack them one after another with the same arithmetic in the same order. Built for SSE2 without
@@ -397,6 +420,7 @@ These comparisons were run on Linux (x86-64), the C++ built with gcc and the ISP
 | `zstd_decode` | 20,000 frames, 200 megabytes, of which 14,700 were decoded and 5,300 refused with the same message; the C built by gcc and by clang at several optimisation levels |
 | `zstd_compress` | 33,000 sources, 3.4 gigabytes, every frame the same; the C built by gcc and by clang |
 | `zstd_entropy` | 3.3 million rounds, of which a little over a fifth end in a refusal, the same one on both sides; the C built by gcc and by clang |
+| `tinyexr_write` | 48,000 images: 42,700 saved as the same file, byte for byte (1.3 gigabytes), 5,300 refused with the same message; 10,600 more saved the short way; the C++ built by gcc and by clang; again with Rust's overflow checks on. Every file is read back by the port, and what was stored as it was comes back as it was |
 | `tinyexr_read` | 48,000 files, 1.2 gigabytes, of which 38,200 had a header tinyexr takes; of those, 30,100 images were read and 8,100 refused, each with the same code and message; the C++ built by gcc and by clang, and run under gcc's address sanitizer for half of them. Besides, the 379 sample, regression and fuzzing files in tinyexr's own repository, read the same |
 
 The JPEG reader is the one port with a choice of original to match. stb_image has two
@@ -406,9 +430,9 @@ were compared on 20,000 such files). For a damaged file, whose values can be one
 writes, they can differ, since the SIMD version keeps fewer bits along the way. The port
 follows the plain C, which gives one answer on every processor.
 
-`cargo test` needs neither a C++ compiler nor ISPC. Among its tests, fourteen run made-up
+`cargo test` needs neither a C++ compiler nor ISPC. Among its tests, fifteen run made-up
 blocks, images and files through the ports and compare their hashes with ones recorded from
-the originals: thirteen in `tests/*_golden.rs` and one in `src/bc7enc.rs`.
+the originals: fourteen in `tests/*_golden.rs` and one in `src/bc7enc.rs`.
 
 The files have their own check. `compare/files.sh` writes textures of every format and shape
 (plain, texture array, cube map, array of cube maps, volume texture) as `.dds`, `.ktx` and
@@ -417,7 +441,11 @@ Khronos validator has to pass every `.ktx2` file, and the Khronos library ([KTX-
 and [tinyddsloader](https://github.com/benikabocha/tinyddsloader) have to find in each file the
 same sizes, layers, faces and levels, and the same bytes in every image. The other way round,
 the Khronos tool compresses each `.ktx2` file again with Zstandard, and the crate has to read
-the same out of what it writes:
+the same out of what it writes. It also writes `.exr` files, in scanlines and in tiles, as
+halves and as floats, with each of the eight compressions, and has [ffmpeg](https://ffmpeg.org)
+read them, whose `.exr` reader is its own: it has to find the same floats as the crate reads,
+bit for bit. And ffmpeg writes `.exr` files every way it can, which the crate has to read the
+same:
 
 ```text
 KTX=<checkout of KTX-Software> KTX_BUILD=<its build folder> TINYDDS=<checkout of tinyddsloader> \
@@ -467,10 +495,8 @@ machine and made-up pixels.
   all: it is the packing of Basis Universal's own ETC1S format.
 - **Picture files: `.png`, `.bmp` and `.jpg`.** Those are read and written. Of the other
   formats stb_image reads (`.tga`, `.gif`, `.psd`, `.hdr`, `.pnm`), none is ported.
-- **`.exr` files are read, and not yet written.** A file of one part is read, of scanlines or
-  of tiles; a file of several parts or a deep image is not, nor one compressed with DWAA,
-  DWAB or tinyexr's ZFP. `tinyexr::load_exr_from_memory` gives the floats to make an
-  `HdrImage` from.
+- **`.exr` files of one part.** A file of several parts or a deep image is not read, nor one
+  compressed with DWAA, DWAB or tinyexr's ZFP, and none of those is written.
 - **x86's float-to-int rules are built in.** Where an original turns a float that does not fit
   into an int, the ports give what x86 gives, on every processor, so the blocks are the same
   everywhere. The originals themselves would differ on other processors.
@@ -494,7 +520,7 @@ Rust:
   [zstd](https://github.com/facebook/zstd), which is Yann Collet's.
 - The `.png`, `.bmp` and `.jpg` readers and writers are by Sean Barrett and others, from
   [stb](https://github.com/nothings/stb); the JPEG writer is after Jon Olick's `jo_jpeg.cpp`.
-- The `.exr` reader is by Syoyo Fujita and many contributors, from
+- The `.exr` reader and writer are by Syoyo Fujita and many contributors, from
   [tinyexr](https://github.com/syoyo/tinyexr), with code from OpenEXR by Industrial Light &
   Magic.
 

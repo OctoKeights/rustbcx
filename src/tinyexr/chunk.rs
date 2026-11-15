@@ -16,14 +16,14 @@ const DIMENSION_THRESHOLD: i64 = 1024 * 8192;
 /// `OffsetData`: where each block of a file starts: `offsets[level][tile y][tile x]`, or
 /// `offsets[0][0][block]` for a file of scanlines.
 #[derive(Default)]
-struct OffsetData {
-    offsets: Vec<Vec<Vec<u64>>>,
-    num_x_levels: i32,
-    num_y_levels: i32,
+pub(super) struct OffsetData {
+    pub(super) offsets: Vec<Vec<Vec<u64>>>,
+    pub(super) num_x_levels: i32,
+    pub(super) num_y_levels: i32,
 }
 
 /// How many scanlines a block holds, by compression.
-fn num_scanline_blocks(compression_type: i32) -> i32 {
+pub(super) fn num_scanline_blocks(compression_type: i32) -> i32 {
     if compression_type == COMPRESSIONTYPE_ZIP {
         16
     } else if compression_type == COMPRESSIONTYPE_PIZ {
@@ -40,7 +40,7 @@ fn num_scanline_blocks(compression_type: i32) -> i32 {
 }
 
 /// `LevelIndex`.
-fn level_index(lx: i32, ly: i32, tile_level_mode: i32, num_x_levels: i32) -> i32 {
+pub(super) fn level_index(lx: i32, ly: i32, tile_level_mode: i32, num_x_levels: i32) -> i32 {
     match tile_level_mode {
         TILE_ONE_LEVEL => 0,
         TILE_MIPMAP_LEVELS => lx,
@@ -70,7 +70,8 @@ fn level_size(toplevel_size: i32, level: i32, tile_rounding_mode: i32) -> i32 {
 }
 
 /// `DecodeTiledLevel`: the tiles of one level of a tiled image.
-fn decode_tiled_level(exr_image: &mut ExrImage, exr_header: &ExrHeader, offset_data: &OffsetData, channel_offset_list: &[usize], pixel_data_size: i32, head: &[u8], err: &mut String) -> i32 {
+#[allow(clippy::too_many_arguments)]
+fn decode_tiled_level(exr_image: &mut ExrImage, exr_header: &ExrHeader, offset_data: &OffsetData, channel_offset_list: &[usize], pixel_data_size: i32, head: &[u8], err: &mut String, as_tinyexr: bool) -> i32 {
     let size = head.len();
     let num_channels = exr_header.channels.len() as i32;
 
@@ -177,6 +178,7 @@ fn decode_tiled_level(exr_image: &mut ExrImage, exr_header: &ExrHeader, offset_d
                 pixel_data_size as usize,
                 &exr_header.channels,
                 channel_offset_list,
+                as_tinyexr,
             );
             tile.images = images;
 
@@ -208,7 +210,7 @@ fn decode_tiled_level(exr_image: &mut ExrImage, exr_header: &ExrHeader, offset_d
 }
 
 /// `DecodeChunk`: every block of the file `head` into `exr_image`.
-fn decode_chunk(exr_image: &mut ExrImage, exr_header: &mut ExrHeader, offset_data: &OffsetData, head: &[u8], err: &mut String) -> i32 {
+fn decode_chunk(exr_image: &mut ExrImage, exr_header: &mut ExrHeader, offset_data: &OffsetData, head: &[u8], err: &mut String, as_tinyexr: bool) -> i32 {
     let size = head.len();
     let num_channels = exr_header.channels.len() as i32;
 
@@ -303,7 +305,7 @@ fn decode_chunk(exr_image: &mut ExrImage, exr_header: &mut ExrHeader, offset_dat
             level_image.level_x = level_x;
             level_image.level_y = level_y;
 
-            let ret = decode_tiled_level(&mut level_image, exr_header, offset_data, &channel_offset_list, pixel_data_size, head, err);
+            let ret = decode_tiled_level(&mut level_image, exr_header, offset_data, &channel_offset_list, pixel_data_size, head, err, as_tinyexr);
             decoded.push(level_image);
             if ret != 0 {
                 result = ret;
@@ -403,6 +405,7 @@ fn decode_chunk(exr_image: &mut ExrImage, exr_header: &mut ExrHeader, offset_dat
                             pixel_data_size as usize,
                             &exr_header.channels,
                             &channel_offset_list,
+                            as_tinyexr,
                         ) {
                             invalid_data = true;
                         }
@@ -542,7 +545,7 @@ fn calculate_num_tiles(num_tiles: &mut [i32], toplevel_size: i32, size: i32, til
 }
 
 /// `PrecalculateTileInfo`.
-fn precalculate_tile_info(exr_header: &ExrHeader) -> Option<(Vec<i32>, Vec<i32>)> {
+pub(super) fn precalculate_tile_info(exr_header: &ExrHeader) -> Option<(Vec<i32>, Vec<i32>)> {
     let num_x_levels = calculate_num_x_levels(exr_header);
     if num_x_levels < 0 {
         return None;
@@ -572,7 +575,7 @@ fn precalculate_tile_info(exr_header: &ExrHeader) -> Option<(Vec<i32>, Vec<i32>)
 /// The shape of the offset table of a tiled file (`InitTileOffsets`): for each level, how
 /// many rows of tiles it has and how many tiles a row. The second answer is the number of
 /// tiles in all, as the original counts it.
-fn tile_offsets_shape(offset_data: &mut OffsetData, exr_header: &ExrHeader, num_x_tiles: &[i32], num_y_tiles: &[i32]) -> (Vec<(usize, usize)>, i32) {
+pub(super) fn tile_offsets_shape(offset_data: &mut OffsetData, exr_header: &ExrHeader, num_x_tiles: &[i32], num_y_tiles: &[i32]) -> (Vec<(usize, usize)>, i32) {
     let mut num_tile_blocks = 0i32;
     let mut shape = Vec::new();
     offset_data.num_x_levels = num_x_tiles.len() as i32;
@@ -598,6 +601,45 @@ fn tile_offsets_shape(offset_data: &mut OffsetData, exr_header: &ExrHeader, num_
         _ => return (shape, 0),
     }
     (shape, num_tile_blocks)
+}
+
+/// A level of a tiled image: which it is, its size in pixels, and how many tiles it has
+/// across and down.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TileLevel {
+    pub level_x: i32,
+    pub level_y: i32,
+    pub width: i32,
+    pub height: i32,
+    pub num_x_tiles: i32,
+    pub num_y_tiles: i32,
+}
+
+/// The levels of a tiled image with this header, in the order a file has them, which is
+/// the order `save_exr_image_to_memory` wants them in: one level, the mip levels from the
+/// largest down, or the rip levels row after row. It goes by the header's data window, tile
+/// size, level mode and rounding mode, as the original counts them (`PrecalculateTileInfo`
+/// and `LevelSize`). `None` for sizes and modes no image has.
+///
+/// The tile at (x, y) of a level is `min(tile_size_x, width - x * tile_size_x)` pixels wide
+/// and as much high, and its values are `tile_size_x` apart from line to line.
+pub fn tile_levels(exr_header: &ExrHeader) -> Option<Vec<TileLevel>> {
+    let (num_x_tiles, num_y_tiles) = precalculate_tile_info(exr_header)?;
+    let width = exr_header.data_window.max_x.wrapping_sub(exr_header.data_window.min_x).wrapping_add(1);
+    let height = exr_header.data_window.max_y.wrapping_sub(exr_header.data_window.min_y).wrapping_add(1);
+    let level = |lx: usize, ly: usize| TileLevel {
+        level_x: lx as i32,
+        level_y: ly as i32,
+        width: level_size(width, lx as i32, exr_header.tile_rounding_mode),
+        height: level_size(height, ly as i32, exr_header.tile_rounding_mode),
+        num_x_tiles: num_x_tiles[lx],
+        num_y_tiles: num_y_tiles[ly],
+    };
+    match exr_header.tile_level_mode {
+        TILE_ONE_LEVEL | TILE_MIPMAP_LEVELS if num_x_tiles.len() == num_y_tiles.len() => Some((0..num_x_tiles.len()).map(|l| level(l, l)).collect()),
+        TILE_RIPMAP_LEVELS => Some((0..num_y_tiles.len()).flat_map(|ly| (0..num_x_tiles.len()).map(move |lx| (lx, ly))).map(|(lx, ly)| level(lx, ly)).collect()),
+        _ => None,
+    }
 }
 
 /// `IsAnyOffsetsAreInvalid`.
@@ -735,7 +777,7 @@ fn read_offset(head: &[u8], marker: &mut usize) -> Result<u64, (i32, &'static st
 
 /// `DecodeEXRImage`: the pixels of the file `head`, whose offset table starts at `marker`,
 /// into `exr_image`.
-pub(crate) fn decode_exr_image(exr_image: &mut ExrImage, exr_header: &mut ExrHeader, head: &[u8], mut marker: usize, err: &mut String) -> i32 {
+pub(crate) fn decode_exr_image(exr_image: &mut ExrImage, exr_header: &mut ExrHeader, head: &[u8], mut marker: usize, err: &mut String, as_tinyexr: bool) -> i32 {
     let size = head.len();
     let fail = |err: &mut String, message: &str| {
         *err = message.to_string();
@@ -859,7 +901,7 @@ pub(crate) fn decode_exr_image(exr_image: &mut ExrImage, exr_header: &mut ExrHea
 
     {
         let mut e = String::new();
-        let ret = decode_chunk(exr_image, exr_header, &offset_data, head, &mut e);
+        let ret = decode_chunk(exr_image, exr_header, &offset_data, head, &mut e, as_tinyexr);
 
         if ret != 0 {
             if !e.is_empty() {

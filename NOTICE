@@ -123,27 +123,33 @@ Version 2.0 (see LICENSE).
    byte, as ZSTD_compress gives for a source and a level.
 
 9. tinyexr, by Syoyo Fujita and many contributors (https://github.com/syoyo/tinyexr),
-   v3.4.0: of its tinyexr.h, the reading of a file of one part (src/tinyexr), with the
-   decompressors it has from OpenEXR (RLE, PIZ, B44) and its own (ZIP by way of miniz,
-   PXR24).
+   v3.4.0: of its tinyexr.h, the reading and the writing of a file of one part
+   (src/tinyexr), with the compressors and decompressors it has from OpenEXR (RLE, PIZ,
+   B44) and its own (ZIP by way of miniz, PXR24).
 
     Copyright (c) 2014 - 2021, Syoyo Fujita and many contributors. All rights reserved.
     Copyright (c) 2002, Industrial Light & Magic, a division of Lucas Digital Ltd. LLC.
     All rights reserved.
 
    Both under BSD 3-clause licences, kept in LICENSE-tinyexr.txt. The file is changed here
-   in that it is translated from C++ to Rust: a file comes in as its bytes, a refused file's
-   code and message come back with the refusal, the values of a channel are a vector of
+   in that it is translated from C++ to Rust: a file comes in and goes out as its bytes, a
+   refusal's code and message come back with it, the values of a channel are a vector of
    their type where the original has bytes, and memory starts as zeros. Multipart and deep
    files, the spectral helpers, ZFP and threads are left out. What it computes is kept: the
-   same header, the same values and the same refusals as tinyexr.h built without threads.
-   Where the original stops the program or reads past the end of a damaged file (a tile
-   size of 0, a count of chunks beyond what memory holds, a compressed tile placed past the
-   image's edge, a block that is not compressed and is shorter than its lines), the port
-   refuses the file.
+   same files, the same headers, the same values and the same refusals as tinyexr.h built
+   without threads and with GNU libstdc++ (the lengths of PIZ's Huffman codes depend on how
+   the C++ library orders a heap). It is changed in four ways. Where the original stops the
+   program or reads past the end of a damaged file (a tile size of 0, a count of chunks
+   beyond what memory holds, a compressed tile placed past the image's edge, a block that is
+   not compressed and is shorter than its lines), the port refuses the file. Where the
+   original's PIZ writer writes past its buffer, the port has room. What the writer is
+   handed is checked where the original trusts it. And PXR24, B44 and B44A blocks that do
+   not come out smaller than their pixels are written as the pixels, and blocks as long as
+   their pixels read as them, as the format has it; the functions named `..._as_tinyexr` do
+   as the original does.
 
 What is around the ports is the crate's own: mip levels, the HDR image and the reading and
-writing of picture files by the ports of stb (in src/image.rs),
+writing of picture files by the ports of stb and of tinyexr (in src/image.rs),
 float_to_half (in src/bc6h.rs), src/bc2.rs (BC2, its colours packed and unpacked by the
 port of rgbcx), BC2 in src/rdo_bc_encoder.rs, src/texture.rs,
 src/dds.rs (its writer after bc7enc_rdo's save_dds), src/ktx.rs and src/parallel.rs. The

@@ -29,7 +29,7 @@
 //! - [`stb_image`] and [`stb_image_write`]: `.png`, `.bmp` and `.jpg` files to images and
 //!   back (`stb_image.h` and `stb_image_write.h`, from Sean Barrett's
 //!   [stb](https://github.com/nothings/stb)).
-//! - [`tinyexr`]: `.exr` files to halves, floats or integers (the reader of Syoyo Fujita's
+//! - [`tinyexr`]: `.exr` files to halves, floats or integers and back (Syoyo Fujita's
 //!   [tinyexr](https://github.com/syoyo/tinyexr)).
 //!
 //! And around the ports, the crate's own: [`bc2`], the one block format of the family none of

@@ -205,6 +205,7 @@ pub(crate) fn decode_pixel_data(
     pixel_data_size: usize,
     channels: &[ChannelInfo],
     channel_offset_list: &[usize],
+    as_tinyexr: bool,
 ) -> bool {
     let block = &data[..data_len];
     if compression_type == COMPRESSIONTYPE_PIZ {
@@ -269,10 +270,15 @@ pub(crate) fn decode_pixel_data(
         // Allocate original data size.
         // (A block of no bytes stops the original, with an exception out of a C function.)
         let Some(size) = block_size(width, num_lines, pixel_data_size).filter(|&size| size != 0) else { return false };
+        // (The format's rule, which the original does not have for this compression: a block
+        // as long as its pixels is its pixels.)
+        if !as_tinyexr && data_len == size {
+            return unpack_lines(out_images, requested_pixel_types, block, line_order, width, height, x_stride, line_no, num_lines, pixel_data_size, channels, channel_offset_list);
+        }
         let mut out_buf = vec![0u8; size];
 
         let pixel_types: Vec<i32> = channels.iter().map(|channel| channel.pixel_type).collect();
-        if !decompress_pxr24(&mut out_buf, block, width, num_lines, &pixel_types) {
+        if !decompress_pxr24(&mut out_buf, block, width, num_lines, &pixel_types, as_tinyexr) {
             return false;
         }
 
@@ -296,6 +302,11 @@ pub(crate) fn decode_pixel_data(
         // (A block of no bytes stops the original, as does one too large to have.)
         if b44_out_size == 0 || b44_out_size > isize::MAX as usize / 2 {
             return false;
+        }
+        // (The format's rule, which the original does not have for this compression: a block
+        // as long as its pixels is its pixels, line after line.)
+        if !as_tinyexr && block_size(width, num_lines, pixel_data_size) == Some(data_len) {
+            return unpack_lines(out_images, requested_pixel_types, block, line_order, width, height, x_stride, line_no, num_lines, pixel_data_size, channels, channel_offset_list);
         }
         let mut out_buf = vec![0u8; b44_out_size];
 
@@ -421,6 +432,7 @@ pub(crate) fn decode_tiled_pixel_data(
     pixel_data_size: usize,
     channels: &[ChannelInfo],
     channel_offset_list: &[usize],
+    as_tinyexr: bool,
 ) -> bool {
     // Here, data_width and data_height are the dimensions of the current (sub)level.
     if tile_size_x.wrapping_mul(tile_offset_x) > data_width || tile_size_y.wrapping_mul(tile_offset_y) > data_height {
@@ -441,5 +453,5 @@ pub(crate) fn decode_tiled_pixel_data(
     }
 
     // Image size = tile size.
-    decode_pixel_data(out_images, requested_pixel_types, data, data_len, compression_type, /* line_order */ 0, *width, tile_size_y, /* stride */ tile_size_x, /* y */ 0, /* line_no */ 0, *height, pixel_data_size, channels, channel_offset_list)
+    decode_pixel_data(out_images, requested_pixel_types, data, data_len, compression_type, /* line_order */ 0, *width, tile_size_y, /* stride */ tile_size_x, /* y */ 0, /* line_no */ 0, *height, pixel_data_size, channels, channel_offset_list, as_tinyexr)
 }

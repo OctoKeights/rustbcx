@@ -1,4 +1,4 @@
-The .exr reader of this crate (src/tinyexr) is ported from tinyexr.h of tinyexr
+The .exr reader and writer of this crate (src/tinyexr) are ported from tinyexr.h of tinyexr
 (https://github.com/syoyo/tinyexr), v3.4.0, by Syoyo Fujita and many contributors, which
 contains code from OpenEXR. These are the two licences at the head of that file. The port
 itself is offered under the Apache License 2.0 (see LICENSE and NOTICE).

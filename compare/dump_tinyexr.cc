@@ -1,8 +1,16 @@
 // The C++ half of the comparison with tinyexr (https://github.com/syoyo/tinyexr): makes .exr
-// files of made-up pixels with it, reads them back with it, and prints a running hash of what
-// it reads. examples/dump.rs prints the same from the Rust port, and compare/compare.sh
-// compares the two.
+// files of made-up pixels with it, reads them back with it, and prints a running hash of the
+// files or of what it reads. examples/dump.rs prints the same from the Rust port, and
+// compare/compare.sh compares the two.
 //
+//   dump tinyexr_write <seed> <count>         made-up images of every kind tinyexr writes
+//   dump tinyexr_write_small <seed> <count>   (scanlines and tiles, with mip and rip levels,
+//                                             three types of value, eight compressions, with
+//                                             attributes of their own), saved: the bytes of
+//                                             each file, or tinyexr's message where it does
+//                                             not save one; and for every fourth, floats of
+//                                             one, three or four to a pixel saved the short
+//                                             way, as halves or as floats
 //   dump tinyexr_read <seed> <count> <file>         made-up images of every kind tinyexr writes
 //   dump tinyexr_read_small <seed> <count> <file>   (scanlines and tiles, with mip and rip
 //                                                   levels, three types of value, eight
@@ -453,8 +461,9 @@ Made MakeImage(bool small)
     return m;
 }
 
-// The image saved by tinyexr: the file's bytes, or none and tinyexr's message.
-std::vector<unsigned char> Save(Made& m, std::string& message)
+// The image saved by tinyexr: the file's bytes, or none, tinyexr's message, and what it gave
+// as the size (nothing, or one of its error numbers).
+std::vector<unsigned char> Save(Made& m, std::string& message, std::uint32_t& refusal)
 {
     const std::size_t count = m.channels.size();
     EXRHeader header;
@@ -547,6 +556,7 @@ std::vector<unsigned char> Save(Made& m, std::string& message)
     // (Nothing, or one of its error numbers as a size.)
     if (size == 0 || size > (static_cast<std::size_t>(1) << 40))
     {
+        refusal = static_cast<std::uint32_t>(size);
         message = err ? err : "";
         FreeEXRErrorMessage(err);
         return file;
@@ -881,13 +891,80 @@ void WriteNumber(std::FILE* file, std::uint32_t value)
     bytes[3] = static_cast<unsigned char>(value >> 24);
     std::fwrite(bytes, 1, 4, file);
 }
+
+// The `tinyexr_write` dumps.
+int Write(const char* name, bool small, std::uint32_t count)
+{
+    std::uint64_t file_total = 0;
+    std::uint32_t saved = 0, not_saved = 0, short_way = 0;
+    for (std::uint32_t i = 0; i < count; ++i)
+    {
+        Made made = MakeImage(small);
+        std::string message;
+        std::uint32_t refusal = 0;
+        const std::vector<unsigned char> file = Save(made, message, refusal);
+        if (file.empty())
+        {
+            ++not_saved;
+            AddNumber(refusal);
+            AddString(message.c_str());
+        }
+        else
+        {
+            ++saved;
+            file_total += file.size();
+            AddNumber(static_cast<std::uint32_t>(file.size()));
+            Add(file.data(), file.size());
+        }
+
+        // Every fourth, floats saved the short way: one, three or four to a pixel (or two,
+        // which it does not take), as halves or as floats.
+        if (i % 4 == 0)
+        {
+            static const int kComponents[8] = { 2, 1, 1, 3, 3, 3, 4, 4 };
+            const int components = kComponents[Next() % 8];
+            const int width = 1 + static_cast<int>(Next() % 40);
+            const int height = 1 + static_cast<int>(Next() % 40);
+            const int as_halves = static_cast<int>(Next() % 2);
+            const std::vector<unsigned char> bytes = MakeValues(TINYEXR_PIXELTYPE_FLOAT, width * components, height);
+            std::vector<float> floats(bytes.size() / 4);
+            std::memcpy(floats.data(), bytes.data(), bytes.size());
+            unsigned char* memory = NULL;
+            const char* err = NULL;
+            const int size = SaveEXRToMemory(floats.data(), width, height, components, as_halves, &memory, &err);
+            AddNumber(static_cast<std::uint32_t>(size));
+            if (size > 0)
+            {
+                ++short_way;
+                file_total += static_cast<std::size_t>(size);
+                Add(memory, static_cast<std::size_t>(size));
+                std::free(memory);
+            }
+            else
+            {
+                AddString(err ? err : "");
+                FreeEXRErrorMessage(err);
+            }
+        }
+
+        if ((i + 1) % 200 == 0 || i + 1 == count)
+            std::printf("%s %u %016llx\n", name, i + 1, static_cast<unsigned long long>(g_hash));
+    }
+    std::printf("%s bytes of files: %llu; saved: %u, not saved: %u, saved the short way: %u\n", name, static_cast<unsigned long long>(file_total), saved, not_saved, short_way);
+    return 0;
+}
 } // namespace
 
 int main(int argc, char** argv)
 {
+    if (argc >= 4 && (std::strcmp(argv[1], "tinyexr_write") == 0 || std::strcmp(argv[1], "tinyexr_write_small") == 0))
+    {
+        g_state = std::strtoull(argv[2], NULL, 10);
+        return Write(argv[1], std::strcmp(argv[1], "tinyexr_write_small") == 0, static_cast<std::uint32_t>(std::strtoul(argv[3], NULL, 10)));
+    }
     if (argc < 5 || (std::strcmp(argv[1], "tinyexr_read") != 0 && std::strcmp(argv[1], "tinyexr_read_small") != 0))
     {
-        std::fprintf(stderr, "usage: dump tinyexr_read|tinyexr_read_small <seed> <count> <file>\n");
+        std::fprintf(stderr, "usage: dump tinyexr_read|tinyexr_read_small <seed> <count> <file>\n       dump tinyexr_write|tinyexr_write_small <seed> <count>\n");
         return 2;
     }
     const bool small = std::strcmp(argv[1], "tinyexr_read_small") == 0;
@@ -905,7 +982,8 @@ int main(int argc, char** argv)
     {
         Made made = MakeImage(small);
         std::string message;
-        std::vector<unsigned char> file = Save(made, message);
+        std::uint32_t refusal = 0;
+        std::vector<unsigned char> file = Save(made, message, refusal);
         bool sound = !file.empty() && made.plain;
         bool damaged = false;
         // (What tinyexr does not save is read as a file of no bytes.)

@@ -44,14 +44,20 @@
   levels 1 to 3 and the negative levels use for a source of any size, and level 4 for some
   sizes; `zstd::level_is_ported` says whether a level is taken, and the others are refused
   until their strategies are ported.
-- **`.exr` files are read.** `tinyexr` is the port of the reader in Syoyo Fujita's tinyexr
-  (`tinyexr.h`, v3.4.0): `parse_exr_version_from_memory` and `parse_exr_header_from_memory`
-  for a file's header, `load_exr_image_from_memory` for its channels as they are stored
-  (halves, floats or 32-bit integers; halves as floats if asked), and `load_exr_from_memory`
-  for red, green, blue and alpha as floats. Files of scanlines and of tiles, with mip and rip
-  levels, uncompressed or compressed with RLE, ZIPS, ZIP, PIZ, PXR24, B44 or B44A. It gives
-  the values the original gives and refuses what it refuses, with the same code and message.
-  Files of several parts and deep images are not read.
+- **`.exr` files, read and written.** `HdrImage::load` and `save` read and write them
+  (`from_file_bytes` and `to_exr` for the bytes; `load_signed` and `from_file_bytes_signed`
+  keep what is below zero), so an HDR image no longer has to come in through another crate.
+  Under them is `tinyexr`, the port of Syoyo Fujita's tinyexr (`tinyexr.h`, v3.4.0):
+  `load_exr_from_memory` and `save_exr_to_memory` for floats of red, green, blue and alpha;
+  `parse_exr_version_from_memory`, `parse_exr_header_from_memory`,
+  `load_exr_image_from_memory` and `save_exr_image_to_memory` for a file's header and every
+  channel as it is stored (halves, floats or 32-bit integers). Files of scanlines and of
+  tiles, with mip and rip levels, uncompressed or compressed with RLE, ZIPS, ZIP, PIZ,
+  PXR24, B44 or B44A. It writes the files the original writes, byte for byte, gives the
+  values it gives and refuses what it refuses, with the same code and message; but PXR24 and
+  B44 blocks that do not come out smaller than their pixels are stored and read as the
+  format has them, which tinyexr does not do and other readers need (the functions ending in
+  `_as_tinyexr` do as tinyexr does). Files of several parts and deep images are left out.
 - Fixed: a `.ktx2` file of an sRGB texture in BC3 did not mark its alpha as linear in its data
   format descriptor, as the Khronos tools do and their validator requires.
 - Changed: `Texture` has three more fields, so one written out by hand needs them;

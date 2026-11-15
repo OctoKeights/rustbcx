@@ -1,5 +1,6 @@
 //! An image of 8-bit RGBA pixels, one of HDR pixels, what cutting them into blocks needs, and
-//! the first to and from `.png`, `.bmp` and `.jpg` files.
+//! the first to and from `.png`, `.bmp` and `.jpg` files and the second to and from `.exr`
+//! files.
 
 use std::path::Path;
 
@@ -7,6 +8,7 @@ use crate::bc6h::{float_to_half, half_to_float, RgbHalf};
 use crate::bc7decomp::ColorRgba;
 use crate::stb_image::{self, LoadError, LoadOptions};
 use crate::stb_image_write::{self, WriteOptions};
+use crate::tinyexr::{self, ChannelData, ChannelInfo, ExrError, ExrHeader, ExrImage};
 
 /// An image: `width * height` pixels in rows from the top, each red, green, blue, alpha.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -291,6 +293,72 @@ impl HdrImage {
         self.pixels.as_flattened().iter().map(|&half| half_to_float(half)).collect()
     }
 
+    /// The red, green and blue of a `.exr` file as floats, read by [`crate::tinyexr`].
+    fn exr_floats(file: &[u8]) -> Result<(u32, u32, Vec<f32>), ExrError> {
+        let (rgba, width, height) = tinyexr::load_exr_from_memory(file)?;
+        Ok((width as u32, height as u32, rgba.chunks_exact(4).flat_map(|pixel| [pixel[0], pixel[1], pixel[2]]).collect()))
+    }
+
+    /// The image in the bytes of a `.exr` file, read by [`crate::tinyexr`]: its channels
+    /// `R`, `G` and `B` (a file of one channel gives it as all three), whether the file holds
+    /// halves or floats; any other channels are left. Each value is brought into what an
+    /// unsigned BC6H block can hold, as [`HdrImage::from_rgb_f32`] brings it.
+    pub fn from_file_bytes(file: &[u8]) -> Result<HdrImage, ExrError> {
+        let (width, height, floats) = HdrImage::exr_floats(file)?;
+        Ok(HdrImage::from_rgb_f32(width, height, &floats).unwrap_or_default())
+    }
+
+    /// The image in the bytes of a `.exr` file, with what is below zero kept: for signed
+    /// BC6H, as [`HdrImage::from_rgb_f32_signed`] brings it.
+    pub fn from_file_bytes_signed(file: &[u8]) -> Result<HdrImage, ExrError> {
+        let (width, height, floats) = HdrImage::exr_floats(file)?;
+        Ok(HdrImage::from_rgb_f32_signed(width, height, &floats).unwrap_or_default())
+    }
+
+    /// Reads a `.exr` file from disk. A file that is not one, or is damaged, comes back as an
+    /// error of the kind `InvalidData`, with the [`ExrError`] inside.
+    pub fn load(path: impl AsRef<Path>) -> std::io::Result<HdrImage> {
+        HdrImage::from_file_bytes(&std::fs::read(path)?).map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
+    }
+
+    /// Reads a `.exr` file from disk, with what is below zero kept
+    /// ([`HdrImage::from_file_bytes_signed`]).
+    pub fn load_signed(path: impl AsRef<Path>) -> std::io::Result<HdrImage> {
+        HdrImage::from_file_bytes_signed(&std::fs::read(path)?).map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
+    }
+
+    /// The image as the bytes of a `.exr` file, written by [`crate::tinyexr`]: channels `B`,
+    /// `G` and `R` of halves, as the pixels are, in scanlines, compressed with ZIP (which
+    /// loses nothing), or not at all when the image is less than sixteen pixels each way, as
+    /// tinyexr's `SaveEXR` chooses. None for an image of no pixels.
+    pub fn to_exr(&self) -> Option<Vec<u8>> {
+        let (width, height) = (i32::try_from(self.width).ok()?, i32::try_from(self.height).ok()?);
+        if self.pixels.is_empty() || self.pixels.len() != self.width as usize * self.height as usize {
+            return None;
+        }
+        let channel = |k: usize| ChannelData::Half(self.pixels.iter().map(|pixel| pixel[k]).collect());
+        let image = ExrImage { images: vec![channel(2), channel(1), channel(0)], width, height, num_channels: 3, ..ExrImage::default() };
+        let header = ExrHeader {
+            channels: ["B", "G", "R"].iter().map(|name| ChannelInfo { name: name.to_string(), pixel_type: tinyexr::PIXELTYPE_HALF, x_sampling: 1, y_sampling: 1, p_linear: 0 }).collect(),
+            pixel_types: vec![tinyexr::PIXELTYPE_HALF; 3],
+            requested_pixel_types: vec![tinyexr::PIXELTYPE_HALF; 3],
+            compression_type: if width < 16 && height < 16 { tinyexr::COMPRESSIONTYPE_NONE } else { tinyexr::COMPRESSIONTYPE_ZIP },
+            ..ExrHeader::default()
+        };
+        tinyexr::save_exr_image_to_memory(&image, &header).ok()
+    }
+
+    /// Writes the image to disk as a `.exr` file. A name with any other ending, and an image
+    /// of no pixels, is an error of the kind `InvalidInput`.
+    pub fn save(&self, path: impl AsRef<Path>) -> std::io::Result<()> {
+        let path = path.as_ref();
+        if !path.extension().and_then(|extension| extension.to_str()).is_some_and(|extension| extension.eq_ignore_ascii_case("exr")) {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "the file name has to end in .exr"));
+        }
+        let file = self.to_exr().ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, "the image has no pixels"))?;
+        std::fs::write(path, file)
+    }
+
     /// The pixel at a place.
     pub fn pixel(&self, x: u32, y: u32) -> RgbHalf {
         self.pixels[x as usize + y as usize * self.width as usize]
@@ -440,6 +508,50 @@ mod tests {
         assert_eq!(last.half(), last);
         // An odd side leaves its last column out.
         assert_eq!(Image::new(5, 3).half().width, 2);
+    }
+
+    #[test]
+    fn hdr_images_are_written_and_read_as_exr() {
+        // Small enough to be written as it is, and large enough to be compressed.
+        for (width, height) in [(3u32, 2u32), (40, 17)] {
+            let mut image = HdrImage::new(width, height);
+            for (i, pixel) in image.pixels.iter_mut().enumerate() {
+                // Halves from 0 up to 4 or so, a different one for each colour.
+                *pixel = [0x3000 + (i as u16 * 7) % 0x1000, (i as u16 * 13) % 0x4400, 0x3c00];
+            }
+            let file = image.to_exr().unwrap();
+            assert_eq!(&file[..4], &[0x76, 0x2f, 0x31, 0x01]);
+            assert_eq!(HdrImage::from_file_bytes(&file).unwrap(), image);
+            assert_eq!(HdrImage::from_file_bytes_signed(&file).unwrap(), image);
+            // The file is what tinyexr's reader says: three channels of halves.
+            let version = tinyexr::parse_exr_version_from_memory(&file).unwrap();
+            let header = tinyexr::parse_exr_header_from_memory(&version, &file).unwrap();
+            assert_eq!(header.channels.iter().map(|channel| channel.name.as_str()).collect::<Vec<_>>(), ["B", "G", "R"]);
+            assert_eq!(header.pixel_types, [tinyexr::PIXELTYPE_HALF; 3]);
+            assert_eq!(header.compression_type, if width < 16 { tinyexr::COMPRESSIONTYPE_NONE } else { tinyexr::COMPRESSIONTYPE_ZIP });
+        }
+
+        // What is below zero is kept only when asked for; floats in a file come in as halves.
+        let file = tinyexr::save_exr_to_memory(&[-1.0, 0.5, 2.0, 1e9, 0.25, -0.5], 2, 1, 3, false).unwrap();
+        let image = HdrImage::from_file_bytes(&file).unwrap();
+        assert_eq!(image.to_rgb_f32(), [0.0, 0.5, 2.0, 65504.0, 0.25, 0.0]);
+        let signed = HdrImage::from_file_bytes_signed(&file).unwrap();
+        assert_eq!(signed.to_rgb_f32(), [-1.0, 0.5, 2.0, 65504.0, 0.25, -0.5]);
+
+        // To disk, by the name's ending.
+        let folder = std::env::temp_dir().join(format!("rustbcx-hdr-image-test-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        signed.save(folder.join("a.EXR")).unwrap();
+        assert_eq!(HdrImage::load(folder.join("a.EXR")).unwrap(), image);
+        assert_eq!(HdrImage::load_signed(folder.join("a.EXR")).unwrap(), signed);
+        assert_eq!(signed.save(folder.join("a.hdr")).unwrap_err().kind(), std::io::ErrorKind::InvalidInput);
+        std::fs::write(folder.join("b.exr"), b"not a picture").unwrap();
+        let error = HdrImage::load(folder.join("b.exr")).unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+        assert_eq!(error.to_string(), "Failed to parse EXR version. code(-1)");
+        std::fs::remove_dir_all(&folder).unwrap();
+        // No pixels, no file.
+        assert!(HdrImage::new(0, 4).to_exr().is_none());
     }
 
     #[test]

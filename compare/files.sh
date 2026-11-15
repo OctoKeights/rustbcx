@@ -2,7 +2,7 @@
 # Checks the files the crate writes against other readers.
 #
 #   KTX=<checkout of KTX-Software> KTX_BUILD=<its build folder> TINYDDS=<checkout of tinyddsloader> \
-#       compare/files.sh
+#       [FFMPEG=<ffmpeg>] compare/files.sh
 #
 # examples/files.rs writes textures of every format (BC1 to BC7) and shape (plain, texture
 # array, array of one, cube map, array of cube maps, volume texture), with one level and with
@@ -25,6 +25,15 @@
 # It walks a file as Microsoft's DDSTextureLoader does, but never takes a volume's depth from
 # the header, so the script builds against a copy with that put in (two lines; without them
 # it finds one slice in every volume).
+#
+# And the .exr files: the same example writes made-up images in scanlines and in tiles, as
+# halves and as floats, with each of the eight compressions, and beside each the floats the
+# crate reads of it. Every file is then read by ffmpeg (`ffmpeg` on the path, or its path in
+# $FFMPEG), whose .exr reader is its own and not OpenEXR's or tinyexr's, and which has to find
+# the same floats, bit for bit: for B44 and for PXR24's floats too, which lose a little, the
+# same on both sides. The other way round, ffmpeg writes an image again in each of the ways
+# it can (uncompressed, RLE and ZIP by the line and by sixteen lines, as halves and as floats),
+# and the crate has to read the same out of what it writes.
 #
 # What cannot be built is said to be NOT COMPARED, and the script fails.
 set -u
@@ -121,6 +130,46 @@ else
         # shellcheck disable=SC2086
         "$tmp/files-dds" "$tmp/out" $names > "$tmp/dds.txt" 2>&1
         same ".dds by tinyddsloader" "$tmp/dds.txt"
+    fi
+fi
+ffmpeg=${FFMPEG:-ffmpeg}
+if ! command -v "$ffmpeg" > /dev/null 2>&1; then
+    echo ".exr: NOT COMPARED, no ffmpeg (on the path, or its path in \$FFMPEG)"
+    bad=$((bad + 1))
+else
+    mkdir -p "$tmp/exr" || exit 2
+    "$rust" --exr "$tmp/exr" || exit 2
+    other=0
+    for file in "$tmp/exr"/*.exr; do
+        if ! "$ffmpeg" -v error -y -i "$file" -f rawvideo -pix_fmt gbrpf32le "$tmp/exr/read.raw" > /dev/null 2>&1 || ! cmp -s "$tmp/exr/read.raw" "$file.gbr"; then
+            [ "$other" -eq 0 ] && echo "$file: ffmpeg does not read what the crate reads"
+            other=$((other + 1))
+        fi
+    done
+    if [ "$other" -eq 0 ]; then
+        echo ".exr by ffmpeg: the same in all $(ls "$tmp/exr"/*.exr | wc -l | tr -d ' ') files"
+    else
+        echo ".exr by ffmpeg: $other DIFFERENT"
+        bad=$((bad + 1))
+    fi
+    # The other way round: ffmpeg writes the image again, each of the four ways it can
+    # compress and as halves and as floats, and the crate has to read the same floats.
+    other=0
+    count=0
+    for compression in none rle zip1 zip16; do
+        for stored in half float; do
+            count=$((count + 1))
+            if ! "$ffmpeg" -v error -y -i "$tmp/exr/lines-none-$stored.exr" -c:v exr -compression "$compression" -format "$stored" "$tmp/exr/from-ffmpeg.exr" > /dev/null 2>&1 || ! "$rust" --exr-same "$tmp/exr/from-ffmpeg.exr" "$tmp/exr/lines-none-$stored.exr.gbr"; then
+                [ "$other" -eq 0 ] && echo "$compression, $stored: the crate does not read what ffmpeg wrote"
+                other=$((other + 1))
+            fi
+        done
+    done
+    if [ "$other" -eq 0 ]; then
+        echo ".exr from ffmpeg, by the crate: the same in all $count files"
+    else
+        echo ".exr from ffmpeg, by the crate: $other DIFFERENT"
+        bad=$((bad + 1))
     fi
 fi
 [ "$bad" -eq 0 ]

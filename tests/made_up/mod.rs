@@ -2392,7 +2392,7 @@ pub fn tinyexr_read(name: &str, count: u32, file: &[u8]) -> String {
     }
     // The file as floats of red, green, blue and alpha.
     fn continue_with_rgba(hash: &mut Hash, wish: usize, bytes: &[u8], as_rgba: &mut u32) {
-        let loaded = tinyexr::load_exr_from_memory(bytes);
+        let loaded = tinyexr::load_exr_from_memory_as_tinyexr(bytes);
         if wish & 8 != 0 {
             hash.add(&0xfffffffcu32.to_le_bytes());
             if loaded.is_ok() {
@@ -2496,7 +2496,7 @@ pub fn tinyexr_read(name: &str, count: u32, file: &[u8]) -> String {
                                     }
                                 }
                             }
-                            let loaded = tinyexr::load_exr_image_from_memory(&mut header, bytes);
+                            let loaded = tinyexr::load_exr_image_from_memory_as_tinyexr(&mut header, bytes);
                             match (wish & 4 != 0, loaded) {
                                 // Where tinyexr stops (it throws, and nothing catches it),
                                 // the port has to refuse the file.
@@ -2562,4 +2562,366 @@ pub fn tinyexr_read(name: &str, count: u32, file: &[u8]) -> String {
         }
     }
     out + &format!("{name} bytes of files: {file_total}; headers read: {headers}, images read: {images}, refused: {refused}, left: {left}, where tinyexr stops: {stopped}; as red, green, blue and alpha: {as_rgba}\n")
+}
+
+/// A made-up image and how to save it, as `MakeImage` in `compare/dump_tinyexr.cc` makes it.
+struct ExrMade {
+    header: rustbcx::tinyexr::ExrHeader,
+    image: rustbcx::tinyexr::ExrImage,
+    /// Whether what is saved of it has to be read back: not with attributes that say other
+    /// than the image is, and not with a level left out.
+    plain: bool,
+}
+
+/// The values of one channel, `w` by `h` of them, of one of four kinds: noise, a ramp, one
+/// value, values such as a picture has. (`MakeValues`.)
+fn exr_values(r: &mut Random, pixel_type: i32, w: i32, h: i32) -> rustbcx::tinyexr::ChannelData {
+    use rustbcx::tinyexr::{ChannelData, PIXELTYPE_FLOAT, PIXELTYPE_HALF};
+    let kind = r.next() % 4;
+    let first = r.next();
+    let step_x = r.next() % 8;
+    let step_y = r.next() % 8;
+    let mut values = Vec::with_capacity((w * h) as usize);
+    for y in 0..h as u32 {
+        for x in 0..w as u32 {
+            values.push(match kind {
+                0 => r.next(),
+                1 => first.wrapping_add(x.wrapping_mul(step_x)).wrapping_add(y.wrapping_mul(step_y)),
+                2 => first,
+                _ => {
+                    let n = r.next();
+                    if pixel_type == PIXELTYPE_FLOAT {
+                        0x3c000000 + n % 0x04000000
+                    } else if pixel_type == PIXELTYPE_HALF {
+                        0x3000 + n % 0x1000
+                    } else {
+                        n % 1000
+                    }
+                }
+            });
+        }
+    }
+    if pixel_type == PIXELTYPE_FLOAT {
+        ChannelData::Float(values.into_iter().map(f32::from_bits).collect())
+    } else if pixel_type == PIXELTYPE_HALF {
+        ChannelData::Half(values.into_iter().map(|value| value as u16).collect())
+    } else {
+        ChannelData::Uint(values)
+    }
+}
+
+fn exr_image(r: &mut Random, small: bool) -> ExrMade {
+    use rustbcx::tinyexr::{self, Attribute, Box2i, ChannelInfo, ExrHeader, ExrImage, ExrTile};
+    const NAMES: [&str; 8] = ["A", "B", "G", "R", "Z", "id", "light.B", "light.G"];
+    let mut plain = true;
+    let tiled = r.next().is_multiple_of(3);
+    let size_kind = if small { 0 } else { r.next() % 8 };
+    let (width, height);
+    if size_kind < 5 {
+        width = 1 + (r.next() % if small { 10 } else { 40 }) as i32;
+        height = 1 + (r.next() % if small { 36 } else { 40 }) as i32;
+    } else if size_kind < 7 {
+        width = 1 + (r.next() % 150) as i32;
+        height = 1 + (r.next() % 150) as i32;
+    } else {
+        width = 1 + (r.next() % 400) as i32;
+        height = 1 + (r.next() % 100) as i32;
+    }
+
+    // Its channels: red, green, blue and alpha; without alpha; one channel; or some of eight.
+    let (count, start);
+    let names_kind = r.next() % 4;
+    if names_kind == 0 {
+        count = 4;
+        start = 0;
+    } else if names_kind == 1 {
+        count = 3;
+        start = 1;
+    } else if names_kind == 2 {
+        count = 1;
+        start = 0;
+    } else {
+        count = 1 + r.next() % 5;
+        start = r.next() % (8 - count + 1);
+    }
+    let mut header = ExrHeader::default();
+    for c in 0..count {
+        let name = if names_kind == 2 { "Y" } else { NAMES[(start + c) as usize] };
+        let memory_type = (r.next() % 3) as i32;
+        let as_half = r.next() % 2;
+        let file_type = if memory_type == tinyexr::PIXELTYPE_UINT {
+            tinyexr::PIXELTYPE_UINT
+        } else if as_half != 0 {
+            tinyexr::PIXELTYPE_HALF
+        } else {
+            tinyexr::PIXELTYPE_FLOAT
+        };
+        header.channels.push(ChannelInfo { name: name.to_string(), pixel_type: file_type, x_sampling: 1, y_sampling: 1, p_linear: 0 });
+        header.pixel_types.push(memory_type);
+        header.requested_pixel_types.push(file_type);
+    }
+
+    // Its compression: one of the eight, PIZ more often; now and then one that is not written.
+    let compression = r.next() % 20;
+    header.compression_type = if compression < 16 {
+        (compression % 8) as i32
+    } else if compression == 16 {
+        tinyexr::COMPRESSIONTYPE_ZFP
+    } else if compression == 17 {
+        9
+    } else {
+        tinyexr::COMPRESSIONTYPE_PIZ
+    };
+    header.long_name = i32::from(r.next().is_multiple_of(8));
+    // Now and then attributes of its own.
+    let mut with_chunk_count = false;
+    let mut wrong_chunk_count = 0u32;
+    if r.next().is_multiple_of(3) {
+        let attributes = 1 + r.next() % 3;
+        for j in 0..attributes {
+            let kind = r.next() % 16;
+            let mut attribute = Attribute { name: String::new(), type_name: "string".to_string(), value: Vec::new() };
+            if kind < 6 {
+                attribute.name = if kind < 4 { "comment" } else { "owner" }.to_string();
+                attribute.value = vec![0; (r.next() % 20) as usize];
+                for byte in &mut attribute.value {
+                    *byte = b'a' + (r.next() % 26) as u8;
+                }
+            } else if kind < 10 {
+                const TYPES: [&str; 5] = ["scanlineimage", "tiledimage", "deeptile", "deepscanline", "other"];
+                attribute.name = "type".to_string();
+                attribute.value = TYPES[(r.next() % 5) as usize].as_bytes().to_vec();
+                plain = false;
+            } else if kind < 12 {
+                attribute.name = "name".to_string();
+                attribute.value = vec![0; 1 + (r.next() % 8) as usize];
+                for byte in &mut attribute.value {
+                    *byte = b'a' + (r.next() % 26) as u8;
+                }
+            } else if kind < 15 {
+                // (Its value is filled in once the image is made.)
+                let wrong = r.next() % 4;
+                let count = r.next() % 40;
+                if with_chunk_count {
+                    continue;
+                }
+                with_chunk_count = true;
+                wrong_chunk_count = if wrong == 0 { count + 1 } else { 0 };
+                attribute.name = "chunkCount".to_string();
+                attribute.type_name = "int".to_string();
+                attribute.value = vec![0; 4];
+            } else {
+                let many = 126 + r.next() % 6;
+                attribute.type_name = "int".to_string();
+                attribute.value = vec![j as u8; 4];
+                for k in 0..many {
+                    attribute.name = format!("a{k:03}");
+                    header.custom_attributes.push(attribute.clone());
+                }
+                continue;
+            }
+            header.custom_attributes.push(attribute);
+        }
+    }
+    // The count of its chunks into the attribute for it, if it has one: the count, or another.
+    let mut set_chunk_count = |header: &mut ExrHeader, count: u32| {
+        for attribute in &mut header.custom_attributes {
+            if attribute.name == "chunkCount" {
+                let mut value = count;
+                if wrong_chunk_count != 0 {
+                    let other = wrong_chunk_count - 1;
+                    value = if other >= count { other + 1 } else { other };
+                }
+                attribute.value = value.to_le_bytes().to_vec();
+                if value != count {
+                    plain = false;
+                }
+            }
+        }
+    };
+
+    let mut image = ExrImage { width, height, num_channels: count as i32, ..ExrImage::default() };
+    header.data_window = Box2i { min_x: 0, min_y: 0, max_x: width - 1, max_y: height - 1 };
+    if !tiled {
+        for c in 0..count as usize {
+            image.images.push(exr_values(r, header.pixel_types[c], width, height));
+        }
+        let lines = match header.compression_type {
+            tinyexr::COMPRESSIONTYPE_ZIP | tinyexr::COMPRESSIONTYPE_PXR24 | tinyexr::COMPRESSIONTYPE_ZFP => 16,
+            tinyexr::COMPRESSIONTYPE_PIZ | tinyexr::COMPRESSIONTYPE_B44 | tinyexr::COMPRESSIONTYPE_B44A => 32,
+            _ => 1,
+        };
+        set_chunk_count(&mut header, ((height + lines - 1) / lines) as u32);
+        return ExrMade { header, image, plain };
+    }
+
+    header.tiled = 1;
+    header.tile_size_x = 1 + (r.next() % width.min(64) as u32) as i32;
+    header.tile_size_y = 1 + (r.next() % height.min(64) as u32) as i32;
+    header.tile_level_mode = (r.next() % 3) as i32;
+    header.tile_rounding_mode = (r.next() % 2) as i32;
+    let without_last_level = r.next().is_multiple_of(16);
+
+    // Its levels, as tinyexr counts them.
+    let levels = tinyexr::tile_levels(&header).expect("the levels of a made-up image");
+    let mut images = Vec::new();
+    let mut chunks = 0u32;
+    for level in &levels {
+        let mut level_image = ExrImage { level_x: level.level_x, level_y: level.level_y, width: level.width, height: level.height, num_channels: count as i32, ..ExrImage::default() };
+        for t in 0..level.num_x_tiles * level.num_y_tiles {
+            let (offset_x, offset_y) = (t % level.num_x_tiles, t / level.num_x_tiles);
+            let mut tile = ExrTile {
+                offset_x,
+                offset_y,
+                level_x: level.level_x,
+                level_y: level.level_y,
+                width: header.tile_size_x.min(level.width - offset_x * header.tile_size_x),
+                height: header.tile_size_y.min(level.height - offset_y * header.tile_size_y),
+                images: Vec::new(),
+            };
+            for c in 0..count as usize {
+                tile.images.push(exr_values(r, header.pixel_types[c], header.tile_size_x, header.tile_size_y));
+            }
+            level_image.tiles.push(tile);
+            chunks += 1;
+        }
+        images.push(level_image);
+    }
+    set_chunk_count(&mut header, chunks);
+    if without_last_level && images.len() > 1 {
+        images.pop();
+        plain = false;
+    }
+    // The levels one behind the other.
+    let mut chain: Option<Box<ExrImage>> = None;
+    while let Some(mut level) = images.pop() {
+        level.next_level = chain.take();
+        chain = Some(Box::new(level));
+    }
+    ExrMade { header, image: *chain.expect("a level"), plain }
+}
+
+/// The `tinyexr_write` dumps: made-up images saved, as `compare/dump_tinyexr.cc` saves them
+/// with tinyexr: a hash of each file's bytes, or of the message where none is saved. Each
+/// file is read back besides, which the other program does not do: what was saved as it was
+/// has to come back as it was.
+pub fn tinyexr_write(name: &str, seed: u64, count: u32) -> String {
+    use rustbcx::tinyexr::{self, ChannelData};
+    let mut r = Random { state: seed };
+    let mut hash = Hash::new();
+    let small = name.ends_with("_small");
+    let mut file_total = 0u64;
+    let (mut saved, mut not_saved, mut short_way) = (0u32, 0u32, 0u32);
+    let mut out = String::new();
+    // The values of a channel as bits, to compare them.
+    fn bits(values: &ChannelData, index: usize) -> u32 {
+        match values {
+            ChannelData::Uint(values) => values[index],
+            ChannelData::Half(values) => u32::from(values[index]),
+            ChannelData::Float(values) => values[index].to_bits(),
+        }
+    }
+    for i in 0..count {
+        let made = exr_image(&mut r, small);
+        match tinyexr::save_exr_image_to_memory_as_tinyexr(&made.image, &made.header) {
+            Err(error) => {
+                not_saved += 1;
+                // (What tinyexr gives as the size: nothing, or one of its error numbers.)
+                let refusal = if error.code == tinyexr::ERROR_SERIALIZATION_FAILED { 0 } else { error.code };
+                hash.add(&refusal.to_le_bytes());
+                hash.add(error.message.as_bytes());
+                hash.add(&[0]);
+            }
+            Ok(file) => {
+                saved += 1;
+                file_total += file.len() as u64;
+                hash.add(&(file.len() as u32).to_le_bytes());
+                hash.add(&file);
+
+                if made.plain {
+                    // Read back from the file as the format has it, which is tinyexr's own
+                    // unless a PXR24 or B44 block did not come out smaller than its pixels.
+                    let lossy_blocks = matches!(made.header.compression_type, tinyexr::COMPRESSIONTYPE_PXR24 | tinyexr::COMPRESSIONTYPE_B44 | tinyexr::COMPRESSIONTYPE_B44A);
+                    let file = if lossy_blocks { tinyexr::save_exr_image_to_memory(&made.image, &made.header).unwrap_or_else(|error| panic!("{name}: file {i} is not saved the other way: {error:?}")) } else { file };
+                    let version = tinyexr::parse_exr_version_from_memory(&file).unwrap_or_else(|code| panic!("{name}: file {i} is not read back: {code}"));
+                    let mut header = tinyexr::parse_exr_header_from_memory(&version, &file).unwrap_or_else(|error| panic!("{name}: file {i} is not read back: {error:?}"));
+                    let read = tinyexr::load_exr_image_from_memory(&mut header, &file).unwrap_or_else(|error| panic!("{name}: file {i} is not read back: {error:?}"));
+                    // A channel stored as the type it had, by a compression that loses
+                    // nothing of that type, comes back bit for bit.
+                    let comp = made.header.compression_type;
+                    let (mut ours, mut theirs) = (Some(&made.image), Some(&read));
+                    while let (Some(wrote), Some(got)) = (ours, theirs) {
+                        assert_eq!((wrote.width, wrote.height, wrote.tiles.len()), (got.width, got.height, got.tiles.len()), "{name}: file {i}");
+                        for c in 0..made.header.channels.len() {
+                            let file_type = made.header.requested_pixel_types[c];
+                            let kept = made.header.pixel_types[c] == file_type
+                                && !(comp == tinyexr::COMPRESSIONTYPE_PXR24 && file_type == tinyexr::PIXELTYPE_FLOAT)
+                                && !((comp == tinyexr::COMPRESSIONTYPE_B44 || comp == tinyexr::COMPRESSIONTYPE_B44A) && file_type == tinyexr::PIXELTYPE_HALF);
+                            if !kept {
+                                continue;
+                            }
+                            if wrote.tiles.is_empty() {
+                                for index in 0..(wrote.width * wrote.height) as usize {
+                                    assert_eq!(bits(&wrote.images[c], index), bits(&got.images[c], index), "{name}: file {i}, channel {c}, value {index}");
+                                }
+                            }
+                            for (tile, got_tile) in wrote.tiles.iter().zip(&got.tiles) {
+                                assert_eq!((tile.width, tile.height, tile.offset_x, tile.offset_y), (got_tile.width, got_tile.height, got_tile.offset_x, got_tile.offset_y), "{name}: file {i}");
+                                for y in 0..tile.height as usize {
+                                    for x in 0..tile.width as usize {
+                                        let index = y * made.header.tile_size_x as usize + x;
+                                        assert_eq!(bits(&tile.images[c], index), bits(&got_tile.images[c], index), "{name}: file {i}, channel {c}, a tile's value {index}");
+                                    }
+                                }
+                            }
+                        }
+                        ours = wrote.next_level.as_deref();
+                        theirs = got.next_level.as_deref();
+                    }
+                    assert!(ours.is_none() && theirs.is_none(), "{name}: file {i} comes back with other levels");
+                }
+            }
+        }
+
+        // Every fourth, floats saved the short way: one, three or four to a pixel (or two,
+        // which it does not take), as halves or as floats.
+        if i % 4 == 0 {
+            const COMPONENTS: [i32; 8] = [2, 1, 1, 3, 3, 3, 4, 4];
+            let components = COMPONENTS[(r.next() % 8) as usize];
+            let width = 1 + (r.next() % 40) as i32;
+            let height = 1 + (r.next() % 40) as i32;
+            let as_halves = r.next() % 2 != 0;
+            let ChannelData::Float(floats) = exr_values(&mut r, tinyexr::PIXELTYPE_FLOAT, width * components, height) else { unreachable!() };
+            match tinyexr::save_exr_to_memory(&floats, width, height, components, as_halves) {
+                Ok(file) => {
+                    short_way += 1;
+                    file_total += file.len() as u64;
+                    hash.add(&(file.len() as u32).to_le_bytes());
+                    hash.add(&file);
+                    // And back: the floats, or the halves of them.
+                    let (rgba, read_width, read_height) = tinyexr::load_exr_from_memory(&file).unwrap_or_else(|error| panic!("{name}: file {i}, saved the short way, is not read back: {error:?}"));
+                    assert_eq!((read_width, read_height), (width, height));
+                    if !as_halves {
+                        for pixel in 0..(width * height) as usize {
+                            for k in 0..components as usize {
+                                // (One channel comes back as all four.)
+                                let wrote = floats[pixel * components as usize + k];
+                                assert_eq!(wrote.to_bits(), rgba[pixel * 4 + k].to_bits(), "{name}: file {i}, saved the short way, pixel {pixel}");
+                            }
+                        }
+                    }
+                }
+                Err(error) => {
+                    hash.add(&error.code.to_le_bytes());
+                    hash.add(error.message.as_bytes());
+                    hash.add(&[0]);
+                }
+            }
+        }
+
+        if (i + 1) % 200 == 0 || i + 1 == count {
+            out += &format!("{name} {} {:016x}\n", i + 1, hash.value);
+        }
+    }
+    out + &format!("{name} bytes of files: {file_total}; saved: {saved}, not saved: {not_saved}, saved the short way: {short_way}\n")
 }

@@ -67,6 +67,8 @@
 //!
 //! And of the comparison with tinyexr, as `compare/dump_tinyexr.cc` does:
 //!
+//!   dump tinyexr_write <seed> <count>               made-up images saved as .exr files, and
+//!   dump tinyexr_write_small <seed> <count>         every fourth the short way as well
 //!   dump tinyexr_read <seed> <count> <file>         the .exr files that program wrote to the
 //!   dump tinyexr_read_small <seed> <count> <file>   file, each read four ways
 //!
@@ -566,6 +568,7 @@ fn main() {
             };
             print!("{}", made_up::zstd_decode(what, blocks, &file));
         }
+        "tinyexr_write" | "tinyexr_write_small" => print!("{}", made_up::tinyexr_write(what, seed, blocks)),
         "tinyexr_read" | "tinyexr_read_small" => {
             let Some(file) = args.get(4).and_then(|path| std::fs::read(path).ok()) else {
                 eprintln!("usage: dump {what} <seed> <count> <file of files from compare/dump_tinyexr.cc>");
