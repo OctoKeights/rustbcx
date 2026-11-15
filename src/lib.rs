@@ -41,8 +41,14 @@
 //! The ports keep the originals' behaviour, so a block comes out as the same bytes from both
 //! (for the two ISPC originals, `bc7e.ispc` and Intel's `kernel.ispc`, as built without
 //! fast-math). The crate has no dependencies and no `unsafe`.
+//!
+//! # Cargo features
+//!
+//! - `nightly-simd`: the hottest loop of [`bc7e`] written with `std::simd`, which needs a
+//!   nightly compiler. The blocks are the same with and without it.
 
 #![forbid(unsafe_code)]
+#![cfg_attr(feature = "nightly-simd", feature(portable_simd))]
 // The code follows the originals' line for line, and these are its shapes.
 #![allow(clippy::needless_range_loop, clippy::too_many_arguments, clippy::manual_range_contains)]
 
@@ -58,6 +64,7 @@ pub mod ert;
 mod fmath;
 pub mod image;
 pub mod ktx;
+mod lanes;
 pub mod miniz;
 mod parallel;
 pub mod rdo_bc_encoder;

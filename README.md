@@ -476,6 +476,21 @@ second. `cargo run --release --example bench` makes this table on yours.
 | BC6H, `basic` | 53 | 118 |
 | BC6H, `veryslow` | 6.1 | 11 |
 
+With a nightly compiler, the `nightly-simd` feature has `bc7e` weigh a set of endpoints for
+four pixels at a time with `std::simd`, where the plain build takes one pixel at a time:
+
+```text
+cargo +nightly build --release --features nightly-simd
+```
+
+The blocks are the same, and `bc7e` is about a tenth faster at its `basic` profile and above
+(a twelfth fewer instructions at `slowest`). The same loop written four pixels at a time
+without `std::simd`, for the compiler to vectorise, was tried for the plain build and was
+slower than what it replaced, which the compiler already vectorises across a palette's
+colours; so the plain build keeps the original's loop. (`std::simd` is not finished, and a
+later nightly may want the feature's few lines changed; they were last built against the
+`std::simd` of Rust 1.97.)
+
 Against the originals on one thread of the same machine: `bc7e` takes about four fifths of the
 time of the strict SSE2 build of `bc7e.ispc` and about a fifth longer than its AVX2 fast-math
 build; BC6H takes about one and a half times as long as the strict SSE2 build of Intel's
@@ -484,9 +499,11 @@ machine and made-up pixels.
 
 ## Limitations
 
-- **No SIMD written by hand.** Stable Rust has no SIMD without `unsafe`, and the crate has no
-  `unsafe`. Its speed comes from using every core and from loops the compiler can vectorise by
-  itself. On one core, the ISPC originals built for AVX2 are faster.
+- **No SIMD written by hand, unless you ask for it.** Stable Rust has no SIMD without
+  `unsafe`, and the crate has no `unsafe`. Its speed comes from using every core and from
+  loops the compiler vectorises by itself. On one core, the ISPC originals built for AVX2 are
+  faster. With a nightly compiler there is the `nightly-simd` feature, which writes the
+  hottest loop of `bc7e` with `std::simd` (see [Speed](#speed)).
 - **Zstandard is written at levels 1 to 3 and the negative levels.** zstd has nine ways to
   look for matches, and each level uses one of them; the two fastest are ported, which is
   what those levels use (level 4 uses one of them for some sizes of source, and

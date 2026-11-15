@@ -63,6 +63,10 @@
   `texture::compress` paid that for every texture. They are now made the first time and
   copied afterwards, which takes 20 microseconds: the same blocks, and a good deal of time
   saved where many small textures are packed one after the other.
+- **The `nightly-simd` feature**, for nightly compilers: `bc7e` weighs a set of endpoints for
+  four pixels at a time with `std::simd`. The same blocks, about a tenth faster at the
+  `basic` profile and above. The build without it is unchanged: the same loop written for
+  the compiler to vectorise by itself was slower than the original's, and was not kept.
 - Fixed: a `.ktx2` file of an sRGB texture in BC3 did not mark its alpha as linear in its data
   format descriptor, as the Khronos tools do and their validator requires.
 - Changed: `Texture` has three more fields, so one written out by hand needs them;

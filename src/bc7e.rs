@@ -23,6 +23,8 @@ use crate::fmath;
 use crate::parallel;
 use std::fmt;
 
+use crate::lanes::{F4, I4};
+
 /// The bytes of a BC7 block.
 pub const BLOCK_SIZE: usize = 16;
 /// The most partitions mode 0 has.
@@ -1060,8 +1062,35 @@ fn best_of_four(errs: [f32; 4]) -> (f32, i32) {
     (best_err, best_sel)
 }
 
+/// `best_of_four` for four pixels at a time.
+#[inline(always)]
+fn best_of_four_lanes(errs: [F4; 4]) -> (F4, I4) {
+    let best_err = errs[0].lesser(errs[1]).lesser(errs[2]).lesser(errs[3]);
+
+    let mut best_sel = best_err.where_equal(errs[1], I4::splat(1), I4::splat(0));
+    best_sel = best_err.where_equal(errs[2], I4::splat(2), best_sel);
+    best_sel = best_err.where_equal(errs[3], I4::splat(3), best_sel);
+
+    (best_err, best_sel)
+}
+
 fn evaluate_solution(low: &ColorQuadI, high: &ColorQuadI, pbits: &[u32; 2], params: &ColorCellCompressorParams, results: &mut ColorCellCompressorResults, pixels: &[ColorQuadI]) -> u64 {
+    evaluate_solution_with(low, high, pbits, params, results, pixels, cfg!(feature = "nightly-simd"))
+}
+
+/// `evaluate_solution`, with its loops over the pixels as the original has them, or, with
+/// `lanes`, four pixels at a time: each lane is given what the original gives one pixel, in
+/// the same order, so the answer is the same. The second is what the `nightly-simd` feature
+/// uses, with `std::simd` under it; as plain arrays it is slower than the first, which the
+/// compiler already vectorises across a palette's colours.
+#[inline(always)]
+fn evaluate_solution_with(low: &ColorQuadI, high: &ColorQuadI, pbits: &[u32; 2], params: &ColorCellCompressorParams, results: &mut ColorCellCompressorResults, pixels: &[ColorQuadI], lanes: bool) -> u64 {
     let num_pixels = pixels.len();
+
+    // The pixels four at a time, for the loops that take them so: one component of the four
+    // from `chunk * 4` on as floats, with zeros past the last pixel.
+    let lane = |c: usize, chunk: usize| F4::from_array(std::array::from_fn(|l| pixels.get(chunk * 4 + l).map_or(0.0, |pixel| pixel[c] as f32)));
+    let chunks = num_pixels.div_ceil(4);
 
     let mut quant_min_color = *low;
     let mut quant_max_color = *high;
@@ -1121,6 +1150,20 @@ fn evaluate_solution(low: &ColorQuadI, high: &ColorQuadI, pbits: &[u32; 2], para
         let da = color[3] - pa;
         wr * dr * dr + wg * dg * dg + wb * db * db + wa * da * da
     };
+    // The same for four pixels at a time: each lane has the arithmetic above, in its order.
+    let lanes_err_rgb = |color: &[f32; 4], pr: F4, pg: F4, pb: F4| {
+        let dr = F4::splat(color[0]).sub(pr);
+        let dg = F4::splat(color[1]).sub(pg);
+        let db = F4::splat(color[2]).sub(pb);
+        F4::splat(wr).mul(dr).mul(dr).add(F4::splat(wg).mul(dg).mul(dg)).add(F4::splat(wb).mul(db).mul(db))
+    };
+    let lanes_err_rgba = |color: &[f32; 4], pr: F4, pg: F4, pb: F4, pa: F4| {
+        let dr = F4::splat(color[0]).sub(pr);
+        let dg = F4::splat(color[1]).sub(pg);
+        let db = F4::splat(color[2]).sub(pb);
+        let da = F4::splat(color[3]).sub(pa);
+        F4::splat(wr).mul(dr).mul(dr).add(F4::splat(wg).mul(dg).mul(dg)).add(F4::splat(wb).mul(db).mul(db)).add(F4::splat(wa).mul(da).mul(da))
+    };
 
     if !params.perceptual {
         if !params.has_alpha {
@@ -1158,37 +1201,73 @@ fn evaluate_solution(low: &ColorQuadI, high: &ColorQuadI, pbits: &[u32; 2], para
                     results.selectors_temp[i] = f2i(if min_err == err0 { best_sel0 } else { best_sel });
                 }
             } else if n == 8 {
-                for i in 0..num_pixels {
-                    let pr = pixels[i][0] as f32;
-                    let pg = pixels[i][1] as f32;
-                    let pb = pixels[i][2] as f32;
+                if lanes {
+                    for chunk in 0..chunks {
+                        let (pr, pg, pb) = (lane(0, chunk), lane(1, chunk), lane(2, chunk));
 
-                    let (mut best_err, mut best_sel) = best_of_four(std::array::from_fn(|k| err_rgb(&weighted_colors[k], pr, pg, pb)));
+                        let (mut best_err, mut best_sel) = best_of_four_lanes(std::array::from_fn(|k| lanes_err_rgb(&weighted_colors[k], pr, pg, pb)));
 
-                    let errs: [f32; 4] = std::array::from_fn(|k| err_rgb(&weighted_colors[4 + k], pr, pg, pb));
-                    best_err = minimumf(best_err, minimumf(minimumf(minimumf(errs[0], errs[1]), errs[2]), errs[3]));
-                    for k in 0..4 {
-                        if best_err == errs[k] {
-                            best_sel = 4 + k as i32;
+                        let errs: [F4; 4] = std::array::from_fn(|k| lanes_err_rgb(&weighted_colors[4 + k], pr, pg, pb));
+                        best_err = best_err.lesser(errs[0].lesser(errs[1]).lesser(errs[2]).lesser(errs[3]));
+                        for k in 0..4 {
+                            best_sel = best_err.where_equal(errs[k], I4::splat(4 + k as i32), best_sel);
+                        }
+
+                        let (best_err, best_sel) = (best_err.to_array(), best_sel.to_array());
+                        for (l, i) in (chunk * 4..num_pixels).take(4).enumerate() {
+                            total_errf += best_err[l];
+
+                            results.selectors_temp[i] = best_sel[l];
                         }
                     }
+                } else {
+                    for i in 0..num_pixels {
+                        let pr = pixels[i][0] as f32;
+                        let pg = pixels[i][1] as f32;
+                        let pb = pixels[i][2] as f32;
 
-                    total_errf += best_err;
+                        let (mut best_err, mut best_sel) = best_of_four(std::array::from_fn(|k| err_rgb(&weighted_colors[k], pr, pg, pb)));
 
-                    results.selectors_temp[i] = best_sel;
+                        let errs: [f32; 4] = std::array::from_fn(|k| err_rgb(&weighted_colors[4 + k], pr, pg, pb));
+                        best_err = minimumf(best_err, minimumf(minimumf(minimumf(errs[0], errs[1]), errs[2]), errs[3]));
+                        for k in 0..4 {
+                            if best_err == errs[k] {
+                                best_sel = 4 + k as i32;
+                            }
+                        }
+
+                        total_errf += best_err;
+
+                        results.selectors_temp[i] = best_sel;
+                    }
                 }
             } else {
                 // if (N == 4)
-                for i in 0..num_pixels {
-                    let pr = pixels[i][0] as f32;
-                    let pg = pixels[i][1] as f32;
-                    let pb = pixels[i][2] as f32;
+                if lanes {
+                    for chunk in 0..chunks {
+                        let (pr, pg, pb) = (lane(0, chunk), lane(1, chunk), lane(2, chunk));
 
-                    let (best_err, best_sel) = best_of_four(std::array::from_fn(|k| err_rgb(&weighted_colors[k], pr, pg, pb)));
+                        let (best_err, best_sel) = best_of_four_lanes(std::array::from_fn(|k| lanes_err_rgb(&weighted_colors[k], pr, pg, pb)));
 
-                    total_errf += best_err;
+                        let (best_err, best_sel) = (best_err.to_array(), best_sel.to_array());
+                        for (l, i) in (chunk * 4..num_pixels).take(4).enumerate() {
+                            total_errf += best_err[l];
 
-                    results.selectors_temp[i] = best_sel;
+                            results.selectors_temp[i] = best_sel[l];
+                        }
+                    }
+                } else {
+                    for i in 0..num_pixels {
+                        let pr = pixels[i][0] as f32;
+                        let pg = pixels[i][1] as f32;
+                        let pb = pixels[i][2] as f32;
+
+                        let (best_err, best_sel) = best_of_four(std::array::from_fn(|k| err_rgb(&weighted_colors[k], pr, pg, pb)));
+
+                        total_errf += best_err;
+
+                        results.selectors_temp[i] = best_sel;
+                    }
                 }
             }
         } else {
@@ -1231,39 +1310,75 @@ fn evaluate_solution(low: &ColorQuadI, high: &ColorQuadI, pbits: &[u32; 2], para
                     results.selectors_temp[i] = f2i(if min_err == err0 { best_sel0 } else { best_sel });
                 }
             } else if n == 8 {
-                for i in 0..num_pixels {
-                    let pr = pixels[i][0] as f32;
-                    let pg = pixels[i][1] as f32;
-                    let pb = pixels[i][2] as f32;
-                    let pa = pixels[i][3] as f32;
+                if lanes {
+                    for chunk in 0..chunks {
+                        let (pr, pg, pb, pa) = (lane(0, chunk), lane(1, chunk), lane(2, chunk), lane(3, chunk));
 
-                    let (mut best_err, mut best_sel) = best_of_four(std::array::from_fn(|k| err_rgba(&weighted_colors[k], pr, pg, pb, pa)));
+                        let (mut best_err, mut best_sel) = best_of_four_lanes(std::array::from_fn(|k| lanes_err_rgba(&weighted_colors[k], pr, pg, pb, pa)));
 
-                    let errs: [f32; 4] = std::array::from_fn(|k| err_rgba(&weighted_colors[4 + k], pr, pg, pb, pa));
-                    best_err = minimumf(best_err, minimumf(minimumf(minimumf(errs[0], errs[1]), errs[2]), errs[3]));
-                    for k in 0..4 {
-                        if best_err == errs[k] {
-                            best_sel = 4 + k as i32;
+                        let errs: [F4; 4] = std::array::from_fn(|k| lanes_err_rgba(&weighted_colors[4 + k], pr, pg, pb, pa));
+                        best_err = best_err.lesser(errs[0].lesser(errs[1]).lesser(errs[2]).lesser(errs[3]));
+                        for k in 0..4 {
+                            best_sel = best_err.where_equal(errs[k], I4::splat(4 + k as i32), best_sel);
+                        }
+
+                        let (best_err, best_sel) = (best_err.to_array(), best_sel.to_array());
+                        for (l, i) in (chunk * 4..num_pixels).take(4).enumerate() {
+                            total_errf += best_err[l];
+
+                            results.selectors_temp[i] = best_sel[l];
                         }
                     }
+                } else {
+                    for i in 0..num_pixels {
+                        let pr = pixels[i][0] as f32;
+                        let pg = pixels[i][1] as f32;
+                        let pb = pixels[i][2] as f32;
+                        let pa = pixels[i][3] as f32;
 
-                    total_errf += best_err;
+                        let (mut best_err, mut best_sel) = best_of_four(std::array::from_fn(|k| err_rgba(&weighted_colors[k], pr, pg, pb, pa)));
 
-                    results.selectors_temp[i] = best_sel;
+                        let errs: [f32; 4] = std::array::from_fn(|k| err_rgba(&weighted_colors[4 + k], pr, pg, pb, pa));
+                        best_err = minimumf(best_err, minimumf(minimumf(minimumf(errs[0], errs[1]), errs[2]), errs[3]));
+                        for k in 0..4 {
+                            if best_err == errs[k] {
+                                best_sel = 4 + k as i32;
+                            }
+                        }
+
+                        total_errf += best_err;
+
+                        results.selectors_temp[i] = best_sel;
+                    }
                 }
             } else {
                 // if (N == 4)
-                for i in 0..num_pixels {
-                    let pr = pixels[i][0] as f32;
-                    let pg = pixels[i][1] as f32;
-                    let pb = pixels[i][2] as f32;
-                    let pa = pixels[i][3] as f32;
+                if lanes {
+                    for chunk in 0..chunks {
+                        let (pr, pg, pb, pa) = (lane(0, chunk), lane(1, chunk), lane(2, chunk), lane(3, chunk));
 
-                    let (best_err, best_sel) = best_of_four(std::array::from_fn(|k| err_rgba(&weighted_colors[k], pr, pg, pb, pa)));
+                        let (best_err, best_sel) = best_of_four_lanes(std::array::from_fn(|k| lanes_err_rgba(&weighted_colors[k], pr, pg, pb, pa)));
 
-                    total_errf += best_err;
+                        let (best_err, best_sel) = (best_err.to_array(), best_sel.to_array());
+                        for (l, i) in (chunk * 4..num_pixels).take(4).enumerate() {
+                            total_errf += best_err[l];
 
-                    results.selectors_temp[i] = best_sel;
+                            results.selectors_temp[i] = best_sel[l];
+                        }
+                    }
+                } else {
+                    for i in 0..num_pixels {
+                        let pr = pixels[i][0] as f32;
+                        let pg = pixels[i][1] as f32;
+                        let pb = pixels[i][2] as f32;
+                        let pa = pixels[i][3] as f32;
+
+                        let (best_err, best_sel) = best_of_four(std::array::from_fn(|k| err_rgba(&weighted_colors[k], pr, pg, pb, pa)));
+
+                        total_errf += best_err;
+
+                        results.selectors_temp[i] = best_sel;
+                    }
                 }
             }
         }
@@ -1287,38 +1402,71 @@ fn evaluate_solution(low: &ColorQuadI, high: &ColorQuadI, pbits: &[u32; 2], para
             weighted_colors_cb[i] = b - y;
         }
 
-        for i in 0..num_pixels {
-            let r = pixels[i][0] as f32;
-            let g = pixels[i][1] as f32;
-            let b = pixels[i][2] as f32;
-            let a = pixels[i][3] as f32;
+        if lanes {
+            for chunk in 0..chunks {
+                let (r, g, b, a) = (lane(0, chunk), lane(1, chunk), lane(2, chunk), lane(3, chunk));
 
-            let y = r * 0.2126f32 + g * 0.7152f32 + b * 0.0722f32;
-            let cr = r - y;
-            let cb = b - y;
+                let y = r.mul(F4::splat(0.2126f32)).add(g.mul(F4::splat(0.7152f32))).add(b.mul(F4::splat(0.0722f32)));
+                let cr = r.sub(y);
+                let cb = b.sub(y);
 
-            let mut best_err = 1e+10f32;
-            let mut best_sel = 0i32;
-            for j in 0..n {
-                let dl = y - weighted_colors_y[j];
-                let dcr = cr - weighted_colors_cr[j];
-                let dcb = cb - weighted_colors_cb[j];
+                let mut best_err = F4::splat(1e+10f32);
+                let mut best_sel = I4::splat(0);
+                for j in 0..n {
+                    let dl = y.sub(F4::splat(weighted_colors_y[j]));
+                    let dcr = cr.sub(F4::splat(weighted_colors_cr[j]));
+                    let dcb = cb.sub(F4::splat(weighted_colors_cb[j]));
 
-                let err = if params.has_alpha {
-                    let da = a - weighted_colors[j][3];
-                    (wr * dl * dl) + (wg * dcr * dcr) + (wb * dcb * dcb) + (wa * da * da)
-                } else {
-                    (wr * dl * dl) + (wg * dcr * dcr) + (wb * dcb * dcb)
-                };
-                if err < best_err {
-                    best_err = err;
-                    best_sel = j as i32;
+                    let mut err = F4::splat(wr).mul(dl).mul(dl).add(F4::splat(wg).mul(dcr).mul(dcr)).add(F4::splat(wb).mul(dcb).mul(dcb));
+                    if params.has_alpha {
+                        let da = a.sub(F4::splat(weighted_colors[j][3]));
+                        err = err.add(F4::splat(wa).mul(da).mul(da));
+                    }
+                    best_sel = err.where_less(best_err, I4::splat(j as i32), best_sel);
+                    best_err = err.lesser(best_err);
+                }
+
+                let (best_err, best_sel) = (best_err.to_array(), best_sel.to_array());
+                for (l, i) in (chunk * 4..num_pixels).take(4).enumerate() {
+                    total_errf += best_err[l];
+
+                    results.selectors_temp[i] = best_sel[l];
                 }
             }
+        } else {
+            for i in 0..num_pixels {
+                let r = pixels[i][0] as f32;
+                let g = pixels[i][1] as f32;
+                let b = pixels[i][2] as f32;
+                let a = pixels[i][3] as f32;
 
-            total_errf += best_err;
+                let y = r * 0.2126f32 + g * 0.7152f32 + b * 0.0722f32;
+                let cr = r - y;
+                let cb = b - y;
 
-            results.selectors_temp[i] = best_sel;
+                let mut best_err = 1e+10f32;
+                let mut best_sel = 0i32;
+                for j in 0..n {
+                    let dl = y - weighted_colors_y[j];
+                    let dcr = cr - weighted_colors_cr[j];
+                    let dcb = cb - weighted_colors_cb[j];
+
+                    let err = if params.has_alpha {
+                        let da = a - weighted_colors[j][3];
+                        (wr * dl * dl) + (wg * dcr * dcr) + (wb * dcb * dcb) + (wa * da * da)
+                    } else {
+                        (wr * dl * dl) + (wg * dcr * dcr) + (wb * dcb * dcb)
+                    };
+                    if err < best_err {
+                        best_err = err;
+                        best_sel = j as i32;
+                    }
+                }
+
+                total_errf += best_err;
+
+                results.selectors_temp[i] = best_sel;
+            }
         }
     }
 
@@ -3305,6 +3453,62 @@ impl Bc7e {
 mod tests {
     use super::*;
     use crate::bc7decomp::unpack_bc7;
+
+    /// The loops that take four pixels at a time (which the `nightly-simd` feature uses)
+    /// give what the loops that take one give: the same error and the same selectors, for
+    /// every number of selector weights, with and without alpha and p-bits, by both
+    /// measures, for subsets of every size.
+    #[test]
+    fn four_pixels_at_a_time_are_as_one_at_a_time() {
+        let mut state = 5u64;
+        let mut next = move || {
+            state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            (state >> 32) as u32
+        };
+        let mut compared = 0;
+        for round in 0..6000 {
+            let mut params = ColorCellCompressorParams::new();
+            let (weights, weightsx): (&'static [u32], &'static [f32]) = match round % 3 {
+                0 => (&WEIGHTS2, &WEIGHTS2X),
+                1 => (&WEIGHTS3, &WEIGHTS3X),
+                _ => (&WEIGHTS4, &WEIGHTS4X),
+            };
+            params.num_selector_weights = weights.len() as u32;
+            params.selector_weights = weights;
+            params.selector_weightsx = weightsx;
+            params.has_alpha = next() % 2 == 0;
+            params.has_pbits = next() % 2 == 0;
+            params.endpoints_share_pbit = next() % 2 == 0;
+            params.perceptual = next() % 3 == 0;
+            params.comp_bits = 4 + next() % if params.has_pbits { 4 } else { 5 };
+            params.weights = [1 + next() % 4, 1 + next() % 4, 1 + next() % 4, 1 + next() % 4];
+            let most = (1i32 << params.comp_bits) - 1;
+            let endpoint = |next: &mut dyn FnMut() -> u32| -> ColorQuadI { std::array::from_fn(|_| (next() % (most as u32 + 1)) as i32) };
+            let (low, high) = (endpoint(&mut next), endpoint(&mut next));
+            let pbits = [next() % 2, next() % 2];
+            // Pixels near the line between the endpoints, or anywhere.
+            let near = next() % 2 == 0;
+            let count = 1 + (next() % 16) as usize;
+            let pixels: Vec<ColorQuadI> = (0..count)
+                .map(|_| {
+                    let t = (next() % 65) as i32;
+                    std::array::from_fn(|c| if near { ((low[c] * (64 - t) + high[c] * t) * 255 / (64 * most) + (next() % 9) as i32 - 4).clamp(0, 255) } else { (next() % 256) as i32 })
+                })
+                .collect();
+
+            let mut one = ColorCellCompressorResults::new();
+            let mut four = ColorCellCompressorResults::new();
+            one.best_overall_err = u64::MAX;
+            four.best_overall_err = u64::MAX;
+            let err_one = evaluate_solution_with(&low, &high, &pbits, &params, &mut one, &pixels, false);
+            let err_four = evaluate_solution_with(&low, &high, &pbits, &params, &mut four, &pixels, true);
+            assert_eq!(err_one, err_four, "round {round}");
+            assert_eq!(one.selectors_temp[..count], four.selectors_temp[..count], "round {round}");
+            assert_eq!(one.selectors[..count], four.selectors[..count], "round {round}");
+            compared += count;
+        }
+        assert!(compared > 40000);
+    }
 
     fn mode_of(block: &[u8; 16]) -> u32 {
         block[0].trailing_zeros()
