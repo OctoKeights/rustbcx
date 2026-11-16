@@ -1,0 +1,44 @@
+# Checks every push and pull request: the formatting (the Rust style guide's, by rustfmt), clippy,
+# the documentation and the tests, the golden tests against the C originals among them. The
+# comparison with the originals themselves (compare/compare.sh) needs their checkouts and is not
+# run here.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Formatting
+        run: cargo fmt --check
+      - name: Clippy
+        run: cargo clippy --release --all-targets -- -D warnings
+      - name: Documentation
+        run: cargo doc --no-deps
+        env:
+          RUSTDOCFLAGS: -D warnings
+      - name: Tests
+        run: cargo test --release
+
+  # The `nightly-simd` feature builds only with a nightly compiler, whose `std::simd` can
+  # change: a failure here is reported but does not fail the run.
+  nightly-simd:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+      - name: Build and test with nightly-simd
+        run: cargo test --release --features nightly-simd --lib bc7e
