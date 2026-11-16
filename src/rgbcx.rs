@@ -159,11 +159,7 @@ fn squarei(a: i32) -> i32 {
 #[inline]
 fn maximum3(a: f32, b: f32, c: f32) -> f32 {
     let ab = if a > b { a } else { b };
-    if ab > c {
-        ab
-    } else {
-        c
-    }
+    if ab > c { ab } else { c }
 }
 
 // v0, v1 = unexpanded DXT1 endpoint values (5/6-bits)
@@ -2514,8 +2510,14 @@ impl Rgbcx {
                     avg,
                     total,
                 );
-                let [mut round_lr, mut round_lg, mut round_lb, mut round_hr, mut round_hg, mut round_hb] =
-                    orig_round;
+                let [
+                    mut round_lr,
+                    mut round_lg,
+                    mut round_lb,
+                    mut round_hr,
+                    mut round_hg,
+                    mut round_hb,
+                ] = orig_round;
 
                 let mut round_err = self.bc1_find_sels4(
                     flags,
@@ -3315,10 +3317,12 @@ mod tests {
         encoder.encode_bc3(5, &mut block, &source);
         let mut pixels = [[0u8; 4]; 16];
         assert!(unpack_bc3(&block, &mut pixels, Bc1ApproxMode::Ideal));
-        assert!(pixels
-            .iter()
-            .enumerate()
-            .all(|(i, pixel)| pixel[3] == source[i][3]));
+        assert!(
+            pixels
+                .iter()
+                .enumerate()
+                .all(|(i, pixel)| pixel[3] == source[i][3])
+        );
 
         encode_bc5(&mut block, source.as_flattened(), 0, 3, 4);
         let mut two = [0u8; 64];

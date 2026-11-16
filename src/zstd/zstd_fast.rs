@@ -7,8 +7,8 @@
 
 use super::common::read32;
 use super::zstd_compress::{
-    count, get_lowest_prefix_index, hash_ptr, offset_to_offbase, MatchState, SeqStore,
-    HASH_READ_SIZE, K_SEARCH_STRENGTH, REPCODE1_TO_OFFBASE, ZSTD_WINDOW_START_INDEX,
+    HASH_READ_SIZE, K_SEARCH_STRENGTH, MatchState, REPCODE1_TO_OFFBASE, SeqStore,
+    ZSTD_WINDOW_START_INDEX, count, get_lowest_prefix_index, hash_ptr, offset_to_offbase,
 };
 
 /// What ends the search for a match from one place.

@@ -122,7 +122,7 @@ use std::io::Write;
 #[path = "../tests/made_up/mod.rs"]
 mod made_up;
 
-use made_up::{make_pixels, Hash, Random};
+use made_up::{Hash, Random, make_pixels};
 
 /// The blocks and settings the bc7e dumps pack, shared with `tests/bc7e_golden.rs`.
 #[path = "../tests/bc7e_made_up/mod.rs"]
@@ -600,7 +600,7 @@ fn dump_bc7block(seed: u64, blocks: u32) {
 
 /// `bc7e_presets` (true) or `bc7e_settings`.
 fn dump_bc7e(presets: bool, seed: u64, blocks: u32, path: Option<&String>) {
-    use bc7e_made_up::{hash, make_blocks, make_settings, PROFILES};
+    use bc7e_made_up::{PROFILES, hash, make_blocks, make_settings};
     let mut random = bc7e_made_up::Random { state: seed };
     let mut file = path.map(|path| std::fs::File::create(path).expect("the file for the blocks"));
 
@@ -691,14 +691,18 @@ fn main() {
         }
         "tinyexr_read" | "tinyexr_read_small" | "tinyexr_zfp_read" => {
             let Some(file) = args.get(4).and_then(|path| std::fs::read(path).ok()) else {
-                eprintln!("usage: dump {what} <seed> <count> <file of files from compare/dump_tinyexr.cc>");
+                eprintln!(
+                    "usage: dump {what} <seed> <count> <file of files from compare/dump_tinyexr.cc>"
+                );
                 std::process::exit(2);
             };
             print!("{}", made_up::tinyexr_read(what, blocks, &file));
         }
         "tinyexr_parts" | "tinyexr_deep" => {
             let Some(file) = args.get(4).and_then(|path| std::fs::read(path).ok()) else {
-                eprintln!("usage: dump {what} <seed> <count> <file of files from compare/dump_tinyexr.cc>");
+                eprintln!(
+                    "usage: dump {what} <seed> <count> <file of files from compare/dump_tinyexr.cc>"
+                );
                 std::process::exit(2);
             };
             if what == "tinyexr_parts" {

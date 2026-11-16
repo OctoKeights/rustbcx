@@ -12,8 +12,8 @@
 //! `bc7_block`. They are not here.)
 
 use crate::bc7decomp::{
-    ColorRgba, ANCHOR_INDEX_SECOND_SUBSET, ANCHOR_INDEX_THIRD_SUBSET_1,
-    ANCHOR_INDEX_THIRD_SUBSET_2, PARTITION2, PARTITION3,
+    ANCHOR_INDEX_SECOND_SUBSET, ANCHOR_INDEX_THIRD_SUBSET_1, ANCHOR_INDEX_THIRD_SUBSET_2,
+    ColorRgba, PARTITION2, PARTITION3,
 };
 use crate::fmath;
 use std::fmt;
@@ -240,30 +240,18 @@ fn saturate(value: f32) -> f32 {
 
 #[inline]
 fn minimumf(a: f32, b: f32) -> f32 {
-    if a < b {
-        a
-    } else {
-        b
-    }
+    if a < b { a } else { b }
 }
 
 #[inline]
 fn maximumf(a: f32, b: f32) -> f32 {
-    if a > b {
-        a
-    } else {
-        b
-    }
+    if a > b { a } else { b }
 }
 
 /// `std::max` of two floats.
 #[inline]
 fn std_max(a: f32, b: f32) -> f32 {
-    if a < b {
-        b
-    } else {
-        a
-    }
+    if a < b { b } else { a }
 }
 
 #[inline]
@@ -3052,7 +3040,10 @@ impl Bc7Enc {
             }
         }
 
-        assert!(chosen, "no mode could pack the block: mode 1 alone needs max_partitions above 0 and error weights in range");
+        assert!(
+            chosen,
+            "no mode could pack the block: mode 1 alone needs max_partitions above 0 and error weights in range"
+        );
 
         encode_bc7_block(block, &opt_results);
     }

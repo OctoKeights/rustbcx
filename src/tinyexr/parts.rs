@@ -10,10 +10,10 @@
 //! answer whatever its memory holds, and it is given; where it is not, the file is refused
 //! with [`PAST_THE_END`].
 
-use super::chunk::{decode_chunk, precalculate_tile_info, tile_offsets_shape, OffsetData};
+use super::chunk::{OffsetData, decode_chunk, precalculate_tile_info, tile_offsets_shape};
 use super::{
-    convert_header, parse_exr_header, ExrError, ExrHeader, ExrImage, ExrVersion, HeaderInfo,
-    ERROR_INVALID_ARGUMENT, ERROR_INVALID_DATA, ERROR_INVALID_HEADER, TILE_ONE_LEVEL,
+    ERROR_INVALID_ARGUMENT, ERROR_INVALID_DATA, ERROR_INVALID_HEADER, ExrError, ExrHeader,
+    ExrImage, ExrVersion, HeaderInfo, TILE_ONE_LEVEL, convert_header, parse_exr_header,
 };
 
 const EXR_VERSION_SIZE: usize = 8;
@@ -413,9 +413,10 @@ fn load_parts_with_zeros(
 #[cfg(test)]
 mod tests {
     use super::super::{
-        load_exr_multipart_image_from_memory, parse_exr_multipart_header_from_memory,
-        parse_exr_version_from_memory, save_exr_multipart_image_to_memory, ChannelData,
-        ChannelInfo, ExrHeader, ExrImage, COMPRESSIONTYPE_ZIP, PIXELTYPE_FLOAT, PIXELTYPE_HALF,
+        COMPRESSIONTYPE_ZIP, ChannelData, ChannelInfo, ExrHeader, ExrImage, PIXELTYPE_FLOAT,
+        PIXELTYPE_HALF, load_exr_multipart_image_from_memory,
+        parse_exr_multipart_header_from_memory, parse_exr_version_from_memory,
+        save_exr_multipart_image_to_memory,
     };
 
     fn part(name: &str, width: i32, height: i32, value: f32) -> (ExrImage, ExrHeader) {

@@ -1,11 +1,11 @@
 //! The literals section of a block: a port of `lib/compress/zstd_compress_literals.c` of
 //! zstd v1.5.7.
 
-use super::common::{write_le16, write_le24, write_le32, CError, CResult};
+use super::common::{CError, CResult, write_le16, write_le24, write_le32};
 use super::huf_compress::{
-    self, HufCTable, HufCompressTables, HufNbStreams, HufRepeat, HUF_SYMBOLVALUE_MAX,
+    self, HUF_SYMBOLVALUE_MAX, HufCTable, HufCompressTables, HufNbStreams, HufRepeat,
 };
-use super::zstd_compress::{min_gain, Strategy, SET_BASIC, SET_COMPRESSED, SET_REPEAT, SET_RLE};
+use super::zstd_compress::{SET_BASIC, SET_COMPRESSED, SET_REPEAT, SET_RLE, Strategy, min_gain};
 
 /// `LitHufLog`.
 const LIT_HUF_LOG: u32 = 11;

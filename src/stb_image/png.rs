@@ -7,8 +7,8 @@
 //!   - avoids explicit window management
 
 use super::{
-    convert_format, mad2sizes_valid, mad3sizes_valid, zlib, Context, ImageType, Info, Pixels,
-    Sample, Scan, STBI_MAX_DIMENSIONS,
+    Context, ImageType, Info, Pixels, STBI_MAX_DIMENSIONS, Sample, Scan, convert_format,
+    mad2sizes_valid, mad3sizes_valid, zlib,
 };
 
 /// `stbi__pngchunk`
@@ -70,11 +70,7 @@ fn paeth(a: i32, b: i32, c: i32) -> i32 {
     let lo = if a < b { a } else { b };
     let hi = if a < b { b } else { a };
     let t0 = if hi <= thresh { lo } else { c };
-    if thresh <= lo {
-        hi
-    } else {
-        t0
-    }
+    if thresh <= lo { hi } else { t0 }
 }
 
 static STBI_DEPTH_SCALE_TABLE: [u8; 9] = [0, 0xff, 0x55, 0, 0x11, 0, 0, 0, 0x01];
@@ -869,12 +865,12 @@ pub(crate) fn png_info(s: &mut Context) -> Option<Info> {
 #[cfg(test)]
 mod tests {
     use super::super::{
-        info_from_memory, is_16_bit_from_memory, load_16_from_memory, load_from_memory, LoadError,
-        LoadOptions,
+        LoadError, LoadOptions, info_from_memory, is_16_bit_from_memory, load_16_from_memory,
+        load_from_memory,
     };
     use super::*;
     use crate::miniz::{self, mz_crc32};
-    use crate::stb_image_write::{write_png, WriteOptions};
+    use crate::stb_image_write::{WriteOptions, write_png};
 
     fn chunk(file: &mut Vec<u8>, name: &[u8; 4], bytes: &[u8]) {
         file.extend_from_slice(&(bytes.len() as u32).to_be_bytes());
@@ -972,11 +968,12 @@ mod tests {
             let rows: Vec<u8> = pixels.chunks(19 * comp).rev().flatten().copied().collect();
             assert_eq!(flipped.data, rows);
             let wide = load_16_from_memory(&file, 0, &options).unwrap();
-            assert!(wide
-                .data
-                .iter()
-                .zip(&pixels)
-                .all(|(&wide, &narrow)| wide == u16::from(narrow) * 257));
+            assert!(
+                wide.data
+                    .iter()
+                    .zip(&pixels)
+                    .all(|(&wide, &narrow)| wide == u16::from(narrow) * 257)
+            );
         }
     }
 
@@ -1005,7 +1002,9 @@ mod tests {
         );
         assert_eq!(
             load_16_from_memory(&file, 4, &options).unwrap().data,
-            [0x1234, 0x1234, 0x1234, 0xffff, 0xabcd, 0xabcd, 0xabcd, 0x0001]
+            [
+                0x1234, 0x1234, 0x1234, 0xffff, 0xabcd, 0xabcd, 0xabcd, 0x0001
+            ]
         );
         // 16 bits, RGB, with one colour made transparent.
         let file = png(
@@ -1061,7 +1060,9 @@ mod tests {
         );
         assert_eq!(
             load_from_memory(&file, 4, &options).unwrap().data,
-            [70, 80, 90, 255, 10, 20, 30, 255, 40, 50, 60, 255, 0, 0, 0, 0]
+            [
+                70, 80, 90, 255, 10, 20, 30, 255, 40, 50, 60, 255, 0, 0, 0, 0
+            ]
         );
         // 2 bits of index, with alphas for the first two colours.
         let file = png(

@@ -24,11 +24,11 @@ use std::cell::Cell;
 use super::parts::PAST_THE_END;
 use super::zip_rle::{decompress_rle, decompress_zip, unpredict_and_reorder};
 use super::{
-    half_to_float, read_attribute, read_channel_info, ChannelInfo, ExrError, COMPRESSIONTYPE_B44,
-    COMPRESSIONTYPE_B44A, COMPRESSIONTYPE_NONE, COMPRESSIONTYPE_PIZ, COMPRESSIONTYPE_RLE,
-    COMPRESSIONTYPE_ZIP, COMPRESSIONTYPE_ZIPS, ERROR_INVALID_DATA, ERROR_INVALID_FILE,
-    ERROR_INVALID_MAGIC_NUMBER, ERROR_UNSUPPORTED_FORMAT, PIXELTYPE_FLOAT, PIXELTYPE_HALF,
-    PIXELTYPE_UINT,
+    COMPRESSIONTYPE_B44, COMPRESSIONTYPE_B44A, COMPRESSIONTYPE_NONE, COMPRESSIONTYPE_PIZ,
+    COMPRESSIONTYPE_RLE, COMPRESSIONTYPE_ZIP, COMPRESSIONTYPE_ZIPS, ChannelInfo,
+    ERROR_INVALID_DATA, ERROR_INVALID_FILE, ERROR_INVALID_MAGIC_NUMBER, ERROR_UNSUPPORTED_FORMAT,
+    ExrError, PIXELTYPE_FLOAT, PIXELTYPE_HALF, PIXELTYPE_UINT, half_to_float, read_attribute,
+    read_channel_info,
 };
 use crate::miniz::tinfl::{self, TinflError};
 
@@ -652,7 +652,7 @@ fn decode_deep_tiled(
                 return Err(error(
                     ERROR_INVALID_DATA,
                     "Invalid pixel type in deep tiled image",
-                ))
+                ));
             }
         };
         ch_size.push(ps);

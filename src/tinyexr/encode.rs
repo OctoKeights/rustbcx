@@ -4,20 +4,20 @@
 
 use super::b44::compress_b44;
 use super::chunk::{
-    level_index, num_scanline_blocks, precalculate_tile_info, tile_offsets_shape, OffsetData,
+    OffsetData, level_index, num_scanline_blocks, precalculate_tile_info, tile_offsets_shape,
 };
 use super::decode::ChannelData;
 use super::piz::compress_piz;
 use super::pxr24::compress_pxr24;
-use super::zfp::{compress_zfp, zfp_param_for_writing, zfp_stream_size, ZfpParam};
+use super::zfp::{ZfpParam, compress_zfp, zfp_param_for_writing, zfp_stream_size};
 use super::zip_rle::{compress_rle, compress_zip};
 use super::{
-    float_to_half_full, half_to_float, Attribute, ChannelInfo, ExrError, ExrHeader, ExrImage,
-    ExrTile, COMPRESSIONTYPE_B44, COMPRESSIONTYPE_B44A, COMPRESSIONTYPE_DWAA, COMPRESSIONTYPE_DWAB,
-    COMPRESSIONTYPE_NONE, COMPRESSIONTYPE_PIZ, COMPRESSIONTYPE_PXR24, COMPRESSIONTYPE_RLE,
-    COMPRESSIONTYPE_ZFP, COMPRESSIONTYPE_ZIP, COMPRESSIONTYPE_ZIPS, ERROR_DATA_TOO_LARGE,
-    ERROR_INVALID_ARGUMENT, ERROR_INVALID_DATA, ERROR_SERIALIZATION_FAILED, PIXELTYPE_FLOAT,
-    PIXELTYPE_HALF, PIXELTYPE_UINT, TILE_RIPMAP_LEVELS,
+    Attribute, COMPRESSIONTYPE_B44, COMPRESSIONTYPE_B44A, COMPRESSIONTYPE_DWAA,
+    COMPRESSIONTYPE_DWAB, COMPRESSIONTYPE_NONE, COMPRESSIONTYPE_PIZ, COMPRESSIONTYPE_PXR24,
+    COMPRESSIONTYPE_RLE, COMPRESSIONTYPE_ZFP, COMPRESSIONTYPE_ZIP, COMPRESSIONTYPE_ZIPS,
+    ChannelInfo, ERROR_DATA_TOO_LARGE, ERROR_INVALID_ARGUMENT, ERROR_INVALID_DATA,
+    ERROR_SERIALIZATION_FAILED, ExrError, ExrHeader, ExrImage, ExrTile, PIXELTYPE_FLOAT,
+    PIXELTYPE_HALF, PIXELTYPE_UINT, TILE_RIPMAP_LEVELS, float_to_half_full, half_to_float,
 };
 use crate::dwa;
 

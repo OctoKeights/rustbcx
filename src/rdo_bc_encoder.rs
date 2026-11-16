@@ -223,20 +223,12 @@ fn lerp(a: f32, b: f32, s: f32) -> f32 {
 
 /// `std::min` of floats: the second when it is less than the first.
 fn min_f(a: f32, b: f32) -> f32 {
-    if b < a {
-        b
-    } else {
-        a
-    }
+    if b < a { b } else { a }
 }
 
 /// `std::max` of floats: the second when the first is less than it.
 fn max_f(a: f32, b: f32) -> f32 {
-    if a < b {
-        b
-    } else {
-        a
-    }
+    if a < b { b } else { a }
 }
 
 /// `color_quad_u8::get_luma`, with REC 709's weights.
@@ -1557,13 +1549,15 @@ mod tests {
             encoder.total_modified()
         );
         assert_ne!(encoder.blocks(), encoder.prerdo_blocks());
-        assert!(encoder
-            .blocks()
-            .as_chunks::<16>()
-            .0
-            .iter()
-            .all(|block| u16::from_le_bytes([block[8], block[9]])
-                > u16::from_le_bytes([block[10], block[11]])));
+        assert!(
+            encoder
+                .blocks()
+                .as_chunks::<16>()
+                .0
+                .iter()
+                .all(|block| u16::from_le_bytes([block[8], block[9]])
+                    > u16::from_le_bytes([block[10], block[11]]))
+        );
         let unpacked = encoder.unpack_blocks().unwrap();
         let (source, got) = (encoder.source_image().pixel(60, 44), unpacked.pixel(60, 44));
         for c in 0..4 {

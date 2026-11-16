@@ -14,7 +14,7 @@
 mod compress;
 mod decompress;
 
-pub use compress::{compress_bound, compress_buffer, MAX_LEVEL};
+pub use compress::{MAX_LEVEL, compress_bound, compress_buffer};
 pub(crate) use decompress::adler32;
 pub use decompress::uncompress_buffer;
 

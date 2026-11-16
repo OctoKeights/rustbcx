@@ -2,8 +2,8 @@
 //! stb. Every frame of an animation, or the first.
 
 use super::{
-    addints_valid, convert_format, mad3sizes_valid, vertical_flip, Context, ImageType, Info,
-    STBI_MAX_DIMENSIONS,
+    Context, ImageType, Info, STBI_MAX_DIMENSIONS, addints_valid, convert_format, mad3sizes_valid,
+    vertical_flip,
 };
 
 /// Every frame of a GIF file: [`super::load_gif_from_memory`].
@@ -651,7 +651,7 @@ pub(crate) fn gif_info(s: &mut Context) -> Option<Info> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{load_from_memory, load_gif_from_memory, LoadOptions};
+    use super::super::{LoadOptions, load_from_memory, load_gif_from_memory};
 
     /// A GIF of `w` by `h` pixels with a two-colour global table, each frame `(delay, pixels)`,
     /// written with no compression to speak of: a clear code before every pixel.

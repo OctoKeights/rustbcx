@@ -7,7 +7,7 @@
 // (The arithmetic is written as the original has it.)
 #![allow(clippy::manual_div_ceil, clippy::needless_range_loop)]
 
-use super::common::{highbit32, write_le16, CError, CResult};
+use super::common::{CError, CResult, highbit32, write_le16};
 use super::fse_compress::{self, FseCTable};
 use super::hist;
 

@@ -43,8 +43,8 @@ fn reads_the_other_formats_as_stb_image_does() {
 #[test]
 fn badly_damaged_files_are_read_or_refused() {
     use rustbcx::stb_image::{
-        info_from_memory, load_16_from_memory, load_from_memory, load_gif_from_memory,
-        loadf_from_memory, LoadOptions,
+        LoadOptions, info_from_memory, load_16_from_memory, load_from_memory, load_gif_from_memory,
+        loadf_from_memory,
     };
     const FILES: u32 = 1000;
     let mut r = made_up::Random { state: 77 };

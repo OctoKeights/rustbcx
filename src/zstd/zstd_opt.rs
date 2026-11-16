@@ -16,9 +16,9 @@
 use super::common::{highbit32, read32};
 use super::hist;
 use super::zstd_compress::{
-    count, get_lowest_match_index, hash3_ptr, hash_ptr, ll_code, ml_code, offset_to_offbase,
-    update_rep, MatchState, OptMatch, OptState, Optimal, PriceType, RawSeq, RawSeqPos, SeqStore,
-    ZSTD_OPT_NUM,
+    MatchState, OptMatch, OptState, Optimal, PriceType, RawSeq, RawSeqPos, SeqStore, ZSTD_OPT_NUM,
+    count, get_lowest_match_index, hash_ptr, hash3_ptr, ll_code, ml_code, offset_to_offbase,
+    update_rep,
 };
 use super::zstd_compress_sequences::{LL_BITS, MAX_LL, MAX_ML, MAX_OFF, ML_BITS};
 

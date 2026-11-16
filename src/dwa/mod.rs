@@ -70,11 +70,7 @@ pub struct Channel<'a> {
 
 impl Channel<'_> {
     fn bytes_per_element(&self) -> usize {
-        if self.pixel_type == PIXEL_HALF {
-            2
-        } else {
-            4
-        }
+        if self.pixel_type == PIXEL_HALF { 2 } else { 4 }
     }
 }
 

@@ -18,7 +18,7 @@
 //! block, and the original does not say what it makes of one.
 
 use crate::bc6h::float_to_half;
-use crate::bc6h_enc_tables::{field, DESC, FIX_UP, PARTITION_TABLE};
+use crate::bc6h_enc_tables::{DESC, FIX_UP, PARTITION_TABLE, field};
 
 /// A pixel: red, green, blue and alpha as floats (`HDRColorA`). The alpha is not used.
 pub type HdrColorA = [f32; 4];
@@ -71,11 +71,7 @@ fn f16_to_int(f: u16, signed: bool) -> i32 {
         } else {
             i32::from(input)
         };
-        if s != 0 {
-            -magnitude
-        } else {
-            magnitude
-        }
+        if s != 0 { -magnitude } else { magnitude }
     } else if input & F16S_MASK != 0 {
         0
     } else {

@@ -157,11 +157,7 @@ fn unpack_b44_flat_block(dst: &mut [u16; 16], src: &[u8]) {
 
 /// A channel's sampling as the original takes it: at least 1.
 fn sampling(value: i32) -> i32 {
-    if value > 0 {
-        value
-    } else {
-        1
-    }
+    if value > 0 { value } else { 1 }
 }
 
 /// `DecompressB44`: a block of `num_lines` lines of `data_width` pixels into `out`, channel

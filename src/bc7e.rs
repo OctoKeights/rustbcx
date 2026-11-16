@@ -23,8 +23,8 @@
 )]
 
 use crate::bc7decomp::{
-    ColorRgba, ANCHOR_INDEX_SECOND_SUBSET, ANCHOR_INDEX_THIRD_SUBSET_1,
-    ANCHOR_INDEX_THIRD_SUBSET_2, PARTITION2, PARTITION3,
+    ANCHOR_INDEX_SECOND_SUBSET, ANCHOR_INDEX_THIRD_SUBSET_1, ANCHOR_INDEX_THIRD_SUBSET_2,
+    ColorRgba, PARTITION2, PARTITION3,
 };
 use crate::fmath;
 use crate::parallel;
@@ -294,20 +294,12 @@ fn f2i(value: f32) -> i32 {
 
 #[inline]
 fn minimumf(a: f32, b: f32) -> f32 {
-    if a < b {
-        a
-    } else {
-        b
-    }
+    if a < b { a } else { b }
 }
 
 #[inline]
 fn maximumf(a: f32, b: f32) -> f32 {
-    if a > b {
-        a
-    } else {
-        b
-    }
+    if a > b { a } else { b }
 }
 
 #[inline]

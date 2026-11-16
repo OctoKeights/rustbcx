@@ -483,7 +483,7 @@ pub fn zlib_compress(data: &[u8], quality: i32) -> Vec<u8> {
         i += 1;
     }
     z.huff(256); // end of block
-                 // pad with 0 bits to byte boundary
+    // pad with 0 bits to byte boundary
     while z.bitcount != 0 {
         z.add(0, 1);
     }

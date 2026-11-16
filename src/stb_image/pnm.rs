@@ -5,7 +5,7 @@
 //! PPM: <http://netpbm.sourceforge.net/doc/ppm.html>
 
 use super::{
-    convert_format, mad4sizes_valid, Context, ImageType, Info, Pixels, STBI_MAX_DIMENSIONS,
+    Context, ImageType, Info, Pixels, STBI_MAX_DIMENSIONS, convert_format, mad4sizes_valid,
 };
 
 /// `stbi__pnm_test`
@@ -231,7 +231,7 @@ pub(crate) fn pnm_info(s: &mut Context) -> Option<Info> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{load_16_from_memory, load_from_memory, LoadOptions};
+    use super::super::{LoadOptions, load_16_from_memory, load_from_memory};
 
     #[test]
     fn binary_and_text_files() {

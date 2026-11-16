@@ -7,7 +7,7 @@
 use super::bitstream::BitCStream;
 use super::common::{CError, CResult};
 use super::fse_compress::{self, FseCState, FseCTable};
-use super::zstd_compress::{SeqDef, Strategy, SET_BASIC, SET_COMPRESSED, SET_REPEAT, SET_RLE};
+use super::zstd_compress::{SET_BASIC, SET_COMPRESSED, SET_REPEAT, SET_RLE, SeqDef, Strategy};
 
 pub(crate) const MAX_ML: u32 = 52;
 pub(crate) const MAX_LL: u32 = 35;

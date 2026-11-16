@@ -4,7 +4,7 @@
 
 use std::path::Path;
 
-use crate::bc6h::{float_to_half, half_to_float, RgbHalf};
+use crate::bc6h::{RgbHalf, float_to_half, half_to_float};
 use crate::bc7decomp::ColorRgba;
 use crate::stb_image::{self, LoadError, LoadOptions};
 use crate::stb_image_write::{self, WriteOptions};
@@ -341,7 +341,7 @@ impl Image {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidInput,
                     "the file name has to end in .png, .bmp, .jpg or .jpeg",
-                ))
+                ));
             }
         };
         let file = file.ok_or_else(|| {
@@ -692,11 +692,12 @@ mod tests {
         assert_eq!(Image::from_file_bytes(&bmp).unwrap(), image);
         let jpg = Image::from_file_bytes(&image.to_jpg(95).unwrap()).unwrap();
         assert_eq!((jpg.width, jpg.height), (13, 9));
-        assert!(jpg
-            .pixels
-            .iter()
-            .zip(&image.pixels)
-            .all(|(a, b)| (0..3).all(|c| a[c].abs_diff(b[c]) < 40) && a[3] == 255));
+        assert!(
+            jpg.pixels
+                .iter()
+                .zip(&image.pixels)
+                .all(|(a, b)| (0..3).all(|c| a[c].abs_diff(b[c]) < 40) && a[3] == 255)
+        );
         // With alpha: four.
         image.pixels[5][3] = 17;
         let png = image.to_png().unwrap();

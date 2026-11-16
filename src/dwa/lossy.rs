@@ -2,11 +2,11 @@
 //! `LossyDctDecoder` (`internal_dwa_decoder.h`) of OpenEXRCore.
 
 use super::simd::{
-    convert_float_to_half64, csc709_forward64, csc709_inverse, csc709_inverse64, dct_forward8x8,
-    dct_inverse8x8, dct_inverse8x8_dc_only, float_to_half, from_half_zig_zag, half_to_float,
-    INV_REMAP,
+    INV_REMAP, convert_float_to_half64, csc709_forward64, csc709_inverse, csc709_inverse64,
+    dct_forward8x8, dct_inverse8x8, dct_inverse8x8_dc_only, float_to_half, from_half_zig_zag,
+    half_to_float,
 };
-use super::{to_linear, to_nonlinear, Code, CORRUPT_CHUNK, PIXEL_FLOAT};
+use super::{CORRUPT_CHUNK, Code, PIXEL_FLOAT, to_linear, to_nonlinear};
 
 // ---------------------------------------------------------------------------------------
 // Quantization.

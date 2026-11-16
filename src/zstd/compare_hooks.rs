@@ -8,7 +8,7 @@ use super::common::CError;
 use super::fse_compress::{self, FseCTable};
 use super::huf_compress::{self, HufCTable, HufCompressTables, HufNbStreams, HufRepeat};
 use super::zstd_compress::Strategy;
-use super::zstd_compress_literals::{compress_literals, HufCTables};
+use super::zstd_compress_literals::{HufCTables, compress_literals};
 
 fn code(error: CError) -> u32 {
     match error {

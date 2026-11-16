@@ -2,7 +2,7 @@
 //! stb. The merged image of an RGB file only.
 
 use super::{
-    convert_format, mad3sizes_valid, Context, ImageType, Info, Pixels, STBI_MAX_DIMENSIONS,
+    Context, ImageType, Info, Pixels, STBI_MAX_DIMENSIONS, convert_format, mad3sizes_valid,
 };
 
 /// `stbi__psd_test`
@@ -305,7 +305,7 @@ pub(crate) fn psd_info(s: &mut Context) -> Option<Info> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{load_16_from_memory, load_from_memory, LoadOptions};
+    use super::super::{LoadOptions, load_16_from_memory, load_from_memory};
 
     /// A PSD file of RGB, without the mode data, resources or reserved data.
     fn psd(channels: u16, w: u32, h: u32, depth: u16, compression: u16, data: &[u8]) -> Vec<u8> {

@@ -2,7 +2,7 @@
 //! DWAA and DWAB: a port of `internal_huf.c` of OpenEXR v3.5.4, with both of its decoders
 //! (the table one for streams of 128 bits or less, the fast one, on x86, for longer ones).
 
-use super::{Code, ARGUMENT_OUT_OF_RANGE, CORRUPT_CHUNK, INVALID_ARGUMENT, OUT_OF_MEMORY};
+use super::{ARGUMENT_OUT_OF_RANGE, CORRUPT_CHUNK, Code, INVALID_ARGUMENT, OUT_OF_MEMORY};
 
 const HUF_ENCBITS: u32 = 16;
 const HUF_DECBITS: u32 = 14;

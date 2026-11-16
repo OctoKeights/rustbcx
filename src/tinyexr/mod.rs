@@ -78,21 +78,22 @@ mod pxr24;
 mod zfp;
 mod zip_rle;
 
-pub use chunk::{tile_levels, TileLevel};
-pub use deep::{load_deep_exr_from_memory, DeepImage};
+pub use chunk::{TileLevel, tile_levels};
+pub use deep::{DeepImage, load_deep_exr_from_memory};
 pub use encode::{
-    dwa_compression_level_attribute, save_exr_image_to_memory, save_exr_image_to_memory_as_tinyexr,
+    DWA_INVALID_LEVEL, ZFP_NOT_MULTIPLE_OF_FOUR, ZFP_TOO_LARGE, dwa_compression_level_attribute,
+    save_exr_image_to_memory, save_exr_image_to_memory_as_tinyexr,
     save_exr_multipart_image_to_memory, save_exr_multipart_image_to_memory_as_tinyexr,
-    save_exr_to_memory, DWA_INVALID_LEVEL, ZFP_NOT_MULTIPLE_OF_FOUR, ZFP_TOO_LARGE,
+    save_exr_to_memory,
 };
 pub use parts::{
-    load_exr_multipart_image_from_memory, load_exr_multipart_image_from_memory_as_tinyexr,
-    parse_exr_multipart_header_from_memory, parse_exr_multipart_header_from_memory_as_tinyexr,
-    PAST_THE_END,
+    PAST_THE_END, load_exr_multipart_image_from_memory,
+    load_exr_multipart_image_from_memory_as_tinyexr, parse_exr_multipart_header_from_memory,
+    parse_exr_multipart_header_from_memory_as_tinyexr,
 };
 pub use zfp::{
-    ZfpSettings, ZFP_COMPRESSIONTYPE_ACCURACY, ZFP_COMPRESSIONTYPE_PRECISION,
-    ZFP_COMPRESSIONTYPE_RATE,
+    ZFP_COMPRESSIONTYPE_ACCURACY, ZFP_COMPRESSIONTYPE_PRECISION, ZFP_COMPRESSIONTYPE_RATE,
+    ZfpSettings,
 };
 
 /// The original's error codes (`TINYEXR_ERROR_*`).
@@ -1139,7 +1140,7 @@ fn load_rgba(memory: &[u8], as_tinyexr: bool) -> Result<(Vec<f32>, i32, i32), Ex
             return Err(ExrError {
                 code,
                 message: format!("Failed to parse EXR version. code({code})"),
-            })
+            });
         }
     };
 
@@ -1331,7 +1332,9 @@ mod tests {
         assert_eq!((width, height), (2, 2));
         assert_eq!(
             rgba,
-            [1.0, 0.5, 2.0, 1.0, 0.0, 0.0, 0.0, 1.0, 2.0, 2.0, 2.0, 1.0, 0.5, 1.0, 0.0, 1.0]
+            [
+                1.0, 0.5, 2.0, 1.0, 0.0, 0.0, 0.0, 1.0, 2.0, 2.0, 2.0, 1.0, 0.5, 1.0, 0.0, 1.0
+            ]
         );
 
         // And channel by channel, as it is stored.

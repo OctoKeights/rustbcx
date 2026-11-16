@@ -1,7 +1,7 @@
 //! The TGA reader: `stbi__tga_*`, Targa Truevision, by Jonathan Dummer.
 
 use super::{
-    convert_format, mad3sizes_valid, vertical_flip, Context, ImageType, Info, STBI_MAX_DIMENSIONS,
+    Context, ImageType, Info, STBI_MAX_DIMENSIONS, convert_format, mad3sizes_valid, vertical_flip,
 };
 
 /// `stbi__tga_get_comp`: returns STBI_rgb or whatever, 0 on error; with it, whether the pixels
@@ -304,7 +304,7 @@ pub(crate) fn tga_load(s: &mut Context, req_comp: i32) -> Option<(Vec<u8>, i32)>
 
 #[cfg(test)]
 mod tests {
-    use super::super::{load_from_memory, LoadOptions};
+    use super::super::{LoadOptions, load_from_memory};
 
     /// A TGA file of uncompressed true colour: the header, then the pixels.
     fn tga(image_type: u8, w: u16, h: u16, bits: u8, desc: u8, pixels: &[u8]) -> Vec<u8> {

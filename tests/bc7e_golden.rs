@@ -9,7 +9,7 @@
 
 mod bc7e_made_up;
 
-use bc7e_made_up::{hash, make_blocks, make_settings, Random, PROFILES};
+use bc7e_made_up::{PROFILES, Random, hash, make_blocks, make_settings};
 use rustbcx::bc7e::Bc7e;
 
 #[test]

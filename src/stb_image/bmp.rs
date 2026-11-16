@@ -1,7 +1,7 @@
 //! The BMP reader of `stb_image.h`: Microsoft/Windows BMP image.
 
 use super::{
-    convert_format, mad3sizes_valid, vertical_flip, Context, ImageType, Info, STBI_MAX_DIMENSIONS,
+    Context, ImageType, Info, STBI_MAX_DIMENSIONS, convert_format, mad3sizes_valid, vertical_flip,
 };
 
 /// `stbi__bmp_test_raw`
@@ -560,9 +560,9 @@ pub(crate) fn bmp_info(s: &mut Context) -> Option<Info> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{info_from_memory, load_from_memory, LoadError, LoadOptions};
+    use super::super::{LoadError, LoadOptions, info_from_memory, load_from_memory};
     use super::*;
-    use crate::stb_image_write::{write_bmp, WriteOptions};
+    use crate::stb_image_write::{WriteOptions, write_bmp};
 
     /// A BMP file with the 40-byte header.
     fn bmp(x: i32, y: i32, bpp: u16, compress: u32, after_header: &[u8], rows: &[u8]) -> Vec<u8> {

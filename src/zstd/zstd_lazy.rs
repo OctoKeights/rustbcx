@@ -16,9 +16,8 @@
 
 use super::common::{highbit32, read32};
 use super::zstd_compress::{
-    count, get_lowest_match_index, get_lowest_prefix_index, hash_ptr, hash_ptr_salted,
-    offset_to_offbase, MatchState, SeqStore, K_SEARCH_STRENGTH, REPCODE1_TO_OFFBASE,
-    ZSTD_ROW_HASH_CACHE_SIZE,
+    K_SEARCH_STRENGTH, MatchState, REPCODE1_TO_OFFBASE, SeqStore, ZSTD_ROW_HASH_CACHE_SIZE, count,
+    get_lowest_match_index, get_lowest_prefix_index, hash_ptr, hash_ptr_salted, offset_to_offbase,
 };
 
 const K_LAZY_SKIPPING_STEP: usize = 8;

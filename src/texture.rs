@@ -253,7 +253,7 @@ impl Texture {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::InvalidInput,
                     "the file name has to end in .dds, .ktx or .ktx2",
-                ))
+                ));
             }
         };
         let file = file.ok_or_else(|| {
@@ -818,9 +818,11 @@ mod tests {
         // What the format cannot hold is brought into range and does not upset the rest.
         let mut odd = image.clone();
         odd.pixels[0] = [0x8001, 0xfc00, 0x7e00];
-        assert!(compress_hdr(&odd, &Bc6hEncSettings::veryfast(), false, 0)
-            .unwrap()
-            .is_valid());
+        assert!(
+            compress_hdr(&odd, &Bc6hEncSettings::veryfast(), false, 0)
+                .unwrap()
+                .is_valid()
+        );
         // The LDR unpacker says no to it, and the HDR one to an LDR texture.
         assert!(texture.unpack_level(0, Bc1ApproxMode::Ideal).is_none());
         assert!(compress_hdr(&HdrImage::new(0, 0), &Bc6hEncSettings::fast(), true, 0).is_none());
@@ -908,13 +910,15 @@ mod tests {
         ));
         // Five faces, or faces that are not square, make no cube map.
         assert!(compress_many(&images[..5], Layout::Cube, &params, true).is_none());
-        assert!(compress_many(
-            &vec![tinted(8, 4, [1, 2, 3]); 6],
-            Layout::Cube,
-            &params,
-            true
-        )
-        .is_none());
+        assert!(
+            compress_many(
+                &vec![tinted(8, 4, [1, 2, 3]); 6],
+                Layout::Cube,
+                &params,
+                true
+            )
+            .is_none()
+        );
 
         // A volume of five slices: 8x8x5, 4x4x2, 2x2x1, 1x1x1.
         let volume = compress_many(&images[..5], Layout::Volume, &params, true).unwrap();
@@ -964,13 +968,15 @@ mod tests {
 
         // No images, and images of different sizes, make nothing.
         assert!(compress_many(&[], Layout::Array, &params, true).is_none());
-        assert!(compress_many(
-            &[tinted(8, 8, [0; 3]), tinted(4, 8, [0; 3])],
-            Layout::Array,
-            &params,
-            true
-        )
-        .is_none());
+        assert!(
+            compress_many(
+                &[tinted(8, 8, [0; 3]), tinted(4, 8, [0; 3])],
+                Layout::Array,
+                &params,
+                true
+            )
+            .is_none()
+        );
 
         // To disk and back, each as each kind of file.
         let folder =
@@ -1031,14 +1037,16 @@ mod tests {
         );
         // Slices 2 and 3 (2.5 and 3.5) make the second slice of the next level.
         assert!((volume.unpack_image_hdr(1, 1).unwrap().to_rgb_f32()[0] - 3.0).abs() < 0.05);
-        assert!(compress_hdr_many(
-            &faces[..5],
-            Layout::Cube,
-            &Bc6hEncSettings::veryfast(),
-            true,
-            0
-        )
-        .is_none());
+        assert!(
+            compress_hdr_many(
+                &faces[..5],
+                Layout::Cube,
+                &Bc6hEncSettings::veryfast(),
+                true,
+                0
+            )
+            .is_none()
+        );
     }
 
     #[test]
@@ -1112,27 +1120,33 @@ mod tests {
         assert!(!cube.is_valid());
         cube.levels = vec![vec![0; 192], vec![0; 48]];
         assert!(cube.is_valid());
-        assert!(!Texture {
-            height: 4,
-            ..cube.clone()
-        }
-        .is_valid());
-        assert!(!Texture {
-            depth: 1,
-            ..cube.clone()
-        }
-        .is_valid());
+        assert!(
+            !Texture {
+                height: 4,
+                ..cube.clone()
+            }
+            .is_valid()
+        );
+        assert!(
+            !Texture {
+                depth: 1,
+                ..cube.clone()
+            }
+            .is_valid()
+        );
         let volume = Texture {
             depth: 3,
             levels: vec![vec![0; 96], vec![0; 8]],
             ..whole.clone()
         };
         assert!(volume.is_valid());
-        assert!(!Texture {
-            layers: 1,
-            ..volume.clone()
-        }
-        .is_valid());
+        assert!(
+            !Texture {
+                layers: 1,
+                ..volume.clone()
+            }
+            .is_valid()
+        );
         // A level far past the last is still one pixel, and holds one block.
         assert_eq!((whole.level_size(40), whole.image_bytes(40)), ((1, 1), 8));
     }
@@ -1182,11 +1196,13 @@ mod tests {
         let bc2_texture = compress(&with_alpha, &bc2_params, true).unwrap();
         assert!(bc2_texture.is_valid() && bc2_texture.format == TextureFormat::Bc2);
         let unpacked = bc2_texture.unpack_level(0, Bc1ApproxMode::Ideal).unwrap();
-        assert!(with_alpha
-            .pixels
-            .iter()
-            .zip(&unpacked.pixels)
-            .all(|(a, b)| a[3] == b[3]));
+        assert!(
+            with_alpha
+                .pixels
+                .iter()
+                .zip(&unpacked.pixels)
+                .all(|(a, b)| a[3] == b[3])
+        );
         // One level without mipmaps; nothing from no image.
         assert_eq!(compress(&image, &params, false).unwrap().levels.len(), 1);
         assert!(compress(&Image::new(0, 5), &params, true).is_none());

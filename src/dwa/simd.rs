@@ -108,11 +108,7 @@ pub(super) fn float_to_half(f: f32) -> u16 {
 /// `vcvtph2ps`: exact, a NaN quieted.
 pub(super) fn f16c_to_float(h: u16) -> f32 {
     let f = half_to_float(h);
-    if f.is_nan() {
-        quiet(f)
-    } else {
-        f
-    }
+    if f.is_nan() { quiet(f) } else { f }
 }
 
 /// `vcvtps2ph` with rounding to nearest, ties to even: a NaN quieted and its payload's top

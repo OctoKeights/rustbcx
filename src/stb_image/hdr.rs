@@ -2,7 +2,7 @@
 //! between floats and 8 bits a channel, `stbi__hdr_to_ldr` and `stbi__ldr_to_hdr`.
 
 use super::{
-    mad3sizes_valid, mad4sizes_valid, Context, ImageType, Info, LoadOptions, STBI_MAX_DIMENSIONS,
+    Context, ImageType, Info, LoadOptions, STBI_MAX_DIMENSIONS, mad3sizes_valid, mad4sizes_valid,
 };
 
 /// `stbi__hdr_test_core`
@@ -85,11 +85,7 @@ fn strtol(token: &[u8], start: usize) -> (i64, usize) {
         return (0, start);
     }
     let value = if overflow {
-        if negative {
-            i64::MIN
-        } else {
-            i64::MAX
-        }
+        if negative { i64::MIN } else { i64::MAX }
     } else if negative {
         (magnitude as i64).wrapping_neg()
     } else {
@@ -420,8 +416,8 @@ pub(crate) fn ldr_to_hdr(
 #[cfg(test)]
 mod tests {
     use super::super::{
-        info_from_memory, is_hdr_from_memory, load_from_memory, loadf_from_memory, ImageType,
-        LoadOptions,
+        ImageType, LoadOptions, info_from_memory, is_hdr_from_memory, load_from_memory,
+        loadf_from_memory,
     };
     use super::strtol;
 

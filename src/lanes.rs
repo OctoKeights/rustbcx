@@ -96,7 +96,7 @@ mod plain {
 #[cfg(feature = "nightly-simd")]
 mod plain {
     use std::simd::cmp::{SimdPartialEq, SimdPartialOrd};
-    use std::simd::{f32x4, i32x4, Select};
+    use std::simd::{Select, f32x4, i32x4};
 
     /// Four floats.
     #[derive(Clone, Copy)]

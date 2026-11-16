@@ -18,22 +18,22 @@
 #![allow(clippy::manual_div_ceil, clippy::int_plus_one, clippy::manual_clamp)]
 
 use super::clevels::{ZSTD_CLEVEL_DEFAULT, ZSTD_DEFAULT_CPARAMETERS, ZSTD_MAX_CLEVEL};
-use super::common::{highbit32, read16, read32, read64, write_le24, write_le32, CError, CResult};
+use super::common::{CError, CResult, highbit32, read16, read32, read64, write_le24, write_le32};
 use super::fse_compress::FseCTable;
 use super::hist;
 use super::huf_compress::{HufCompressTables, HufRepeat};
 use super::zstd_compress_literals::{
-    build_block_entropy_stats_literals, compress_literals, estimate_block_size_literal, HufCTables,
+    HufCTables, build_block_entropy_stats_literals, compress_literals, estimate_block_size_literal,
 };
 use super::zstd_compress_sequences::{
-    self as sequences, FseRepeat, DEFAULT_MAX_OFF, LL_BITS, LL_DEFAULT_NORM, LL_DEFAULT_NORM_LOG,
+    self as sequences, DEFAULT_MAX_OFF, FseRepeat, LL_BITS, LL_DEFAULT_NORM, LL_DEFAULT_NORM_LOG,
     LL_FSE_LOG, MAX_LL, MAX_ML, MAX_OFF, MAX_SEQ, ML_BITS, ML_DEFAULT_NORM, ML_DEFAULT_NORM_LOG,
-    ML_FSE_LOG, OFF_FSE_LOG, OF_DEFAULT_NORM, OF_DEFAULT_NORM_LOG,
+    ML_FSE_LOG, OF_DEFAULT_NORM, OF_DEFAULT_NORM_LOG, OFF_FSE_LOG,
 };
 use super::zstd_decompress::ZstdError;
 use super::zstd_double_fast::compress_block_double_fast;
 use super::zstd_fast::compress_block_fast;
-use super::zstd_lazy::{compress_block_lazy, SearchMethod};
+use super::zstd_lazy::{SearchMethod, compress_block_lazy};
 use super::zstd_ldm::LdmState;
 use super::zstd_opt::{compress_block_btultra2, compress_block_opt};
 use super::zstd_presplit::split_block;

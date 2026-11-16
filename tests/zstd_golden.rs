@@ -28,7 +28,7 @@ fn decodes_as_the_reference_decoder_does() {
 /// when the decoder is changed.)
 #[test]
 fn badly_damaged_frames_are_decoded_or_refused() {
-    use rustbcx::zstd::{decompress_with_dict, get_decompressed_size, Dictionary};
+    use rustbcx::zstd::{Dictionary, decompress_with_dict, get_decompressed_size};
     const ROUNDS: u32 = 40;
     let file = include_bytes!("data/zstd_frames.bin");
     let mut r = made_up::Random { state: 5 };

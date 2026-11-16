@@ -7,7 +7,7 @@
 //! Its data format descriptor is the one the Khronos tools write for each format.
 
 use crate::miniz;
-use crate::texture::{texture_from_header, Reader, Texture, TextureError, TextureFormat};
+use crate::texture::{Reader, Texture, TextureError, TextureFormat, texture_from_header};
 use crate::zstd;
 
 /// How the levels of a `.ktx2` file are compressed again, each by itself.
@@ -177,8 +177,21 @@ pub fn read_ktx1(file: &[u8]) -> Result<Texture, TextureError> {
     for value in &mut header {
         *value = reader.u32()?;
     }
-    let [endianness, gl_type, _type_size, gl_format, internal_format, _base, width, height, depth, array_elements, faces, level_count, key_value_bytes] =
-        header;
+    let [
+        endianness,
+        gl_type,
+        _type_size,
+        gl_format,
+        internal_format,
+        _base,
+        width,
+        height,
+        depth,
+        array_elements,
+        faces,
+        level_count,
+        key_value_bytes,
+    ] = header;
     if endianness != KTX1_ENDIANNESS {
         return Err(if endianness == KTX1_ENDIANNESS.swap_bytes() {
             TextureError::Unsupported("a big-endian file")
@@ -209,7 +222,7 @@ pub fn read_ktx1(file: &[u8]) -> Result<Texture, TextureError> {
         _ => {
             return Err(TextureError::Unsupported(
                 "an OpenGL format other than BC1 to BC7",
-            ))
+            ));
         }
     };
     if faces != 1 && faces != 6 {
@@ -407,8 +420,17 @@ pub fn read_ktx2(file: &[u8]) -> Result<Texture, TextureError> {
     for value in &mut header {
         *value = reader.u32()?;
     }
-    let [format_number, _type_size, width, height, depth, layers, faces, level_count, supercompression] =
-        header;
+    let [
+        format_number,
+        _type_size,
+        width,
+        height,
+        depth,
+        layers,
+        faces,
+        level_count,
+        supercompression,
+    ] = header;
     let (format, srgb) = match format_number {
         131 | 133 => (TextureFormat::Bc1, false),
         132 | 134 => (TextureFormat::Bc1, true),
@@ -425,7 +447,7 @@ pub fn read_ktx2(file: &[u8]) -> Result<Texture, TextureError> {
         _ => {
             return Err(TextureError::Unsupported(
                 "a Vulkan format other than BC1 to BC7",
-            ))
+            ));
         }
     };
     if faces != 1 && faces != 6 {
@@ -436,12 +458,12 @@ pub fn read_ktx2(file: &[u8]) -> Result<Texture, TextureError> {
         1 => {
             return Err(TextureError::Unsupported(
                 "BasisLZ supercompression, which is not for block formats",
-            ))
+            ));
         }
         _ => {
             return Err(TextureError::Unsupported(
                 "a supercompression that is not known",
-            ))
+            ));
         }
     }
     let mut texture = texture_from_header(

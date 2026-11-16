@@ -38,5 +38,5 @@ pub use zstd_compress::level_is_ported;
 pub use zstd_compress::{compress, compress_bound};
 
 pub use zstd_decompress::{
-    decompress, decompress_with_dict, get_decompressed_size, Dictionary, ZstdError,
+    Dictionary, ZstdError, decompress, decompress_with_dict, get_decompressed_size,
 };

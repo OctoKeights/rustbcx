@@ -13,7 +13,7 @@
 
 use super::common::{read32, read64};
 use super::zstd_compress::{
-    count, CompressionParameters, RawSeq, Window, HASH_READ_SIZE, ZSTD_WINDOW_START_INDEX,
+    CompressionParameters, HASH_READ_SIZE, RawSeq, Window, ZSTD_WINDOW_START_INDEX, count,
 };
 
 const LDM_BUCKET_SIZE_LOG: u32 = 4;

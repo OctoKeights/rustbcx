@@ -7,7 +7,7 @@
 //! local to each function.
 
 use super::bitstream::BitCStream;
-use super::common::{highbit32, CError, CResult};
+use super::common::{CError, CResult, highbit32};
 
 pub(crate) const FSE_MAX_TABLELOG: u32 = 12;
 pub(crate) const FSE_MIN_TABLELOG: u32 = 5;

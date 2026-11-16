@@ -1089,7 +1089,7 @@ fn miniz_decompress(hash: &mut Hash, stream: &[u8], room: usize, zlib: bool) -> 
 /// decompressed.
 pub fn miniz(seed: u64, count: u32) -> String {
     use rustbcx::miniz::tdef::*;
-    use rustbcx::miniz::{compress, mz_adler32, mz_crc32, MZ_ADLER32_INIT, MZ_CRC32_INIT};
+    use rustbcx::miniz::{MZ_ADLER32_INIT, MZ_CRC32_INIT, compress, mz_adler32, mz_crc32};
     let mut r = Random { state: seed };
     let mut hash = Hash::new();
     let (mut done, mut refused) = (0u32, 0u32);
@@ -1182,7 +1182,9 @@ pub fn miniz(seed: u64, count: u32) -> String {
             out += &format!("miniz {} {:016x}\n", i + 1, hash.value);
         }
     }
-    out + &format!("miniz bytes in: {in_total}, out: {out_total}; streams decompressed: {done}, refused: {refused}\n")
+    out + &format!(
+        "miniz bytes in: {in_total}, out: {out_total}; streams decompressed: {done}, refused: {refused}\n"
+    )
 }
 
 /// A made-up image of 8 bits a channel: its channels, its size, how far its rows are apart,
@@ -1267,7 +1269,7 @@ pub fn make_picture(r: &mut Random) -> Picture {
 /// levels and filters), as `.bmp` and as `.jpg` (with made-up qualities), some upside down;
 /// and for every fourth, made-up data through the file's own zlib compressor.
 pub fn stb_image_write(seed: u64, count: u32) -> String {
-    use rustbcx::stb_image_write::{write_bmp, write_jpg, write_png, zlib_compress, WriteOptions};
+    use rustbcx::stb_image_write::{WriteOptions, write_bmp, write_jpg, write_png, zlib_compress};
     let mut r = Random { state: seed };
     let mut hash = Hash::new();
     let (mut png_total, mut bmp_total, mut jpg_total, mut zlib_total, mut pixel_total) =
@@ -1333,7 +1335,9 @@ pub fn stb_image_write(seed: u64, count: u32) -> String {
             out += &format!("stb_image_write {} {:016x}\n", i + 1, hash.value);
         }
     }
-    out + &format!("stb_image_write pixels: {pixel_total}; bytes of .png: {png_total}, .bmp: {bmp_total}, .jpg: {jpg_total}, zlib: {zlib_total}\n")
+    out + &format!(
+        "stb_image_write pixels: {pixel_total}; bytes of .png: {png_total}, .bmp: {bmp_total}, .jpg: {jpg_total}, zlib: {zlib_total}\n"
+    )
 }
 
 fn p16be(f: &mut Vec<u8>, value: u32) {
@@ -1915,9 +1919,9 @@ pub fn stb_image(seed: u64, count: u32) -> String {
         zlib_decode_buffer, zlib_decode_malloc, zlib_decode_noheader_malloc,
     };
     use rustbcx::stb_image::{
-        info_from_memory, is_16_bit_from_memory, load_16_from_memory, load_from_memory, LoadOptions,
+        LoadOptions, info_from_memory, is_16_bit_from_memory, load_16_from_memory, load_from_memory,
     };
-    use rustbcx::stb_image_write::{write_bmp, write_jpg, write_png, zlib_compress, WriteOptions};
+    use rustbcx::stb_image_write::{WriteOptions, write_bmp, write_jpg, write_png, zlib_compress};
     let mut r = Random { state: seed };
     let mut hash = Hash::new();
     let (mut loaded, mut refused, mut too_large) = (0u32, 0u32, 0u32);
@@ -2179,11 +2183,7 @@ pub fn make_tga(r: &mut Random, f: &mut Vec<u8>) {
     } else {
         let grey = r.next() % 3 == 0;
         let bits = if grey {
-            if r.next() % 2 != 0 {
-                16
-            } else {
-                8
-            }
+            if r.next() % 2 != 0 { 16 } else { 8 }
         } else {
             BITS[(r.next() % 4) as usize]
         };
@@ -2253,11 +2253,7 @@ pub fn make_psd(r: &mut Random, f: &mut Vec<u8>) {
         for c in 0..channels {
             for _ in 0..pixels {
                 let v = if c == 3 && r.next() % 2 != 0 {
-                    if r.next() % 2 != 0 {
-                        0xffffffff
-                    } else {
-                        0
-                    }
+                    if r.next() % 2 != 0 { 0xffffffff } else { 0 }
                 } else {
                     r.next()
                 };
@@ -2678,8 +2674,8 @@ pub fn make_hdr(r: &mut Random, f: &mut Vec<u8>) {
 /// also read as an animation.
 pub fn stb_image_more(seed: u64, count: u32) -> String {
     use rustbcx::stb_image::{
-        info_from_memory, is_16_bit_from_memory, is_hdr_from_memory, load_16_from_memory,
-        load_from_memory, load_gif_from_memory, loadf_from_memory, LoadOptions,
+        LoadOptions, info_from_memory, is_16_bit_from_memory, is_hdr_from_memory,
+        load_16_from_memory, load_from_memory, load_gif_from_memory, loadf_from_memory,
     };
     const GAMMA: [f32; 4] = [2.2, 1.0, 1.8, 2.4];
     const SCALE: [f32; 4] = [1.0, 0.5, 2.0, 4.0];
@@ -2802,7 +2798,7 @@ pub fn stb_image_more(seed: u64, count: u32) -> String {
 /// wrote to a file (for each: the room to decode into, a dictionary or none, and the frame),
 /// each asked its size and decoded, as that program does with the reference decoder.
 pub fn zstd_decode(name: &str, count: u32, file: &[u8]) -> String {
-    use rustbcx::zstd::{decompress_with_dict, get_decompressed_size, Dictionary};
+    use rustbcx::zstd::{Dictionary, decompress_with_dict, get_decompressed_size};
     let mut hash = Hash::new();
     let (mut decoded, mut refused) = (0u32, 0u32);
     let mut frame_total = 0u64;
@@ -3302,11 +3298,7 @@ impl Entropy {
                 }
                 2 => {
                     let c = r.next() % 5;
-                    if c == 0 {
-                        1 + r.next() % 40
-                    } else {
-                        0
-                    }
+                    if c == 0 { 1 + r.next() % 40 } else { 0 }
                 }
                 3 => {
                     if s == 0 {
@@ -3786,7 +3778,9 @@ pub fn tinyexr_read(name: &str, count: u32, file: &[u8]) -> String {
             out += &format!("{name} {} {:016x}\n", i + 1, hash.value);
         }
     }
-    out + &format!("{name} bytes of files: {file_total}; headers read: {headers}, images read: {images}, refused: {refused}, left: {left}, where tinyexr stops: {stopped}; as red, green, blue and alpha: {as_rgba}\n")
+    out + &format!(
+        "{name} bytes of files: {file_total}; headers read: {headers}, images read: {images}, refused: {refused}, left: {left}, where tinyexr stops: {stopped}; as red, green, blue and alpha: {as_rgba}\n"
+    )
 }
 
 /// A made-up image and how to save it, as `MakeImage` in `compare/dump_tinyexr.cc` makes it.
@@ -4388,7 +4382,12 @@ pub fn tinyexr_write(name: &str, seed: u64, count: u32) -> String {
                     hash.add(&(file.len() as u32).to_le_bytes());
                     hash.add(&file);
                     // And back: the floats, or the halves of them.
-                    let (rgba, read_width, read_height) = tinyexr::load_exr_from_memory(&file).unwrap_or_else(|error| panic!("{name}: file {i}, saved the short way, is not read back: {error:?}"));
+                    let (rgba, read_width, read_height) = tinyexr::load_exr_from_memory(&file)
+                        .unwrap_or_else(|error| {
+                            panic!(
+                                "{name}: file {i}, saved the short way, is not read back: {error:?}"
+                            )
+                        });
                     assert_eq!((read_width, read_height), (width, height));
                     if !as_halves {
                         for pixel in 0..(width * height) as usize {
@@ -4416,7 +4415,9 @@ pub fn tinyexr_write(name: &str, seed: u64, count: u32) -> String {
             out += &format!("{name} {} {:016x}\n", i + 1, hash.value);
         }
     }
-    out + &format!("{name} bytes of files: {file_total}; saved: {saved}, not saved: {not_saved}, saved the short way: {short_way}\n")
+    out + &format!(
+        "{name} bytes of files: {file_total}; saved: {saved}, not saved: {not_saved}, saved the short way: {short_way}\n"
+    )
 }
 
 /// A number into a hash, as `AddNumber` in `compare/dump_tinyexr.cc` puts it.
@@ -4548,11 +4549,7 @@ fn exr_add_image(
 fn exr_add_outcome(hash: &mut Hash, end: ExrEnd, read: &Hash, theirs: u32) -> u32 {
     let refused = end == ExrEnd::PastTheEnd || (theirs == 2 && end == ExrEnd::Error);
     let flags = if refused {
-        if theirs != 0 {
-            theirs
-        } else {
-            1
-        }
+        if theirs != 0 { theirs } else { 1 }
     } else {
         0
     };
@@ -4719,7 +4716,9 @@ pub fn tinyexr_parts(name: &str, seed: u64, count: u32, file: &[u8]) -> String {
             out += &format!("{name} {} {:016x}\n", i + 1, hash.value);
         }
     }
-    out + &format!("{name} bytes of files: {file_total}; saved: {saved}, not saved: {not_saved}; read where it depends on what is past the end: {past_end}, where tinyexr stops: {stopped}\n")
+    out + &format!(
+        "{name} bytes of files: {file_total}; saved: {saved}, not saved: {not_saved}; read where it depends on what is past the end: {past_end}, where tinyexr stops: {stopped}\n"
+    )
 }
 
 /// The `tinyexr_deep` dump: the deep files `compare/dump_tinyexr.cc` made and wrote to the
@@ -4799,14 +4798,16 @@ pub fn tinyexr_deep(name: &str, count: u32, file: &[u8]) -> String {
             out += &format!("{name} {} {:016x}\n", i + 1, hash.value);
         }
     }
-    out + &format!("{name} bytes of files: {file_total}; read where it depends on what is outside the file: {past_end}, where tinyexr stops: {stopped}, left: {left}\n")
+    out + &format!(
+        "{name} bytes of files: {file_total}; read where it depends on what is outside the file: {past_end}, where tinyexr stops: {stopped}, left: {left}\n"
+    )
 }
 
 /// The `libdeflate` dump: made-up data compressed into zlib streams at a level of
 /// libdeflate's, and the streams (and damaged copies, and made-up bytes after a zlib header)
 /// decompressed, as `compare/dump_libdeflate.c` does with libdeflate itself.
 pub fn libdeflate(seed: u64, count: u32) -> String {
-    use rustbcx::libdeflate::{compress_buffer, uncompress_buffer, Error};
+    use rustbcx::libdeflate::{Error, compress_buffer, uncompress_buffer};
     const LEVELS: [i32; 10] = [0, 2, 3, 4, 5, 6, 7, 8, 9, 4];
     let mut r = Random { state: seed };
     let mut hash = Hash::new();
@@ -4894,7 +4895,7 @@ pub fn libdeflate(seed: u64, count: u32) -> String {
 /// compressed as DWAA or DWAB and back (`dwa_write`), or compressed, damaged and decompressed
 /// (`dwa_read`).
 pub fn dwa(what: &str, seed: u64, count: u32) -> String {
-    use rustbcx::dwa::{compress, uncompress, Channel};
+    use rustbcx::dwa::{Channel, compress, uncompress};
     const NAMES: [&str; 24] = [
         "R",
         "G",
@@ -5061,11 +5062,7 @@ pub fn dwa(what: &str, seed: u64, count: u32) -> String {
                         6 => (((x / 8 + y / 8) as u32 + a) % 3) as f32 * 0.5,
                         _ => {
                             let f = (r.next() % 60000) as f32 + 0.5;
-                            if r.next() % 2 != 0 {
-                                f
-                            } else {
-                                -f
-                            }
+                            if r.next() % 2 != 0 { f } else { -f }
                         }
                     };
                     if pixel_type == 1 {
@@ -5270,5 +5267,7 @@ pub fn dwa(what: &str, seed: u64, count: u32) -> String {
             out += &format!("{what} {} {:016x}\n", i + 1, hash.value);
         }
     }
-    out + &format!("{what} bytes: {raw_total} as {block_total}, {stored} blocks stored as they are; decompressed: {decompressed}, refused: {refused}\n")
+    out + &format!(
+        "{what} bytes: {raw_total} as {block_total}, {stored} blocks stored as they are; decompressed: {decompressed}, refused: {refused}\n"
+    )
 }

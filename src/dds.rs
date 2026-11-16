@@ -8,7 +8,7 @@
 //! levels (a volume texture level by level, each with all its slices); [`Texture`] holds it
 //! level by level, and the two here put it one way and the other.
 
-use crate::texture::{texture_from_header, Reader, Texture, TextureError, TextureFormat};
+use crate::texture::{Reader, Texture, TextureError, TextureFormat, texture_from_header};
 
 const DDSD_CAPS: u32 = 0x1;
 const DDSD_HEIGHT: u32 = 0x2;
@@ -211,7 +211,7 @@ pub fn read(file: &[u8]) -> Result<Texture, TextureError> {
             _ => {
                 return Err(TextureError::Unsupported(
                     "a texture that is neither 2D nor 3D",
-                ))
+                ));
             }
         }
         match dxgi {
@@ -230,7 +230,7 @@ pub fn read(file: &[u8]) -> Result<Texture, TextureError> {
             _ => {
                 return Err(TextureError::Unsupported(
                     "a DXGI format other than BC1 to BC7",
-                ))
+                ));
             }
         }
     } else if code == fourcc(b"DXT1") {

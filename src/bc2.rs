@@ -223,8 +223,10 @@ mod tests {
         ];
         let mut pixels = [[0u8; 4]; 16];
         unpack_bc2(&same, &mut pixels, Bc1ApproxMode::NVidia);
-        assert!(pixels
-            .iter()
-            .all(|pixel| *pixel == pixels[0] && pixel[3] == 255));
+        assert!(
+            pixels
+                .iter()
+                .all(|pixel| *pixel == pixels[0] && pixel[3] == 255)
+        );
     }
 }

@@ -2,8 +2,8 @@
 //! original's plain C kernels (its `STBI_NO_SIMD` build).
 
 use super::{
-    addints_valid, compute_y, mad2sizes_valid, mad3sizes_valid, mul2shorts_valid, Context,
-    ImageType, Info, Scan, STBI_MAX_DIMENSIONS,
+    Context, ImageType, Info, STBI_MAX_DIMENSIONS, Scan, addints_valid, compute_y, mad2sizes_valid,
+    mad3sizes_valid, mul2shorts_valid,
 };
 
 // huffman decoding acceleration
@@ -1915,9 +1915,9 @@ pub(crate) fn jpeg_info(s: &mut Context) -> Option<Info> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{info_from_memory, load_from_memory, LoadError, LoadOptions};
+    use super::super::{LoadError, LoadOptions, info_from_memory, load_from_memory};
     use super::*;
-    use crate::stb_image_write::{write_jpg, WriteOptions};
+    use crate::stb_image_write::{WriteOptions, write_jpg};
 
     fn picture(x: usize, y: usize, comp: usize) -> Vec<u8> {
         // Smooth, so that it comes back near what went in.
@@ -1969,17 +1969,20 @@ mod tests {
                 let grey = load_from_memory(&file, 1, &options).unwrap();
                 assert_eq!(grey.data.len(), x * y);
                 let grey_alpha = load_from_memory(&file, 2, &options).unwrap();
-                assert!(grey_alpha
-                    .data
-                    .chunks(2)
-                    .zip(&grey.data)
-                    .all(|(pair, &value)| pair == [value, 255]));
+                assert!(
+                    grey_alpha
+                        .data
+                        .chunks(2)
+                        .zip(&grey.data)
+                        .all(|(pair, &value)| pair == [value, 255])
+                );
                 let rgba = load_from_memory(&file, 4, &options).unwrap();
-                assert!(rgba
-                    .data
-                    .chunks(4)
-                    .zip(loaded.data.chunks(3))
-                    .all(|(four, three)| &four[..3] == three && four[3] == 255));
+                assert!(
+                    rgba.data
+                        .chunks(4)
+                        .zip(loaded.data.chunks(3))
+                        .all(|(four, three)| &four[..3] == three && four[3] == 255)
+                );
             }
         }
         // A grey file.
@@ -1987,11 +1990,13 @@ mod tests {
         let file = write_jpg(20, 20, 1, &pixels, 95, 0, &WriteOptions::default()).unwrap();
         let loaded = load_from_memory(&file, 1, &options).unwrap();
         assert_eq!(loaded.channels_in_file, 3); // (the writer always writes three components)
-        assert!(loaded
-            .data
-            .iter()
-            .zip(&pixels)
-            .all(|(&a, &b)| a.abs_diff(b) <= 6));
+        assert!(
+            loaded
+                .data
+                .iter()
+                .zip(&pixels)
+                .all(|(&a, &b)| a.abs_diff(b) <= 6)
+        );
     }
 
     #[test]

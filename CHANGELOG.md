@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- **The 2024 edition.** The crate now uses Rust's 2024 edition, so it needs Rust 1.85 or
+  later to build; it is developed and checked with Rust 1.100 (`rust-toolchain.toml`).
+
 - **Every image format stb_image reads.** `stb_image` now ports all of its readers: `.tga`,
   `.psd`, `.gif`, `.pgm`, `.ppm` and Radiance `.hdr`, alongside `.png`, `.bmp` and `.jpg`.
   `loadf_from_memory` gives floats, `load_gif_from_memory` every frame of a GIF with its delay,

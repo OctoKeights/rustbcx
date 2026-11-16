@@ -670,11 +670,7 @@ pub fn unpack_bc6h_half(block: &[u8; 16], is_signed: bool) -> [RgbHalf; 16] {
     for i in 0..4 {
         for j in 0..4 {
             let mut partition_set = if mode >= 10 {
-                if (i | j) != 0 {
-                    0
-                } else {
-                    128
-                }
+                if (i | j) != 0 { 0 } else { 128 }
             } else {
                 PARTITION_SETS[partition as usize][i][j]
             };
@@ -722,20 +718,12 @@ fn f2i(x: f32) -> i32 {
 
 /// ISPC's `min` of floats: the second unless the first is less.
 fn min_f(a: f32, b: f32) -> f32 {
-    if a < b {
-        a
-    } else {
-        b
-    }
+    if a < b { a } else { b }
 }
 
 /// ISPC's `max` of floats: the second unless the first is greater.
 fn max_f(a: f32, b: f32) -> f32 {
-    if a > b {
-        a
-    } else {
-        b
-    }
+    if a > b { a } else { b }
 }
 
 fn sq(v: f32) -> f32 {
@@ -2452,9 +2440,11 @@ mod tests {
         assert_eq!(pixels[0], [0; 3]);
         assert_eq!(pixels[15], [0x7bff; 3]);
         assert!(pixels.windows(2).all(|pair| pair[0][0] <= pair[1][0]));
-        assert!(pixels
-            .iter()
-            .all(|pixel| pixel[0] == pixel[1] && pixel[1] == pixel[2]));
+        assert!(
+            pixels
+                .iter()
+                .all(|pixel| pixel[0] == pixel[1] && pixel[1] == pixel[2])
+        );
         assert_eq!(
             unpack_bc6h_float(&bits.to_le_bytes(), false)[15],
             [65504.0; 3]

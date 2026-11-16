@@ -181,7 +181,9 @@ fn exr(out: &str) {
 
 fn main() {
     let Some(out) = std::env::args().nth(1) else {
-        eprintln!("usage: files <folder> [ending]\n       files --exr <folder>\n       files --exr-same <file.exr> <file.gbr>");
+        eprintln!(
+            "usage: files <folder> [ending]\n       files --exr <folder>\n       files --exr-same <file.exr> <file.gbr>"
+        );
         std::process::exit(2);
     };
     if out == "--exr-same" {
