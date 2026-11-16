@@ -53,6 +53,7 @@ These modules have no upstream counterpart.
   original, fastest first: `ultrafast`, `veryfast`, `fast`, `basic`, `slow`, `veryslow`,
   `slowest`. `RdoBcParams` uses it unless `use_bc7e` is disabled, mirroring bc7enc_rdo when
   built with it.
+
 - **`bc7enc`** where output must match bc7enc_rdo built without ISPC, or where a compact
   encoder with few settings is preferred.
 
@@ -100,8 +101,10 @@ rustbcx addresses a narrower requirement:
 
 - You are migrating a C++ project that uses bc7enc_rdo to Rust, and its textures must not
   change.
+
 - You require identical blocks on every machine and from every build, which the customary
   fast-math builds of the ISPC encoders do not guarantee.
+
 - You want a self-contained texture compressor with no dependencies and no `unsafe`.
 
 The crate was written for Noolith, a project whose C++ code compressed its textures with

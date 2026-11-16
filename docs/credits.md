@@ -36,6 +36,7 @@ repository:
   [`LICENSE-bc6h_enc.txt`](../LICENSE-bc6h_enc.txt),
   [`LICENSE-miniz.txt`](../LICENSE-miniz.txt) and
   [`LICENSE-stb.txt`](../LICENSE-stb.txt).
+
 - **BSD:** zstd, in [`LICENSE-zstd.txt`](../LICENSE-zstd.txt); and tinyexr with the OpenEXR
   code it contains, in [`LICENSE-tinyexr.txt`](../LICENSE-tinyexr.txt).
 

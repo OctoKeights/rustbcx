@@ -131,8 +131,10 @@ KTX=<checkout of KTX-Software> KTX_BUILD=<its build folder> TINYDDS=<checkout of
   ([KTX-Software](https://github.com/KhronosGroup/KTX-Software)) and
   [tinyddsloader](https://github.com/benikabocha/tinyddsloader) must report the same
   dimensions, layers, faces and levels for each file, and the same bytes in every image.
+
 - **Round trip.** The Khronos tool recompresses each `.ktx2` file with Zstandard, and the
   crate must read back what it originally wrote.
+
 - **OpenEXR.** It writes `.exr` files, as scanlines and tiles, halves and floats, with each
   of the eight compression methods, and has [ffmpeg](https://ffmpeg.org), whose `.exr`
   reader is an independent implementation, read them; it must recover the same floats as the

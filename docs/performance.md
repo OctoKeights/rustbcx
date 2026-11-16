@@ -43,13 +43,12 @@ for four pixels at a time using `std::simd`, where the default build evaluates o
 cargo +nightly build --release --features nightly-simd
 ```
 
-The output is unchanged, and `bc7e` is about a tenth faster at its `basic` profile and above
-(a twelfth fewer instructions at `slowest`).
+The output is unchanged, and `bc7e` is about 10% faster at its `basic` profile and above
+(about 8% fewer instructions at `slowest`).
 
-The same loop written four pixels at a time without `std::simd`, leaving vectorisation to
-the compiler, was evaluated for the default build and proved slower than the code it
-replaced, which the compiler already vectorises across a palette's colours. The default
-build therefore retains the original's loop.
+Writing the same loop four pixels at a time without `std::simd` proved slower than the
+original's loop, which the compiler already vectorises across a palette's colours, so the
+default build keeps the original.
 
 `std::simd` is not yet stable, and a later nightly may require changes to the feature's few
 lines. They were last built against the `std::simd` of Rust 1.97.
@@ -58,9 +57,10 @@ lines. They were last built against the `std::simd` of Rust 1.97.
 
 On one thread of the same machine:
 
-- `bc7e` takes about four fifths of the time of the strict SSE2 build of `bc7e.ispc`, and
-  about a fifth longer than its AVX2 fast-math build.
-- BC6H takes about one and a half times as long as the strict SSE2 build of Intel's encoder,
-  which processes four blocks at a time.
+- `bc7e` takes about 80% of the time of the strict SSE2 build of `bc7e.ispc`, and about 20%
+  longer than its AVX2 fast-math build.
 
-Treat these figures as indicative only: they reflect a single machine and synthetic pixels.
+- BC6H takes about 50% longer than the strict SSE2 build of Intel's encoder, which processes
+  four blocks at a time.
+
+These figures are indicative only: one machine, synthetic pixels.

@@ -6,32 +6,36 @@
 
 ---
 
-rustbcx encodes and decodes block-compressed textures, from individual blocks to complete
-mipmapped textures in `.dds`, `.ktx` and `.ktx2` containers. Source images may be `.png`,
-`.bmp`, `.jpg` or `.exr` files, or raw pixel data.
+rustbcx encodes and decodes block-compressed textures, from single blocks to complete
+mipmapped textures in `.dds`, `.ktx` and `.ktx2` containers, sourced from `.png`, `.bmp`,
+`.jpg` and `.exr` files or raw pixels.
 
 Its codecs are faithful ports of established C++ and ISPC libraries, principally Richard
-Geldreich's [bc7enc_rdo](https://github.com/richgel999/bc7enc_rdo). The crate has a single
-objective: to reproduce the output of those libraries exactly, in safe Rust, with no external
-toolchain.
+Geldreich's [bc7enc_rdo](https://github.com/richgel999/bc7enc_rdo), and reproduce their
+output exactly with no external toolchain.
 
 ## Highlights
 
-- **Bit-identical output.** Each port mirrors its original function by function and preserves
-  the order of floating-point operations, so every block matches the reference byte for byte.
-- **Zero dependencies.** Only the Rust standard library is required: no C++ build step and no
-  ISPC compiler.
+- **Bit-identical output.** Every block matches its reference encoder byte for byte.
+
+- **Zero dependencies.** Standard library only: no C++ build step, no ISPC compiler.
+
 - **No `unsafe` code.** Enforced by `#![forbid(unsafe_code)]`.
-- **Complete format coverage.** BC1, BC2, BC3, BC4, BC5 and BC7 in both directions, and BC6H
-  for HDR colour, signed and unsigned.
-- **Complete textures.** Mipmapped 2D textures, texture arrays, cube maps and volume textures,
-  written as `.dds`, `.ktx` or `.ktx2`.
-- **Integrated image I/O.** `.png`, `.bmp` and `.jpg` through ports of stb_image and
-  stb_image_write; `.exr` through a port of tinyexr.
-- **Parallel and deterministic.** Encoding uses every available core by default, and the
-  output is independent of the thread count.
-- **Rate-distortion optimisation.** The bc7enc_rdo pass that reduces a texture's size under
-  general-purpose compression, at a small and controllable cost in quality.
+
+- **Complete format coverage.** BC1 to BC5 and BC7 in both directions, plus signed and
+  unsigned BC6H for HDR.
+
+- **Complete textures.** Mipmapped 2D textures, arrays, cube maps and volumes, written as
+  `.dds`, `.ktx` or `.ktx2`.
+
+- **Integrated image I/O.** `.png`, `.bmp`, `.jpg` and `.exr`, through ports of stb_image,
+  stb_image_write and tinyexr.
+
+- **Parallel and deterministic.** Uses every core by default; output is independent of the
+  thread count.
+
+- **Rate-distortion optimisation.** Smaller files after general-purpose compression, at a
+  controllable cost in quality.
 
 ## Installation
 
@@ -40,8 +44,7 @@ toolchain.
 rustbcx = "0.3"
 ```
 
-Compile with optimisation (`cargo build --release`). The encoders are arithmetic-intensive
-and are many times slower in debug builds.
+Build with `--release`: the encoders are many times slower without optimisation.
 
 ## Quick start
 
@@ -71,8 +74,7 @@ texture.save(&path).unwrap();
 assert_eq!(Texture::load(&path).unwrap(), texture);
 ```
 
-Further examples, covering image files, HDR, cube maps and block-level access, are in
-[Examples](docs/examples.md).
+See [Examples](docs/examples.md) for image files, HDR, cube maps and block-level access.
 
 ## Modules
 
@@ -87,25 +89,12 @@ Further examples, covering image files, HDR, cube maps and block-level access, a
 | Image codecs | `stb_image`, `stb_image_write`, `tinyexr` | stb, tinyexr |
 | Supercompression | `miniz`, `zstd` | miniz, zstd |
 
-The full module reference is in the [Guide](docs/guide.md#module-reference).
-
-## Documentation
-
-| Page | Contents |
-|---|---|
-| [Examples](docs/examples.md) | Worked examples for each principal workflow |
-| [Guide](docs/guide.md) | Module reference, encoder selection, rate-distortion optimisation, threading, suitability |
-| [Behaviour](docs/behaviour.md) | Behavioural notes and known limitations |
-| [Verification](docs/verification.md) | How each port is validated against its original, with results |
-| [Performance](docs/performance.md) | Benchmarks and the optional `nightly-simd` feature |
-| [Credits](docs/credits.md) | Attribution and third-party licences |
+Full details are in the [module reference](docs/guide.md#module-reference).
 
 ## Licence
 
-rustbcx is distributed under the Apache License 2.0; see [`LICENSE`](LICENSE) and
-[`NOTICE`](NOTICE). The ported libraries retain their own licences, detailed in
-[Credits](docs/credits.md).
+Apache License 2.0; see [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE). The ported libraries
+retain their own licences, listed in [Credits](docs/credits.md).
 
-Bug reports and contributions are welcome. Any block that rustbcx encodes or decodes
-differently from its original is a defect this project exists to eliminate: please open an
-issue.
+Bug reports and contributions are welcome, above all any block that rustbcx encodes or
+decodes differently from its original.
