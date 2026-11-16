@@ -81,3 +81,8 @@ pub mod zstd;
 #[cfg(doctest)]
 #[doc = include_str!("../README.md")]
 struct ReadmeDoctests;
+
+/// (And those of `docs/examples.md`.)
+#[cfg(doctest)]
+#[doc = include_str!("../docs/examples.md")]
+struct ExamplesDoctests;

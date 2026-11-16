@@ -1,6 +1,6 @@
 [package]
 name = "rustbcx"
-description = "GPU texture compression in pure Rust: BC1 to BC7 blocks and whole textures with mip levels (plain, arrays, cube maps, volumes) in DDS and KTX files, with zlib and Zstandard, from PNG, BMP, JPEG and EXR pictures. Ports of bc7enc_rdo, bc7e, bcdec, the ISPC Texture Compressor, DirectXTex's BC6H encoder, miniz, zstd, stb_image and tinyexr: bit-identical output, no dependencies, no unsafe code."
+description = "Deterministic BC1 to BC7 GPU texture compression in pure, safe Rust: bit-identical ports of bc7enc_rdo and related encoders, with DDS and KTX output and no dependencies."
 version = "0.3.0"
 edition = "2021"
 license = "Apache-2.0"
