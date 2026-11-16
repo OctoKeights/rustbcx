@@ -3996,20 +3996,18 @@ impl Bc7e {
         // Mode 0
         if comp_params.opaque_settings.use_mode[0] {
             let mut solutions3 = [Solution::default(); MAX_PARTITIONS0 as usize];
-            let num_solutions3;
-
-            if comp_params.opaque_settings.max_mode0_partitions_to_try == 1 {
+            let num_solutions3 = if comp_params.opaque_settings.max_mode0_partitions_to_try == 1 {
                 solutions3[0].index = estimate_partition(0, pixels, comp_params);
-                num_solutions3 = 1;
+                1
             } else {
-                num_solutions3 = estimate_partition_list(
+                estimate_partition_list(
                     0,
                     pixels,
                     comp_params,
                     &mut solutions3,
                     comp_params.opaque_settings.max_mode0_partitions_to_try as i32,
-                );
-            }
+                )
+            };
 
             params.selector_weights = &WEIGHTS3;
             params.selector_weightsx = &WEIGHTS3X;
@@ -4100,20 +4098,18 @@ impl Bc7e {
         // Mode 2
         if comp_params.opaque_settings.use_mode[2] {
             let mut solutions3 = [Solution::default(); MAX_PARTITIONS2 as usize];
-            let num_solutions3;
-
-            if comp_params.opaque_settings.max_mode2_partitions_to_try == 1 {
+            let num_solutions3 = if comp_params.opaque_settings.max_mode2_partitions_to_try == 1 {
                 solutions3[0].index = estimate_partition(2, pixels, comp_params);
-                num_solutions3 = 1;
+                1
             } else {
-                num_solutions3 = estimate_partition_list(
+                estimate_partition_list(
                     2,
                     pixels,
                     comp_params,
                     &mut solutions3,
                     comp_params.opaque_settings.max_mode2_partitions_to_try as i32,
-                );
-            }
+                )
+            };
 
             params.selector_weights = &WEIGHTS2;
             params.selector_weightsx = &WEIGHTS2X;

@@ -1451,7 +1451,9 @@ mod tests {
                 unreachable!()
             };
             assert!(
-                rgba.chunks_exact(4)
+                rgba.as_chunks::<4>()
+                    .0
+                    .iter()
                     .zip(red)
                     .all(|(pixel, red)| (pixel[0] - red).abs() < 0.02 && pixel[3] == 1.0),
                 "compression {compression_type}"
@@ -1540,7 +1542,9 @@ mod tests {
                     unreachable!()
                 };
                 assert!(
-                    rgba.chunks_exact(4)
+                    rgba.as_chunks::<4>()
+                        .0
+                        .iter()
                         .zip(red)
                         .all(|(pixel, red)| pixel[0] == *red && pixel[3] == 1.0),
                     "compression {compression_type}"

@@ -307,8 +307,8 @@ impl Texture {
         let (width, height) = self.level_size(level);
         let blocks_x = width.div_ceil(4);
         let mut image = HdrImage::new(width, height);
-        for (i, block) in blocks.chunks_exact(16).enumerate() {
-            let pixels = bc6h::unpack_bc6h_half(block.try_into().ok()?, is_signed);
+        for (i, block) in blocks.as_chunks::<16>().0.iter().enumerate() {
+            let pixels = bc6h::unpack_bc6h_half(block, is_signed);
             let (bx, by) = (i as u32 % blocks_x, i as u32 / blocks_x);
             for y in 0..4 {
                 for x in 0..4 {
@@ -536,8 +536,7 @@ fn pack_hdr_image(image: &HdrImage, packer: HdrPacker, threads: u32) -> Vec<u8> 
         .map(|(by, row)| (by as u32, row))
         .collect();
     parallel::for_each(rows, parallel::worker_count(threads), |(by, row)| {
-        for (bx, block) in row.chunks_exact_mut(16).enumerate() {
-            let block: &mut [u8; 16] = block.try_into().expect("16 bytes");
+        for (bx, block) in row.as_chunks_mut::<16>().0.iter_mut().enumerate() {
             let pixels = image.get_block(bx as u32, by);
             match packer {
                 HdrPacker::Unsigned(settings) => {

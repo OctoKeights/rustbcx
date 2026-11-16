@@ -509,7 +509,7 @@ pub(crate) fn bmp_load(s: &mut Context, req_comp: i32) -> Option<(Vec<u8>, i32)>
 
     // if alpha channel is all 0s, replace with all 255s
     if target == 4 && all_a == 0 {
-        for pixel in out.chunks_exact_mut(4) {
+        for pixel in out.as_chunks_mut::<4>().0.iter_mut() {
             pixel[3] = 255;
         }
     }

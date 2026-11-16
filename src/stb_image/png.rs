@@ -412,11 +412,11 @@ fn compute_transparency<T: Sample>(p: &mut [T], tc: [T; 3], out_n: i32) {
     debug_assert!(out_n == 2 || out_n == 4);
 
     if out_n == 2 {
-        for p in p.chunks_exact_mut(2) {
+        for p in p.as_chunks_mut::<2>().0.iter_mut() {
             p[1] = if p[0] == tc[0] { T::default() } else { T::FULL };
         }
     } else {
-        for p in p.chunks_exact_mut(4) {
+        for p in p.as_chunks_mut::<4>().0.iter_mut() {
             if p[0] == tc[0] && p[1] == tc[1] && p[2] == tc[2] {
                 p[3] = T::default();
             }
@@ -463,7 +463,7 @@ fn de_iphone(s: &Context, a: &mut Png) {
             // first half of it. As on a machine that keeps the low byte first.)
             let mut p: Vec<u8> = wide.iter().flat_map(|value| value.to_le_bytes()).collect();
             de_iphone_bytes(s, &mut p, pixel_count);
-            for (value, bytes) in wide.iter_mut().zip(p.chunks_exact(2)) {
+            for (value, bytes) in wide.iter_mut().zip(p.as_chunks::<2>().0.iter()) {
                 *value = u16::from_le_bytes([bytes[0], bytes[1]]);
             }
         }
@@ -473,14 +473,14 @@ fn de_iphone(s: &Context, a: &mut Png) {
 fn de_iphone_bytes(s: &Context, p: &mut [u8], pixel_count: usize) {
     if s.img_out_n == 3 {
         // convert bgr to rgb
-        for p in p[..pixel_count * 3].chunks_exact_mut(3) {
+        for p in p[..pixel_count * 3].as_chunks_mut::<3>().0.iter_mut() {
             p.swap(0, 2);
         }
     } else {
         debug_assert!(s.img_out_n == 4);
         if s.options.unpremultiply_on_load {
             // convert bgr to rgb and unpremultiply
-            for p in p[..pixel_count * 4].chunks_exact_mut(4) {
+            for p in p[..pixel_count * 4].as_chunks_mut::<4>().0.iter_mut() {
                 let a = u32::from(p[3]);
                 let t = u32::from(p[0]);
                 if a != 0 {
@@ -495,7 +495,7 @@ fn de_iphone_bytes(s: &Context, p: &mut [u8], pixel_count: usize) {
             }
         } else {
             // convert bgr to rgb
-            for p in p[..pixel_count * 4].chunks_exact_mut(4) {
+            for p in p[..pixel_count * 4].as_chunks_mut::<4>().0.iter_mut() {
                 p.swap(0, 2);
             }
         }

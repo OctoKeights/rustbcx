@@ -734,7 +734,7 @@ impl RdoBcEncoder {
     pub fn bc7_mode_histogram(&self) -> [u32; 8] {
         let mut hist = [0u32; 8];
         if self.params.format == BlockFormat::Bc7 {
-            for block in self.packed_image.chunks_exact(16) {
+            for block in self.packed_image.as_chunks::<16>().0.iter() {
                 let mode = block[0].trailing_zeros();
                 if mode < 8 {
                     hist[mode as usize] += 1;
@@ -1559,7 +1559,9 @@ mod tests {
         assert_ne!(encoder.blocks(), encoder.prerdo_blocks());
         assert!(encoder
             .blocks()
-            .chunks_exact(16)
+            .as_chunks::<16>()
+            .0
+            .iter()
             .all(|block| u16::from_le_bytes([block[8], block[9]])
                 > u16::from_le_bytes([block[10], block[11]])));
         let unpacked = encoder.unpack_blocks().unwrap();

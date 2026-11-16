@@ -11,7 +11,7 @@ use crate::rgbcx::{self, Bc1ApproxMode, Color32, Rgbcx};
 /// each to the nearest of the sixteen levels (0, 17, 34 ... 255), four bits a pixel in rows
 /// from the top, the low bits first.
 pub fn encode_bc2_alpha(dst: &mut [u8; 8], pixels: &[u8], stride: usize) {
-    for (row, byte_pair) in dst.chunks_exact_mut(2).enumerate() {
+    for (row, byte_pair) in dst.as_chunks_mut::<2>().0.iter_mut().enumerate() {
         let mut bits = 0u16;
         for x in 0..4 {
             let alpha = u16::from(pixels[(row * 4 + x) * stride]);

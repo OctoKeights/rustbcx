@@ -959,12 +959,13 @@ mod tests {
         let encoder = Bc7Enc::new();
         let params = CompressBlockParams::new();
         let mut packed = vec![0u8; 32];
-        for (block, pixels) in packed.chunks_exact_mut(16).zip(pixels.chunks_exact(16)) {
-            encoder.compress_block(
-                block.try_into().unwrap(),
-                pixels.try_into().unwrap(),
-                &params,
-            );
+        for (block, pixels) in packed
+            .as_chunks_mut::<16>()
+            .0
+            .iter_mut()
+            .zip(pixels.as_chunks::<16>().0.iter())
+        {
+            encoder.compress_block(block, pixels, &params);
         }
         (pixels, packed)
     }

@@ -47,7 +47,9 @@ impl Image {
             width,
             height,
             pixels: bytes
-                .chunks_exact(4)
+                .as_chunks::<4>()
+                .0
+                .iter()
                 .map(|pixel| [pixel[0], pixel[1], pixel[2], pixel[3]])
                 .collect(),
         })
@@ -242,7 +244,9 @@ impl Image {
             height: loaded.y as u32,
             pixels: loaded
                 .data
-                .chunks_exact(4)
+                .as_chunks::<4>()
+                .0
+                .iter()
                 .map(|pixel| [pixel[0], pixel[1], pixel[2], pixel[3]])
                 .collect(),
         })
@@ -384,7 +388,9 @@ impl HdrImage {
             width,
             height,
             pixels: values
-                .chunks_exact(3)
+                .as_chunks::<3>()
+                .0
+                .iter()
                 .map(|pixel| [half(pixel[0]), half(pixel[1]), half(pixel[2])])
                 .collect(),
         })
@@ -408,7 +414,9 @@ impl HdrImage {
             width,
             height,
             pixels: values
-                .chunks_exact(3)
+                .as_chunks::<3>()
+                .0
+                .iter()
                 .map(|pixel| [half(pixel[0]), half(pixel[1]), half(pixel[2])])
                 .collect(),
         })
@@ -429,7 +437,9 @@ impl HdrImage {
         Ok((
             width as u32,
             height as u32,
-            rgba.chunks_exact(4)
+            rgba.as_chunks::<4>()
+                .0
+                .iter()
                 .flat_map(|pixel| [pixel[0], pixel[1], pixel[2]])
                 .collect(),
         ))

@@ -2267,7 +2267,12 @@ pub fn compress_block_bc6h(
     compress_block_bc6h_core(&mut state);
 
     // store_data
-    for (bytes, word) in block.chunks_exact_mut(4).zip(&state.best_data) {
+    for (bytes, word) in block
+        .as_chunks_mut::<4>()
+        .0
+        .iter_mut()
+        .zip(&state.best_data)
+    {
         bytes.copy_from_slice(&word.to_le_bytes());
     }
 }

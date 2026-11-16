@@ -63,7 +63,6 @@ struct IntEndPntPair {
 /// `INTColor::F16ToINT`
 fn f16_to_int(f: u16, signed: bool) -> i32 {
     let mut input = f;
-    let out;
     if signed {
         let s = input & F16S_MASK;
         input &= F16EM_MASK;
@@ -72,13 +71,16 @@ fn f16_to_int(f: u16, signed: bool) -> i32 {
         } else {
             i32::from(input)
         };
-        out = if s != 0 { -magnitude } else { magnitude };
+        if s != 0 {
+            -magnitude
+        } else {
+            magnitude
+        }
     } else if input & F16S_MASK != 0 {
-        out = 0;
+        0
     } else {
-        out = i32::from(input);
+        i32::from(input)
     }
-    out
 }
 
 /// `INTColor::Set`: a pixel's floats as halves (rounded to the nearest, ties to even: what

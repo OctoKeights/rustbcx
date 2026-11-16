@@ -421,8 +421,11 @@ fn load(memory: &Memory) -> Result<DeepImage, Stop> {
             if table.len() != width * 4 {
                 return Err(error(ERROR_INVALID_DATA, ""));
             }
-            for (value, bytes) in pixel_offset_table.iter_mut().zip(table.chunks_exact(4)) {
-                *value = i32::from_le_bytes(bytes.try_into().unwrap());
+            for (value, bytes) in pixel_offset_table
+                .iter_mut()
+                .zip(table.as_chunks::<4>().0.iter())
+            {
+                *value = i32::from_le_bytes(*bytes);
             }
             deep_image.offset_table[y].copy_from_slice(&pixel_offset_table);
         }

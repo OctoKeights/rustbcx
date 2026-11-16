@@ -1403,10 +1403,8 @@ impl CCtx {
         // This is the upper bound for the length of an rle block. This isn't the actual
         // upper bound; finding the real threshold needs further investigation.
         const RLE_MAX_LENGTH: usize = 25;
-        let c_size;
-
-        if !self.build_seq_store(src, ip, src_size)? {
-            c_size = Ok(0);
+        let c_size = if !self.build_seq_store(src, ip, src_size)? {
+            Ok(0)
         } else {
             // Encode the sequences into the block.
             let whole = self.seq_store.whole();
@@ -1421,8 +1419,8 @@ impl CCtx {
                 result = Ok(1);
                 dst[0] = src[ip];
             }
-            c_size = result;
-        }
+            result
+        };
 
         // out:
         if matches!(c_size, Ok(size) if size > 1) {

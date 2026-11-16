@@ -803,8 +803,10 @@ mod tests {
     fn the_descriptors_are_the_khronos_tools_own() {
         // BC7, sRGB: one sample of 128 bits.
         let words: Vec<u32> = data_format_descriptor(TextureFormat::Bc7, true)
-            .chunks_exact(4)
-            .map(|word| u32::from_le_bytes(word.try_into().unwrap()))
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|word| u32::from_le_bytes(*word))
             .collect();
         assert_eq!(
             words,
@@ -824,8 +826,10 @@ mod tests {
         );
         // BC5: red at bit 0 and green at bit 64, 64 bits each.
         let words: Vec<u32> = data_format_descriptor(TextureFormat::Bc5, false)
-            .chunks_exact(4)
-            .map(|word| u32::from_le_bytes(word.try_into().unwrap()))
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|word| u32::from_le_bytes(*word))
             .collect();
         assert_eq!(
             words[..7],
@@ -854,8 +858,10 @@ mod tests {
         );
         // BC3, sRGB: alpha at bit 0, marked linear, and colour at bit 64.
         let words: Vec<u32> = data_format_descriptor(TextureFormat::Bc3, true)
-            .chunks_exact(4)
-            .map(|word| u32::from_le_bytes(word.try_into().unwrap()))
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|word| u32::from_le_bytes(*word))
             .collect();
         assert_eq!(words[3], 130 | (1 << 8) | (2 << 16));
         assert_eq!(
@@ -872,15 +878,19 @@ mod tests {
             ]
         );
         let words: Vec<u32> = data_format_descriptor(TextureFormat::Bc2, false)
-            .chunks_exact(4)
-            .map(|word| u32::from_le_bytes(word.try_into().unwrap()))
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|word| u32::from_le_bytes(*word))
             .collect();
         assert_eq!(words[3], 129 | (1 << 8) | (1 << 16));
         assert_eq!(words[7], (63 << 16) | (0x0F << 24));
         // BC6H, signed: a float sample from -1 to 1.
         let words: Vec<u32> = data_format_descriptor(TextureFormat::Bc6hSigned, false)
-            .chunks_exact(4)
-            .map(|word| u32::from_le_bytes(word.try_into().unwrap()))
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|word| u32::from_le_bytes(*word))
             .collect();
         assert_eq!(
             words[7..],

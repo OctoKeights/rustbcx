@@ -870,7 +870,7 @@ pub fn uncompress(
                 if made != count * 2 {
                     return Err(CORRUPT_CHUNK);
                 }
-                for (value, pair) in packed_ac.iter_mut().zip(bytes.chunks_exact(2)) {
+                for (value, pair) in packed_ac.iter_mut().zip(bytes.as_chunks::<2>().0.iter()) {
                     *value = u16::from_le_bytes([pair[0], pair[1]]);
                 }
             }
@@ -890,7 +890,7 @@ pub fn uncompress(
             _ => return Err(CORRUPT_CHUNK),
         }
         let bytes = zip_reconstruct_bytes(&mut scratch);
-        for (value, pair) in packed_dc.iter_mut().zip(bytes.chunks_exact(2)) {
+        for (value, pair) in packed_dc.iter_mut().zip(bytes.as_chunks::<2>().0.iter()) {
             *value = u16::from_le_bytes([pair[0], pair[1]]);
         }
     } else if total_dc_count != 0 {
@@ -1109,7 +1109,12 @@ mod tests {
             assert!(packed.len() < raw.len() / 3);
             let mut out = vec![0u8; raw.len()];
             uncompress(&packed, &channels, 64, 40, &mut out).unwrap();
-            for (a, b) in raw.chunks_exact(2).zip(out.chunks_exact(2)) {
+            for (a, b) in raw
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .zip(out.as_chunks::<2>().0.iter())
+            {
                 let (a, b) = (
                     simd::half_to_float(u16::from_le_bytes([a[0], a[1]])),
                     simd::half_to_float(u16::from_le_bytes([b[0], b[1]])),

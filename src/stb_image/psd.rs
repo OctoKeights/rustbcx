@@ -223,7 +223,7 @@ pub(crate) fn psd_load(s: &mut Context, req_comp: i32, bpc: i32) -> Option<(Pixe
     // remove weird white matte from PSD
     if channel_count >= 4 {
         if sixteen {
-            for pixel in out16.chunks_exact_mut(4) {
+            for pixel in out16.as_chunks_mut::<4>().0.iter_mut() {
                 if pixel[3] != 0 && pixel[3] != 65535 {
                     let a = f32::from(pixel[3]) / 65535.0;
                     let ra = 1.0f32 / a;
@@ -234,7 +234,7 @@ pub(crate) fn psd_load(s: &mut Context, req_comp: i32, bpc: i32) -> Option<(Pixe
                 }
             }
         } else {
-            for pixel in out.chunks_exact_mut(4) {
+            for pixel in out.as_chunks_mut::<4>().0.iter_mut() {
                 if pixel[3] != 0 && pixel[3] != 255 {
                     let a = f32::from(pixel[3]) / 255.0;
                     let ra = 1.0f32 / a;
