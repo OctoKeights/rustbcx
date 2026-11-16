@@ -753,7 +753,7 @@ pub(crate) fn png_info(s: &mut Context) -> Option<Info> {
         s.rewind();
         return None;
     }
-    Some(Info { kind: ImageType::Png, x: s.img_x as i32, y: s.img_y as i32, comp: s.img_n, is_16_bit: p.depth == 16, is_iphone_png: p.is_iphone })
+    Some(Info { kind: ImageType::Png, x: s.img_x as i32, y: s.img_y as i32, comp: s.img_n, is_16_bit: p.depth == 16, is_hdr: false, is_iphone_png: p.is_iphone })
 }
 
 #[cfg(test)]

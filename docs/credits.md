@@ -18,7 +18,7 @@ Rust.
 | BC6H encoding (`bc6h_enc`) | Microsoft (DirectXTex); consolidated into a single file by Alexander Samusev | [bc6h_enc](https://github.com/0xc0de/bc6h_enc) |
 | zlib (`miniz`) | Rich Geldreich and others | [miniz](https://github.com/richgel999/miniz) |
 | Zstandard (`zstd`) | Meta Platforms, Inc. and affiliates; originally by Yann Collet | [zstd](https://github.com/facebook/zstd) |
-| `.png`, `.bmp` and `.jpg` codecs | Sean Barrett and others; the JPEG writer is derived from Jon Olick's `jo_jpeg.cpp` | [stb](https://github.com/nothings/stb) |
+| Image codecs (`stb_image`, `stb_image_write`) | Sean Barrett and others; the JPEG writer is derived from Jon Olick's `jo_jpeg.cpp` | [stb](https://github.com/nothings/stb) |
 | `.exr` codec | Syoyo Fujita and many contributors, with code from OpenEXR by Industrial Light & Magic | [tinyexr](https://github.com/syoyo/tinyexr) |
 
 ## Licences

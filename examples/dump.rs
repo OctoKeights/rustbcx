@@ -59,6 +59,10 @@
 //!   dump stb_image <seed> <count>   made-up .png, .bmp and .jpg files, a third of them
 //!                                   damaged, asked their size and read at 8 and 16 bits a
 //!                                   channel; and made-up data through its zlib decoder
+//!   dump stb_image_more <seed> <count>
+//!                                   made-up .tga, .psd, .gif, .pnm and .hdr files, a third of
+//!                                   them damaged, asked their size, read at 8 and 16 bits a
+//!                                   channel and as floats, and as animations
 //!
 //! And of the comparison with zstd's reference decoder, as `compare/dump_zstd.c` does:
 //!
@@ -561,6 +565,7 @@ fn main() {
         "miniz" => print!("{}", made_up::miniz(seed, blocks)),
         "stb_image_write" => print!("{}", made_up::stb_image_write(seed, blocks)),
         "stb_image" => print!("{}", made_up::stb_image(seed, blocks)),
+        "stb_image_more" => print!("{}", made_up::stb_image_more(seed, blocks)),
         "zstd_decode" | "zstd_decode_small" => {
             let Some(file) = args.get(4).and_then(|path| std::fs::read(path).ok()) else {
                 eprintln!("usage: dump {what} <seed> <count> <file of frames from compare/dump_zstd.c>");

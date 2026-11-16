@@ -98,7 +98,7 @@ here=$(cd "$(dirname "$0")/.." && pwd)
 source=$1
 blocks=${2:-200000}
 seeds=${3:-3}
-dumps=${4:-bc7decomp unpack bc1 bc345 bc7enc bc7block ert rdo bc7e_presets bc7e_settings rdo_bc7e bc2 bc6h_unpack bc6h_pack bc6h_enc miniz stb_image_write stb_image zstd_decode zstd_compress zstd_entropy tinyexr_write tinyexr_read}
+dumps=${4:-bc7decomp unpack bc1 bc345 bc7enc bc7block ert rdo bc7e_presets bc7e_settings rdo_bc7e bc2 bc6h_unpack bc6h_pack bc6h_enc miniz stb_image_write stb_image stb_image_more zstd_decode zstd_compress zstd_entropy tinyexr_write tinyexr_read}
 tmp=${TMPDIR:-/tmp}/rustbcx-compare
 mkdir -p "$tmp" || exit 2
 
@@ -208,7 +208,7 @@ for what in $dumps; do
         count=$((blocks / 10))
         [ "$what" = tinyexr_read ] && extra=$tmp/exr-files.bin
         ;;
-    stb_image)
+    stb_image | stb_image_more)
         if [ "$built_stbi" -eq 0 ]; then
             if [ -z "${STB:-}" ] || [ ! -f "$STB/stb_image.h" ]; then
                 echo "$what: NOT COMPARED, no stb (put its checkout in \$STB)"

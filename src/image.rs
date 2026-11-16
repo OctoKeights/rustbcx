@@ -177,17 +177,18 @@ impl Image {
         flipped
     }
 
-    /// The image in the bytes of a `.png`, `.bmp` or `.jpg` file, read by [`crate::stb_image`].
-    /// A file of fewer channels gets the rest made up (grey in all three colours, opaque), and
-    /// one of 16 bits a channel is brought down to 8.
+    /// The image in the bytes of a `.png`, `.bmp`, `.jpg`, `.tga`, `.psd`, `.gif`, `.pgm`,
+    /// `.ppm` or `.hdr` file, read by [`crate::stb_image`]. A file of fewer channels gets the
+    /// rest made up (grey in all three colours, opaque), one of 16 bits a channel is brought
+    /// down to 8, and an HDR file's floats with a gamma of 2.2. Of a GIF, the first frame.
     pub fn from_file_bytes(file: &[u8]) -> Result<Image, LoadError> {
         let loaded = stb_image::load_from_memory(file, 4, &LoadOptions::default())?;
         Ok(Image { width: loaded.x as u32, height: loaded.y as u32, pixels: loaded.data.chunks_exact(4).map(|pixel| [pixel[0], pixel[1], pixel[2], pixel[3]]).collect() })
     }
 
-    /// Reads a `.png`, `.bmp` or `.jpg` file from disk. A file that is none of them, or is
-    /// damaged, comes back as an error of the kind `InvalidData`, with the [`LoadError`]
-    /// inside.
+    /// Reads an image file from disk, of any kind [`Image::from_file_bytes`] reads. A file that
+    /// is none of them, or is damaged, comes back as an error of the kind `InvalidData`, with
+    /// the [`LoadError`] inside.
     pub fn load(path: impl AsRef<Path>) -> std::io::Result<Image> {
         Image::from_file_bytes(&std::fs::read(path)?).map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
     }
@@ -315,16 +316,33 @@ impl HdrImage {
         Ok(HdrImage::from_rgb_f32_signed(width, height, &floats).unwrap_or_default())
     }
 
-    /// Reads a `.exr` file from disk. A file that is not one, or is damaged, comes back as an
-    /// error of the kind `InvalidData`, with the [`ExrError`] inside.
+    /// The image in the bytes of a Radiance `.hdr` file, read by [`crate::stb_image`]. (Its
+    /// values are never below zero.)
+    pub fn from_hdr_bytes(file: &[u8]) -> Result<HdrImage, LoadError> {
+        let loaded = stb_image::loadf_from_memory(file, 3, &LoadOptions::default())?;
+        Ok(HdrImage::from_rgb_f32(loaded.x as u32, loaded.y as u32, &loaded.data).unwrap_or_default())
+    }
+
+    /// Reads a `.exr` or Radiance `.hdr` file from disk, whichever its bytes say it is. A file
+    /// that is neither, or is damaged, comes back as an error of the kind `InvalidData`, with
+    /// the [`ExrError`] or [`LoadError`] inside.
     pub fn load(path: impl AsRef<Path>) -> std::io::Result<HdrImage> {
-        HdrImage::from_file_bytes(&std::fs::read(path)?).map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
+        let file = std::fs::read(path)?;
+        if stb_image::is_hdr_from_memory(&file) {
+            return HdrImage::from_hdr_bytes(&file).map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error));
+        }
+        HdrImage::from_file_bytes(&file).map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
     }
 
     /// Reads a `.exr` file from disk, with what is below zero kept
-    /// ([`HdrImage::from_file_bytes_signed`]).
+    /// ([`HdrImage::from_file_bytes_signed`]); or a Radiance `.hdr` file, which has nothing
+    /// below zero.
     pub fn load_signed(path: impl AsRef<Path>) -> std::io::Result<HdrImage> {
-        HdrImage::from_file_bytes_signed(&std::fs::read(path)?).map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
+        let file = std::fs::read(path)?;
+        if stb_image::is_hdr_from_memory(&file) {
+            return HdrImage::from_hdr_bytes(&file).map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error));
+        }
+        HdrImage::from_file_bytes_signed(&file).map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
     }
 
     /// The image as the bytes of a `.exr` file, written by [`crate::tinyexr`]: channels `B`,

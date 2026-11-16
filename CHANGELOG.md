@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- **Every image format stb_image reads.** `stb_image` now ports all of its readers: `.tga`,
+  `.psd`, `.gif`, `.pgm`, `.ppm` and Radiance `.hdr`, alongside `.png`, `.bmp` and `.jpg`.
+  `loadf_from_memory` gives floats, `load_gif_from_memory` every frame of a GIF with its delay,
+  and `is_hdr_from_memory` says whether a file is HDR. `Image::load` reads them all, and
+  `HdrImage::load` reads `.hdr` as well as `.exr`. Checked against stb_image byte for byte on
+  860,000 made-up files (the `stb_image_more` dump).
+
+- **Breaking:** `LoadOptions` gains the four gamma and scale settings and is no longer `Eq`;
+  `Info` gains `is_hdr`; `ImageType` gains a variant for each new format.
+
 ## 0.3.2
 
 Documentation only: the README is now a concise overview, with the detail moved to the pages

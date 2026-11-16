@@ -1587,7 +1587,7 @@ fn add_result<T: Copy, const N: usize>(hash: &mut Hash, result: &Result<rustbcx:
 /// every third at 16; and for every fourth, made-up data through the zlib decoder.
 pub fn stb_image(seed: u64, count: u32) -> String {
     use rustbcx::stb_image::zlib::{zlib_decode_buffer, zlib_decode_malloc, zlib_decode_noheader_malloc};
-    use rustbcx::stb_image::{info_from_memory, is_16_bit_from_memory, load_16_from_memory, load_from_memory, ImageType, LoadOptions};
+    use rustbcx::stb_image::{info_from_memory, is_16_bit_from_memory, load_16_from_memory, load_from_memory, LoadOptions};
     use rustbcx::stb_image_write::{write_bmp, write_jpg, write_png, zlib_compress, WriteOptions};
     let mut r = Random { state: seed };
     let mut hash = Hash::new();
@@ -1643,15 +1643,16 @@ pub fn stb_image(seed: u64, count: u32) -> String {
         let mut large = false;
         match &info {
             Ok(info) => {
-                let number = match info.kind {
-                    ImageType::Jpeg => 1u32,
-                    ImageType::Png => 2,
-                    ImageType::Bmp => 4,
-                };
+                let number = info.kind.number() as u32;
                 for value in [number, info.x as u32, info.y as u32, info.comp as u32, u32::from(info.is_16_bit), u32::from(info.is_iphone_png)] {
                     hash.add(&value.to_le_bytes());
                 }
-                kinds[if number == 4 { 3 } else { number as usize }] += 1;
+                kinds[match number {
+                    1 => 1,
+                    2 => 2,
+                    4 => 3,
+                    _ => 0,
+                }] += 1;
                 large = u64::from(info.x as u32) * u64::from(info.y.unsigned_abs()) > 1 << 20;
             }
             Err(_) => {
@@ -1662,7 +1663,7 @@ pub fn stb_image(seed: u64, count: u32) -> String {
         hash.add(&u32::from(is_16_bit_from_memory(&file)).to_le_bytes());
 
         let req = (r.next() % 5) as i32;
-        let options = LoadOptions { flip_vertically_on_load: r.next() % 4 == 0, unpremultiply_on_load: r.next() % 2 != 0, convert_iphone_png_to_rgb: r.next() % 2 != 0 };
+        let options = LoadOptions { flip_vertically_on_load: r.next() % 4 == 0, unpremultiply_on_load: r.next() % 2 != 0, convert_iphone_png_to_rgb: r.next() % 2 != 0, ..LoadOptions::default() };
         let req16 = (r.next() % 5) as i32;
         // (A damaged size can ask for more memory and time than there is; those are left.)
         if large {
@@ -1732,6 +1733,632 @@ pub fn stb_image(seed: u64, count: u32) -> String {
     out + &format!(
         "stb_image bytes of files: {file_total}; read: {loaded} ({pixel_total} pixels), refused: {refused}, left as too large: {too_large}; found to be .jpg: {}, .png: {}, .bmp: {}, nothing: {}\n",
         kinds[1], kinds[2], kinds[3], kinds[0]
+    )
+}
+
+/// Damages a third of the files: bits turned over, the end cut off, or a byte made up.
+fn damage_stb_file(r: &mut Random, file: &mut Vec<u8>) {
+    if r.next() % 3 == 0 {
+        match r.next() % 4 {
+            0 => {
+                for _ in 0..1 + r.next() % 3 {
+                    let bit = r.next() % (file.len() as u32 * 8);
+                    file[(bit >> 3) as usize] ^= 1 << (bit & 7);
+                }
+            }
+            1 => file.truncate(r.next() as usize % file.len()),
+            2 => {
+                let at = r.next() % file.len() as u32;
+                file[at as usize] = r.next() as u8;
+            }
+            _ => {
+                let bit = r.next() % (file.len().min(64) as u32 * 8);
+                file[(bit >> 3) as usize] ^= 1 << (bit & 7);
+            }
+        }
+    }
+}
+
+/// A pixel of a TGA file: an index into its palette (now and then one past its end), or bytes.
+fn tga_pixel(r: &mut Random, f: &mut Vec<u8>, indexed: bool, pal_len: u32, bytes: u32) {
+    if indexed {
+        let index = if r.next() % 16 == 0 { r.next() % 400 } else { r.next() % pal_len };
+        f.push(index as u8);
+        if bytes == 2 {
+            f.push((index >> 8) as u8);
+        }
+    } else {
+        for _ in 0..bytes {
+            f.push((r.next() >> 9) as u8);
+        }
+    }
+}
+
+/// A made-up TGA file: palette or not, grey or colour, of every depth, raw or run-length
+/// encoded, either way up and round.
+pub fn make_tga(r: &mut Random, f: &mut Vec<u8>) {
+    const PALETTE_BITS: [u32; 5] = [8, 15, 16, 24, 32];
+    const BITS: [u32; 4] = [15, 16, 24, 32];
+    let indexed = r.next() % 3 == 0;
+    let rle = r.next() % 2 != 0;
+    let w = 1 + r.next() % 40;
+    let h = 1 + r.next() % 40;
+    let mut desc = if r.next() % 2 != 0 { 0x20u8 } else { 0 };
+    if r.next() % 4 == 0 {
+        desc |= 0x10;
+    }
+    let id_length = r.next() % 3;
+    f.push(id_length as u8);
+    let bytes_per_pixel;
+    let mut pal_len = 0;
+    if indexed {
+        let pal_bits = PALETTE_BITS[(r.next() % 5) as usize];
+        let index_bits = if r.next() % 4 == 0 { 16 } else { 8 };
+        let pal_start = if r.next() % 4 == 0 { r.next() % 3 } else { 0 };
+        let entry = if pal_bits == 15 { 2 } else { pal_bits / 8 };
+        pal_len = 1 + r.next() % (if index_bits == 8 { 256 } else { 300 });
+        f.push(1);
+        f.push(if rle { 9 } else { 1 });
+        p16le(f, pal_start);
+        p16le(f, pal_len);
+        f.push(pal_bits as u8);
+        p16le(f, 0);
+        p16le(f, 0);
+        p16le(f, w);
+        p16le(f, h);
+        f.push(index_bits as u8);
+        f.push(desc);
+        for _ in 0..id_length + pal_start + pal_len * entry {
+            f.push((r.next() >> 7) as u8);
+        }
+        bytes_per_pixel = index_bits / 8;
+    } else {
+        let grey = r.next() % 3 == 0;
+        let bits = if grey {
+            if r.next() % 2 != 0 {
+                16
+            } else {
+                8
+            }
+        } else {
+            BITS[(r.next() % 4) as usize]
+        };
+        f.push(0);
+        f.push((if grey { 3 } else { 2 }) + (if rle { 8 } else { 0 }));
+        p16le(f, 0);
+        p16le(f, 0);
+        f.push(0);
+        p16le(f, 0);
+        p16le(f, 0);
+        p16le(f, w);
+        p16le(f, h);
+        f.push(bits as u8);
+        f.push(desc);
+        for _ in 0..id_length {
+            f.push((r.next() >> 7) as u8);
+        }
+        bytes_per_pixel = (bits + 7) / 8;
+    }
+    let mut done = 0;
+    while done < w * h {
+        if !rle {
+            tga_pixel(r, f, indexed, pal_len, bytes_per_pixel);
+            done += 1;
+        } else {
+            let count = 1 + r.next() % 128;
+            let repeat = r.next() % 2;
+            f.push(((repeat << 7) | (count - 1)) as u8);
+            if repeat != 0 {
+                tga_pixel(r, f, indexed, pal_len, bytes_per_pixel);
+            } else {
+                for _ in 0..count {
+                    tga_pixel(r, f, indexed, pal_len, bytes_per_pixel);
+                }
+            }
+            done += count;
+        }
+    }
+}
+
+/// A made-up PSD file: none to five channels, 8 or 16 bits, raw or run-length encoded, with now
+/// and then mode data, resources and reserved bytes to skip.
+pub fn make_psd(r: &mut Random, f: &mut Vec<u8>) {
+    let channels = r.next() % 6;
+    let h = 1 + r.next() % 30;
+    let w = 1 + r.next() % 30;
+    let depth = if r.next() % 2 != 0 { 16 } else { 8 };
+    let compression = r.next() % 2;
+    let pixels = w * h;
+    f.extend_from_slice(b"8BPS");
+    p16be(f, if r.next() % 20 == 0 { 2 } else { 1 });
+    f.extend_from_slice(&[0; 6]);
+    p16be(f, channels);
+    p32be(f, h);
+    p32be(f, w);
+    p16be(f, depth);
+    p16be(f, if r.next() % 20 == 0 { 1 } else { 3 });
+    for _ in 0..3 {
+        let n = if r.next() % 3 == 0 { r.next() % 20 } else { 0 };
+        p32be(f, n);
+        for _ in 0..n {
+            f.push((r.next() >> 5) as u8);
+        }
+    }
+    p16be(f, if r.next() % 20 == 0 { 2 } else { compression });
+    if compression == 0 {
+        for c in 0..channels {
+            for _ in 0..pixels {
+                let v = if c == 3 && r.next() % 2 != 0 {
+                    if r.next() % 2 != 0 {
+                        0xffffffff
+                    } else {
+                        0
+                    }
+                } else {
+                    r.next()
+                };
+                f.push((v >> 8) as u8);
+                if depth == 16 {
+                    f.push(v as u8);
+                }
+            }
+        }
+    } else {
+        for _ in 0..h * channels {
+            p16be(f, r.next() % 200);
+        }
+        for _ in 0..channels {
+            let mut done = 0;
+            while done < pixels {
+                let left = pixels - done;
+                let how = r.next() % 8;
+                if how == 0 {
+                    f.push(128);
+                } else if how < 4 && left >= 2 {
+                    let n = 2 + r.next() % (left.min(128) - 1);
+                    f.push((257 - n) as u8);
+                    f.push((r.next() >> 3) as u8);
+                    done += n;
+                } else {
+                    let n = 1 + r.next() % left.min(128);
+                    f.push((n - 1) as u8);
+                    for _ in 0..n {
+                        f.push((r.next() >> 3) as u8);
+                    }
+                    done += n;
+                }
+            }
+        }
+    }
+}
+
+/// LZW as a GIF has it, written here: the codes in blocks, and the code size as the reader
+/// works it out.
+struct Lzw<'a> {
+    f: &'a mut Vec<u8>,
+    bits: u32,
+    nbits: u32,
+    block_max: u32,
+    block: Vec<u8>,
+    mincs: u32,
+    cs: u32,
+    avail: u32,
+    hasold: bool,
+}
+
+impl Lzw<'_> {
+    fn byte(&mut self, b: u8) {
+        self.block.push(b);
+        if self.block.len() as u32 == self.block_max {
+            self.f.push(self.block.len() as u8);
+            self.f.extend_from_slice(&self.block);
+            self.block.clear();
+        }
+    }
+
+    fn code(&mut self, code: u32) {
+        let clear = 1u32 << self.mincs;
+        self.bits |= code << self.nbits;
+        self.nbits += self.cs;
+        while self.nbits >= 8 {
+            self.byte(self.bits as u8);
+            self.bits >>= 8;
+            self.nbits -= 8;
+        }
+        if code == clear {
+            self.cs = self.mincs + 1;
+            self.avail = clear + 2;
+            self.hasold = false;
+        } else {
+            if self.hasold && self.avail < 4096 {
+                self.avail += 1;
+                if self.avail > (1 << self.cs) - 1 && self.avail < 4096 {
+                    self.cs += 1;
+                }
+            }
+            self.hasold = true;
+        }
+    }
+}
+
+fn lzw_encode(f: &mut Vec<u8>, px: &[u8], mincs: u32, block_max: u32) {
+    let clear = 1u32 << mincs;
+    f.push(mincs as u8);
+    let mut z = Lzw { f, bits: 0, nbits: 0, block_max, block: Vec::new(), mincs, cs: mincs + 1, avail: clear + 2, hasold: false };
+    let mut dict = std::collections::HashMap::new();
+    z.code(clear);
+    let mut next = clear + 2;
+    if let Some((&first, rest)) = px.split_first() {
+        let mut prefix = u32::from(first);
+        for &k in rest {
+            let k = u32::from(k);
+            if let Some(&e) = dict.get(&(prefix, k)) {
+                prefix = e;
+                continue;
+            }
+            z.code(prefix);
+            if next < 4096 {
+                dict.insert((prefix, k), next);
+                next += 1;
+            } else {
+                z.code(clear);
+                dict.clear();
+                next = clear + 2;
+            }
+            prefix = k;
+        }
+        z.code(prefix);
+    }
+    z.code(clear + 1);
+    if z.nbits > 0 {
+        let b = z.bits as u8;
+        z.byte(b);
+    }
+    if !z.block.is_empty() {
+        z.f.push(z.block.len() as u8);
+        let block = std::mem::take(&mut z.block);
+        z.f.extend_from_slice(&block);
+    }
+    z.f.push(0);
+}
+
+/// A made-up GIF file: one to three frames, each with or without a graphic control extension
+/// (a delay, a transparent colour, a way of disposing of it) and a comment, at a made-up place,
+/// with a local colour table or the global one, interlaced or not.
+pub fn make_gif(r: &mut Random, f: &mut Vec<u8>) {
+    let big_w = 1 + r.next() % 40;
+    let big_h = 1 + r.next() % 40;
+    let gct = r.next() % 5 != 0;
+    let gsize = r.next() % 8;
+    let frames = 1 + r.next() % 3;
+    f.extend_from_slice(if r.next() % 2 != 0 { b"GIF89a" } else { b"GIF87a" });
+    p16le(f, big_w);
+    p16le(f, big_h);
+    let mut flags = (r.next() & 0x70) | gsize;
+    if gct {
+        flags |= 0x80;
+    }
+    f.push(flags as u8);
+    f.push((r.next() % 256) as u8);
+    f.push(0);
+    if gct {
+        for _ in 0..(2u32 << gsize) * 3 {
+            f.push((r.next() >> 9) as u8);
+        }
+    }
+    for _ in 0..frames {
+        if r.next() % 2 != 0 {
+            let mut eflags = (r.next() % 4) << 2;
+            eflags |= r.next() % 2;
+            f.extend_from_slice(&[0x21, 0xF9, 4, eflags as u8]);
+            p16le(f, r.next() % 100);
+            f.push((r.next() % 256) as u8);
+            f.push(0);
+        }
+        if r.next() % 5 == 0 {
+            let blocks = r.next() % 3;
+            f.extend_from_slice(&[0x21, 0xFE]);
+            for _ in 0..blocks {
+                let len = 1 + r.next() % 20;
+                f.push(len as u8);
+                for _ in 0..len {
+                    f.push((u32::from(b'a') + r.next() % 26) as u8);
+                }
+            }
+            f.push(0);
+        }
+        let x = r.next() % big_w;
+        let y = r.next() % big_h;
+        let w = if r.next() % 20 == 0 { 0 } else { 1 + r.next() % (big_w - x) };
+        let h = 1 + r.next() % (big_h - y);
+        let lct = if gct { r.next() % 3 == 0 } else { r.next() % 10 != 0 };
+        let lsize = r.next() % 8;
+        let mut lflags = lsize;
+        if lct {
+            lflags |= 0x80;
+        }
+        if r.next() % 3 == 0 {
+            lflags |= 0x40;
+        }
+        f.push(0x2C);
+        p16le(f, x);
+        p16le(f, y);
+        p16le(f, w);
+        p16le(f, h);
+        f.push(lflags as u8);
+        if lct {
+            for _ in 0..(2u32 << lsize) * 3 {
+                f.push((r.next() >> 9) as u8);
+            }
+        }
+        let mut mincs = (if lct { lsize } else { gsize }) + 1;
+        if mincs < 2 {
+            mincs = 2;
+        }
+        if r.next() % 30 == 0 {
+            mincs = r.next() % 14;
+        }
+        if mincs > 12 {
+            f.push(mincs as u8);
+            f.push(0);
+            continue;
+        }
+        let colours = (1u32 << mincs).min(256);
+        let n = (w * h) as usize;
+        let style = r.next() % 3;
+        let mut px = vec![0u8; n];
+        for i in 0..n {
+            px[i] = if style == 0 {
+                (r.next() % colours) as u8
+            } else if style == 1 {
+                ((i as u32 / 7) % colours) as u8
+            } else if r.next() % 4 == 0 || i == 0 {
+                (r.next() % colours) as u8
+            } else {
+                px[i - 1]
+            };
+        }
+        let block_max = if r.next() % 4 == 0 { 1 + r.next() % 254 } else { 255 };
+        lzw_encode(f, &px, mincs, block_max);
+    }
+    if r.next() % 10 != 0 {
+        f.push(0x3B);
+    }
+}
+
+/// Whitespace between the numbers of a PNM file, now and then with a comment.
+fn pnm_space(r: &mut Random, f: &mut Vec<u8>) {
+    const SPACE: [u8; 6] = [b' ', b'\t', b'\n', b'\r', 0x0b, 0x0c];
+    if r.next() % 6 == 0 {
+        f.extend_from_slice(b"\n# made up\n");
+    }
+    let n = 1 + r.next() % 3;
+    for _ in 0..n {
+        f.push(SPACE[(r.next() % 6) as usize]);
+    }
+}
+
+/// A made-up PNM file: grey or colour, binary or text, of every kind of maximum value.
+pub fn make_pnm(r: &mut Random, f: &mut Vec<u8>) {
+    const KINDS: [u8; 4] = *b"2356";
+    let t = KINDS[(r.next() % 4) as usize];
+    let ascii = t == b'2' || t == b'3';
+    let comp = if t == b'3' || t == b'6' { 3 } else { 1 };
+    let w = 1 + r.next() % 40;
+    let h = 1 + r.next() % 40;
+    let maxv = match r.next() % 8 {
+        0 => 255,
+        1 => 1 + r.next() % 255,
+        2 => 65535,
+        3 => 256 + r.next() % 65280,
+        4 => 1 + r.next() % 15,
+        5 => {
+            if r.next() % 10 == 0 {
+                0
+            } else {
+                255
+            }
+        }
+        6 => {
+            if r.next() % 10 == 0 {
+                70000
+            } else {
+                1000
+            }
+        }
+        _ => 255,
+    };
+    f.push(b'P');
+    f.push(t);
+    pnm_space(r, f);
+    f.extend_from_slice(w.to_string().as_bytes());
+    pnm_space(r, f);
+    f.extend_from_slice(h.to_string().as_bytes());
+    pnm_space(r, f);
+    f.extend_from_slice(maxv.to_string().as_bytes());
+    let n = w * h * comp;
+    if ascii {
+        for _ in 0..n {
+            pnm_space(r, f);
+            let v = if r.next() % 20 == 0 { r.next() % (maxv + 100) } else { r.next() % (maxv + 1) };
+            f.extend_from_slice(v.to_string().as_bytes());
+        }
+        f.push(b'\n');
+    } else {
+        f.push(if r.next() % 2 != 0 { b'\n' } else { b' ' });
+        for _ in 0..n {
+            let v = r.next();
+            if maxv > 255 {
+                f.push((v >> 8) as u8);
+            }
+            f.push(v as u8);
+        }
+    }
+}
+
+/// A byte of an RGBE pixel: a colour, or an exponent near 1 (and now and then 0).
+fn hdr_byte(r: &mut Random, k: u32) -> u8 {
+    if k < 3 {
+        return (r.next() >> 24) as u8;
+    }
+    if r.next() % 8 == 0 {
+        0
+    } else {
+        (120 + r.next() % 20) as u8
+    }
+}
+
+/// A made-up Radiance HDR file: a header with lines to skip, then scanlines flat or run-length
+/// encoded.
+pub fn make_hdr(r: &mut Random, f: &mut Vec<u8>) {
+    let w = if r.next() % 2 != 0 { 1 + r.next() % 40 } else { 1 + r.next() % 300 };
+    let h = 1 + r.next() % 20;
+    let rle = r.next() % 4 != 0;
+    f.extend_from_slice(if r.next() % 4 == 0 { b"#?RGBE\n" } else { b"#?RADIANCE\n" });
+    let lines = r.next() % 3;
+    for _ in 0..lines {
+        f.extend_from_slice(if r.next() % 2 != 0 { b"# made up\n" } else { b"EXPOSURE=1.0\n" });
+    }
+    if r.next() % 30 != 0 {
+        f.extend_from_slice(b"FORMAT=32-bit_rle_rgbe\n");
+    }
+    if r.next() % 4 == 0 {
+        f.extend_from_slice(b"GAMMA=1.0\n");
+    }
+    f.extend_from_slice(b"\n");
+    f.extend_from_slice(if r.next() % 20 == 0 { b"+Y " } else { b"-Y " });
+    f.extend_from_slice(h.to_string().as_bytes());
+    f.extend_from_slice(if r.next() % 5 == 0 { b"  +X " } else { b" +X " });
+    f.extend_from_slice(w.to_string().as_bytes());
+    f.extend_from_slice(b"\n");
+    for _ in 0..h {
+        if rle && (8..32768).contains(&w) && r.next() % 20 != 0 {
+            f.extend_from_slice(&[2, 2, (w >> 8) as u8, (w & 255) as u8]);
+            for k in 0..4 {
+                let mut x = 0;
+                while x < w {
+                    let left = w - x;
+                    if r.next() % 2 != 0 {
+                        let n = 1 + r.next() % left.min(127);
+                        f.push((128 + n) as u8);
+                        let value = hdr_byte(r, k);
+                        f.push(value);
+                        x += n;
+                    } else {
+                        let n = 1 + r.next() % left.min(128);
+                        f.push(n as u8);
+                        for _ in 0..n {
+                            let value = hdr_byte(r, k);
+                            f.push(value);
+                        }
+                        x += n;
+                    }
+                }
+            }
+        } else {
+            for _ in 0..w {
+                for k in 0..4 {
+                    let value = hdr_byte(r, k);
+                    f.push(value);
+                }
+            }
+        }
+    }
+}
+
+/// The `stb_image_more` dump: made-up `.tga`, `.psd`, `.gif`, `.pnm` and `.hdr` files, a third
+/// of them damaged; each asked its size and whether it is HDR, read at 8 bits a channel, as
+/// floats and every other at 16, with a made-up gamma and scale; GIFs and every fourth file
+/// also read as an animation.
+pub fn stb_image_more(seed: u64, count: u32) -> String {
+    use rustbcx::stb_image::{info_from_memory, is_16_bit_from_memory, is_hdr_from_memory, load_16_from_memory, load_from_memory, load_gif_from_memory, loadf_from_memory, LoadOptions};
+    const GAMMA: [f32; 4] = [2.2, 1.0, 1.8, 2.4];
+    const SCALE: [f32; 4] = [1.0, 0.5, 2.0, 4.0];
+    let mut r = Random { state: seed };
+    let mut hash = Hash::new();
+    let (mut loaded, mut refused, mut too_large) = (0u32, 0u32, 0u32);
+    let mut kinds = [0u32; 9];
+    let mut file_total = 0u64;
+    let mut out = String::new();
+    for i in 0..count {
+        let mut file = Vec::new();
+        match r.next() % 5 {
+            0 => make_tga(&mut r, &mut file),
+            1 => make_psd(&mut r, &mut file),
+            2 => make_gif(&mut r, &mut file),
+            3 => make_pnm(&mut r, &mut file),
+            _ => make_hdr(&mut r, &mut file),
+        }
+        damage_stb_file(&mut r, &mut file);
+        hash.add(&(file.len() as u32).to_le_bytes());
+        hash.add(&file);
+        file_total += file.len() as u64;
+
+        let info = info_from_memory(&file);
+        let mut large = false;
+        let mut number = 0;
+        match &info {
+            Ok(info) => {
+                number = info.kind.number() as u32;
+                for value in [number, info.x as u32, info.y as u32, info.comp as u32, u32::from(info.is_16_bit), u32::from(info.is_hdr), u32::from(info.is_iphone_png)] {
+                    hash.add(&value.to_le_bytes());
+                }
+                large = u64::from(info.x as u32) * u64::from(info.y.unsigned_abs()) > 1 << 20;
+            }
+            Err(_) => hash.add(&0u32.to_le_bytes()),
+        }
+        hash.add(&u32::from(is_16_bit_from_memory(&file)).to_le_bytes());
+        hash.add(&u32::from(is_hdr_from_memory(&file)).to_le_bytes());
+        kinds[number as usize] += 1;
+
+        let req = (r.next() % 5) as i32;
+        let flip = r.next() % 4 == 0;
+        let req16 = (r.next() % 5) as i32;
+        let reqf = (r.next() % 5) as i32;
+        let reqg = (r.next() % 5) as i32;
+        let gamma = GAMMA[(r.next() % 4) as usize];
+        let scale = SCALE[(r.next() % 4) as usize];
+        // (A damaged size can ask for more memory and time than there is; those are left.)
+        if large {
+            too_large += 1;
+        } else {
+            let options = LoadOptions { flip_vertically_on_load: flip, hdr_to_ldr_gamma: gamma, hdr_to_ldr_scale: scale, ldr_to_hdr_gamma: gamma, ldr_to_hdr_scale: scale, ..LoadOptions::default() };
+            if add_result(&mut hash, &load_from_memory(&file, req, &options), |value: u8| [value]) {
+                loaded += 1;
+            } else {
+                refused += 1;
+            }
+            if i % 2 == 0 {
+                add_result(&mut hash, &load_16_from_memory(&file, req16, &options), u16::to_le_bytes);
+            }
+            add_result(&mut hash, &loadf_from_memory(&file, reqf, &options), f32::to_le_bytes);
+            if number == 3 || i % 4 == 0 {
+                match load_gif_from_memory(&file, reqg, &options) {
+                    Ok(gif) => {
+                        for value in [gif.x, gif.y, gif.frames, gif.channels_in_file] {
+                            hash.add(&(value as u32).to_le_bytes());
+                        }
+                        hash.add(&gif.data);
+                        for delay in gif.delays {
+                            hash.add(&delay.to_le_bytes());
+                        }
+                    }
+                    Err(error) => {
+                        hash.add(&0xffffffffu32.to_le_bytes());
+                        hash.add(error.0.as_bytes());
+                        hash.add(&[0]);
+                    }
+                }
+            }
+        }
+
+        if (i + 1) % 200 == 0 || i + 1 == count {
+            out += &format!("stb_image_more {} {:016x}\n", i + 1, hash.value);
+        }
+    }
+    out + &format!(
+        "stb_image_more bytes of files: {file_total}; read: {loaded}, refused: {refused}, left as too large: {too_large}; found to be .jpg: {}, .png: {}, .gif: {}, .bmp: {}, .psd: {}, .pnm: {}, .hdr: {}, .tga: {}, nothing: {}\n",
+        kinds[1], kinds[2], kinds[3], kinds[4], kinds[5], kinds[6], kinds[7], kinds[8], kinds[0]
     )
 }
 

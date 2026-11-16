@@ -77,6 +77,13 @@ prints the same. To make it again:
     ref="${TMPDIR:-/tmp}/rustbcx-compare/dump-stb-image"
     { "$ref" stb_image 4 600; "$ref" stb_image 10 600; } > tests/data/stb_image_expected.txt
 
+`stb_image_more_expected.txt` is the same for made-up `.tga`, `.psd`, `.gif`, `.pnm` and `.hdr`
+files, read at 8 and 16 bits a channel, as floats and as animations:
+
+    STB=<checkout of stb> MINIZ=<checkout of miniz> compare/compare.sh <checkout of bc7enc_rdo> 3000 1 "stb_image_more"
+    ref=${TMPDIR:-/tmp}/rustbcx-compare/dump-stb-image
+    { "$ref" stb_image_more 4 600; "$ref" stb_image_more 10 600; } > tests/data/stb_image_more_expected.txt
+
 `zstd_frames.bin` holds Zstandard frames that the zstd library made of made-up data, as
 `compare/dump_zstd.c` wrote them, and `zstd_decode_expected.txt` what zstd's reference decoder
 makes of each, as the same program prints it; `tests/zstd_golden.rs` checks that the port

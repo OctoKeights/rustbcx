@@ -7,8 +7,8 @@
 ---
 
 rustbcx encodes and decodes block-compressed textures, from single blocks to complete
-mipmapped textures in `.dds`, `.ktx` and `.ktx2` containers, sourced from `.png`, `.bmp`,
-`.jpg` and `.exr` files or raw pixels.
+mipmapped textures in `.dds`, `.ktx` and `.ktx2` containers, sourced from image files of
+every common kind or raw pixels.
 
 Its codecs are faithful ports of established C++ and ISPC libraries, principally Richard
 Geldreich's [bc7enc_rdo](https://github.com/richgel999/bc7enc_rdo), and reproduce their
@@ -28,8 +28,9 @@ output exactly with no external toolchain.
 - **Complete textures.** Mipmapped 2D textures, arrays, cube maps and volumes, written as
   `.dds`, `.ktx` or `.ktx2`.
 
-- **Integrated image I/O.** `.png`, `.bmp`, `.jpg` and `.exr`, through ports of stb_image,
-  stb_image_write and tinyexr.
+- **Integrated image I/O.** Reads `.png`, `.bmp`, `.jpg`, `.tga`, `.psd`, `.gif`, `.pgm`,
+  `.ppm`, `.hdr` and `.exr`; writes `.png`, `.bmp`, `.jpg` and `.exr`. Through ports of
+  stb_image, stb_image_write and tinyexr.
 
 - **Parallel and deterministic.** Uses every core by default; output is independent of the
   thread count.

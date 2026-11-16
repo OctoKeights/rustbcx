@@ -55,12 +55,20 @@
 
 ### Image files
 
-- **`.png`, `.bmp` and `.jpg` are decoded exactly as stb_image decodes them.** JPEG decoders
+- **Image files are decoded exactly as stb_image decodes them.** JPEG decoders
   differ slightly in the pixels they produce; these are stb_image's. A file it rejects is
   rejected here, with the reason in the `LoadError`, and a damaged file it accepts is
   accepted here. PNG checksums are not verified, as in the original. `Image` holds 8 bits
   per channel, so a 16-bit `.png` is reduced to 8 on loading;
   `stb_image::load_16_from_memory` retains all 16.
+
+- **A number at the very end of a text `.pgm` or `.ppm` file is read as 0**, as stb_image
+  reads it. End the file with a newline.
+
+- **A GIF with a 12-bit LZW code size can change its own palette.** stb_image writes one
+  dictionary entry past the end of its tables, onto the blue of global colour 0 and the red of
+  colour 1, and the port does the same. Where that leaves stb_image looping for ever, the port
+  refuses the file instead.
 
 - **`.jpg` is written as stb_image_write writes it**: baseline, with chroma at half
   resolution in each dimension up to quality 90 and at full resolution above it.
@@ -108,9 +116,6 @@
 
 - **No BasisLZ.** The third `.ktx2` supercompression scheme cannot carry these formats at
   all; it is specific to Basis Universal's ETC1S format.
-
-- **Image formats are limited to `.png`, `.bmp` and `.jpg`.** The other formats stb_image
-  reads (`.tga`, `.gif`, `.psd`, `.hdr`, `.pnm`) are not ported.
 
 - **`.exr` support is limited to single-part files.** Multi-part files, deep images, and the
   DWAA, DWAB and ZFP compression methods are neither read nor written.

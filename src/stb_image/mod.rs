@@ -1,31 +1,41 @@
-//! `.png`, `.bmp` and `.jpg` files to images: the port of Sean Barrett's `stb_image.h` (v2.32,
-//! public domain or MIT), the three of its readers this crate needs, with the zlib decoder its
-//! PNG reader uses. Each gives the pixels the original gives, and refuses a file the original
-//! refuses, with the same reason.
+//! Image files to pixels: the port of Sean Barrett's `stb_image.h` (v2.32, public domain or
+//! MIT), every reader it has, with the zlib decoder its PNG reader uses. Each gives the pixels
+//! the original gives, and refuses a file the original refuses, with the same reason.
 //!
 //! - PNG: 1, 2, 4, 8 and 16 bits a channel, grey, colour and palette, with and without alpha
 //!   and interlacing.
 //! - BMP: 1, 4, 8, 16, 24 and 32 bits a pixel, without run-length encoding.
 //! - JPEG: baseline and progressive, 8 bits a channel.
+//! - GIF: every frame, with its delay ([`load_gif_from_memory`]), or the first.
+//! - TGA: grey, colour and palette, 8 to 32 bits a pixel, with and without run-length encoding.
+//! - PSD: the merged image of an RGB file, 8 or 16 bits a channel, raw or run-length encoded.
+//! - PNM: `.pgm` and `.ppm`, binary and text, 8 or 16 bits a channel.
+//! - HDR: Radiance `.hdr` files, flat or run-length encoded, as floats
+//!   ([`loadf_from_memory`]).
 //!
-//! [`load_from_memory`] gives 8 bits a channel, [`load_16_from_memory`] 16;
-//! [`info_from_memory`] reads only as far as the size. The settings the original keeps in
-//! globals are a [`LoadOptions`] handed to each call.
+//! [`load_from_memory`] gives 8 bits a channel, [`load_16_from_memory`] 16 and
+//! [`loadf_from_memory`] floats; [`info_from_memory`] reads only as far as the size. The
+//! settings the original keeps in globals are a [`LoadOptions`] handed to each call.
 //!
-//! What is ported is the original as it builds with `STBI_ONLY_PNG`, `STBI_ONLY_BMP` and
-//! `STBI_ONLY_JPEG` (its readers of other formats are left out), `STBI_NO_SIMD` (it has the
-//! one answer for every file; with SSE2 or NEON the original's JPEG reader gives other pixels
-//! for some damaged files) and `STBI_NO_LINEAR` (no floats made from 8-bit files). Reading is
-//! from memory only. Where the original uses memory it has not set, which a damaged file can
-//! bring it to, the port reads zero.
+//! What is ported is the original as it builds with `STBI_NO_SIMD` (it has the one answer for
+//! every file; with SSE2 or NEON the original's JPEG reader gives other pixels for some damaged
+//! files). Reading is from memory only. Where the original uses memory it has not set, which a
+//! damaged file can bring it to, the port reads zero.
 
 // (The arithmetic is written as the original has it.)
 #![allow(clippy::manual_div_ceil, clippy::int_plus_one)]
 
 mod bmp;
+mod gif;
+mod hdr;
 mod jpeg;
 mod png;
+mod pnm;
+mod psd;
+mod tga;
 pub mod zlib;
+
+pub use gif::LoadedGif;
 
 /// Why a file was refused: the original's `stbi_failure_reason()`, its short words. A few of
 /// its failures set no reason, and the original then shows whatever an earlier call left;
@@ -46,7 +56,7 @@ impl std::fmt::Display for LoadError {
 impl std::error::Error for LoadError {}
 
 /// The settings the original keeps in globals.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct LoadOptions {
     /// Give the image with its last row first: `stbi_set_flip_vertically_on_load`.
     pub flip_vertically_on_load: bool,
@@ -56,6 +66,31 @@ pub struct LoadOptions {
     /// Give an iPhone PNG (one with a `CgBI` chunk), which is stored blue first, red first:
     /// `stbi_convert_iphone_png_to_rgb`.
     pub convert_iphone_png_to_rgb: bool,
+    /// The gamma an HDR file's floats are brought to 8 bits with: `stbi_hdr_to_ldr_gamma`.
+    /// 2.2 unless changed.
+    pub hdr_to_ldr_gamma: f32,
+    /// What an HDR file's floats are divided by first: `stbi_hdr_to_ldr_scale`. 1 unless
+    /// changed.
+    pub hdr_to_ldr_scale: f32,
+    /// The gamma an 8-bit file's values are made floats with by [`loadf_from_memory`]:
+    /// `stbi_ldr_to_hdr_gamma`. 2.2 unless changed.
+    pub ldr_to_hdr_gamma: f32,
+    /// What those floats are multiplied by: `stbi_ldr_to_hdr_scale`. 1 unless changed.
+    pub ldr_to_hdr_scale: f32,
+}
+
+impl Default for LoadOptions {
+    fn default() -> LoadOptions {
+        LoadOptions {
+            flip_vertically_on_load: false,
+            unpremultiply_on_load: false,
+            convert_iphone_png_to_rgb: false,
+            hdr_to_ldr_gamma: 2.2,
+            hdr_to_ldr_scale: 1.0,
+            ldr_to_hdr_gamma: 2.2,
+            ldr_to_hdr_scale: 1.0,
+        }
+    }
 }
 
 /// An image out of a file: `x` by `y` pixels from the top row, each of as many values as were
@@ -70,12 +105,24 @@ pub struct Loaded<T> {
     pub data: Vec<T>,
 }
 
-/// The kind of a file: `STBI_type_*`, those of them that are ported.
+/// The kind of a file: `STBI_type_*`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ImageType {
     Jpeg,
     Png,
+    Gif,
     Bmp,
+    Psd,
+    Pnm,
+    Hdr,
+    Tga,
+}
+
+impl ImageType {
+    /// The original's number for the kind: `STBI_type_jpeg` and the rest, from 1.
+    pub fn number(self) -> i32 {
+        self as i32 + 1
+    }
 }
 
 /// What [`info_from_memory`] finds: `stbi_info_res`. (For a BMP stored top row first, `y` is
@@ -87,6 +134,8 @@ pub struct Info {
     pub y: i32,
     pub comp: i32,
     pub is_16_bit: bool,
+    /// Whether the file is a Radiance `.hdr` file, whose values are floats.
+    pub is_hdr: bool,
     pub is_iphone_png: bool,
 }
 
@@ -196,6 +245,21 @@ impl<'a> Context<'a> {
     pub fn get16le(&mut self) -> i32 {
         let z = i32::from(self.get8());
         z + (i32::from(self.get8()) << 8)
+    }
+
+    /// `stbi__getn` into the whole of `into`.
+    pub fn getn_into(&mut self, into: &mut [u8]) -> bool {
+        if into.is_empty() {
+            return true;
+        }
+        let n = into.len();
+        if self.pos <= self.buffer.len() && n <= self.buffer.len() - self.pos {
+            into.copy_from_slice(&self.buffer[self.pos..self.pos + n]);
+            self.pos += n;
+            true
+        } else {
+            false
+        }
     }
 
     /// `stbi__get32le`
@@ -361,8 +425,9 @@ pub(crate) fn convert_format<T: Sample>(s: &mut Context, data: Vec<T>, img_n: i3
 }
 
 /// `stbi__load_main`: the pixels, and into the context the image's size; with them, how many
-/// channels the file has.
-fn load_main(s: &mut Context, req_comp: i32) -> Option<(Pixels, i32)> {
+/// channels the file has. `bpc` is the bits a channel the caller wants, which only the PSD
+/// reader looks at.
+fn load_main(s: &mut Context, req_comp: i32, bpc: i32) -> Option<(Pixels, i32)> {
     if !(0..=4).contains(&req_comp) {
         return s.errp("bad req_comp");
     }
@@ -375,12 +440,33 @@ fn load_main(s: &mut Context, req_comp: i32) -> Option<(Pixels, i32)> {
     if bmp::bmp_test(s) {
         return bmp::bmp_load(s, req_comp).map(|(out, comp)| (Pixels::U8(out), comp));
     }
+    if gif::gif_test(s) {
+        return gif::gif_load(s, req_comp).map(|(out, comp)| (Pixels::U8(out), comp));
+    }
+    if psd::psd_test(s) {
+        return psd::psd_load(s, req_comp, bpc);
+    }
 
     // then the formats that can end up attempting to load with just 1 or 2
     // bytes matching expectations; these are prone to false positives, so
     // try them later
     if jpeg::jpeg_test(s) {
         return jpeg::jpeg_load(s, req_comp).map(|(out, comp)| (Pixels::U8(out), comp));
+    }
+    if pnm::pnm_test(s) {
+        return pnm::pnm_load(s, req_comp);
+    }
+
+    if hdr::hdr_test(s) {
+        let (hdr, comp) = hdr::hdr_load(s, req_comp)?;
+        let (x, y) = (s.img_x as i32, s.img_y as i32);
+        let options = s.options;
+        return hdr::hdr_to_ldr(s, hdr, x, y, if req_comp != 0 { req_comp } else { comp }, &options).map(|out| (Pixels::U8(out), comp));
+    }
+
+    // test tga last because it's a crappy test!
+    if tga::tga_test(s) {
+        return tga::tga_load(s, req_comp).map(|(out, comp)| (Pixels::U8(out), comp));
     }
 
     s.errp("unknown image type")
@@ -421,40 +507,40 @@ pub(crate) fn vertical_flip<T>(image: &mut [T], w: usize, h: usize, per_pixel: u
     }
 }
 
-/// The image out of a `.png`, `.bmp` or `.jpg` file's bytes at 8 bits a channel:
-/// `stbi_load_from_memory`. `desired_channels` is how many values a pixel is to have, 1 to 4,
-/// or 0 for as many as the file has. A file of 16 bits a channel is brought down to 8.
+/// The image out of an image file's bytes at 8 bits a channel: `stbi_load_from_memory`.
+/// `desired_channels` is how many values a pixel is to have, 1 to 4, or 0 for as many as the
+/// file has. A file of 16 bits a channel is brought down to 8, and an HDR file's floats with
+/// [`LoadOptions::hdr_to_ldr_gamma`]. Of a GIF, the first frame.
 pub fn load_from_memory(buffer: &[u8], desired_channels: i32, options: &LoadOptions) -> Result<Loaded<u8>, LoadError> {
     let mut s = Context::new(buffer, options);
-    // stbi__load_and_postprocess_8bit
-    let Some((result, comp)) = load_main(&mut s, desired_channels) else {
-        return Err(LoadError(s.reason));
-    };
+    load_and_postprocess_8bit(&mut s, desired_channels).ok_or(LoadError(s.reason))
+}
+
+/// `stbi__load_and_postprocess_8bit`
+fn load_and_postprocess_8bit(s: &mut Context, desired_channels: i32) -> Option<Loaded<u8>> {
+    let options = s.options;
+    let (result, comp) = load_main(s, desired_channels, 8)?;
     let (x, y) = (s.img_x as i32, s.img_y as i32);
     let channels = if desired_channels == 0 { comp } else { desired_channels };
 
     let mut result = match result {
         Pixels::U8(result) => result,
-        Pixels::U16(result) => match convert_16_to_8(&mut s, result, x, y, channels) {
-            Some(result) => result,
-            None => return Err(LoadError(s.reason)),
-        },
+        Pixels::U16(result) => convert_16_to_8(s, result, x, y, channels)?,
     };
 
     if options.flip_vertically_on_load {
         vertical_flip(&mut result, x as usize, y as usize, channels as usize);
     }
 
-    Ok(Loaded { x, y, channels_in_file: comp, data: result })
+    Some(Loaded { x, y, channels_in_file: comp, data: result })
 }
 
-/// The image out of a `.png`, `.bmp` or `.jpg` file's bytes at 16 bits a channel:
-/// `stbi_load_16_from_memory`. A file of 8 bits a channel is brought up to 16, each value
-/// with itself as its lower half.
+/// The image out of an image file's bytes at 16 bits a channel: `stbi_load_16_from_memory`.
+/// A file of 8 bits a channel is brought up to 16, each value with itself as its lower half.
 pub fn load_16_from_memory(buffer: &[u8], desired_channels: i32, options: &LoadOptions) -> Result<Loaded<u16>, LoadError> {
     let mut s = Context::new(buffer, options);
     // stbi__load_and_postprocess_16bit
-    let Some((result, comp)) = load_main(&mut s, desired_channels) else {
+    let Some((result, comp)) = load_main(&mut s, desired_channels, 16) else {
         return Err(LoadError(s.reason));
     };
     let (x, y) = (s.img_x as i32, s.img_y as i32);
@@ -475,6 +561,49 @@ pub fn load_16_from_memory(buffer: &[u8], desired_channels: i32, options: &LoadO
     Ok(Loaded { x, y, channels_in_file: comp, data: result })
 }
 
+/// The image out of an image file's bytes as floats: `stbi_loadf_from_memory`. An HDR file's
+/// values come as they are; any other file's come by way of 8 bits a channel, made floats
+/// with [`LoadOptions::ldr_to_hdr_gamma`] (alpha in a straight line, from 0 to 1).
+pub fn loadf_from_memory(buffer: &[u8], desired_channels: i32, options: &LoadOptions) -> Result<Loaded<f32>, LoadError> {
+    let mut s = Context::new(buffer, options);
+    // stbi__loadf_main
+    if hdr::hdr_test(&mut s) {
+        let Some((mut data, comp)) = hdr::hdr_load(&mut s, desired_channels) else {
+            return Err(LoadError(s.reason));
+        };
+        let (x, y) = (s.img_x as i32, s.img_y as i32);
+        // stbi__float_postprocess
+        if options.flip_vertically_on_load {
+            let channels = if desired_channels != 0 { desired_channels } else { comp };
+            vertical_flip(&mut data, x as usize, y as usize, channels as usize);
+        }
+        return Ok(Loaded { x, y, channels_in_file: comp, data });
+    }
+    if let Some(loaded) = load_and_postprocess_8bit(&mut s, desired_channels) {
+        let channels = if desired_channels != 0 { desired_channels } else { loaded.channels_in_file };
+        return match hdr::ldr_to_hdr(&mut s, loaded.data, loaded.x, loaded.y, channels, options) {
+            Some(data) => Ok(Loaded { x: loaded.x, y: loaded.y, channels_in_file: loaded.channels_in_file, data }),
+            None => Err(LoadError(s.reason)),
+        };
+    }
+    Err(LoadError("unknown image type"))
+}
+
+/// Every frame of a GIF file, one after another, each with its delay:
+/// `stbi_load_gif_from_memory`.
+pub fn load_gif_from_memory(buffer: &[u8], desired_channels: i32, options: &LoadOptions) -> Result<LoadedGif, LoadError> {
+    let mut s = Context::new(buffer, options);
+    if !(0..=4).contains(&desired_channels) {
+        return Err(LoadError("bad req_comp"));
+    }
+    gif::load_gif_main(&mut s, desired_channels).ok_or(LoadError(s.reason))
+}
+
+/// Whether a file's bytes are a Radiance `.hdr` file: `stbi_is_hdr_from_memory`.
+pub fn is_hdr_from_memory(buffer: &[u8]) -> bool {
+    hdr::hdr_test(&mut Context::new(buffer, &LoadOptions::default()))
+}
+
 /// The size and kind of the image in a file's bytes, without its pixels:
 /// `stbi_info2_from_memory`.
 pub fn info_from_memory(buffer: &[u8]) -> Result<Info, LoadError> {
@@ -486,7 +615,23 @@ pub fn info_from_memory(buffer: &[u8]) -> Result<Info, LoadError> {
     if let Some(info) = png::png_info(&mut s) {
         return Ok(info);
     }
+    if let Some(info) = gif::gif_info(&mut s) {
+        return Ok(info);
+    }
     if let Some(info) = bmp::bmp_info(&mut s) {
+        return Ok(info);
+    }
+    if let Some(info) = psd::psd_info(&mut s) {
+        return Ok(info);
+    }
+    if let Some(info) = pnm::pnm_info(&mut s) {
+        return Ok(info);
+    }
+    if let Some(info) = hdr::hdr_info(&mut s) {
+        return Ok(info);
+    }
+    // test tga last because it's a crappy test!
+    if let Some(info) = tga::tga_info(&mut s) {
         return Ok(info);
     }
     Err(LoadError("unknown image type"))
@@ -538,7 +683,7 @@ mod tests {
         assert_eq!(load_from_memory(&[], 0, &options), Err(LoadError("unknown image type")));
         assert_eq!(load_from_memory(b"not an image at all", 0, &options), Err(LoadError("unknown image type")));
         assert_eq!(load_from_memory(&[], 5, &options), Err(LoadError("bad req_comp")));
-        assert_eq!(info_from_memory(b"GIF89a"), Err(LoadError("unknown image type")));
+        assert_eq!(info_from_memory(b"GIF8"), Err(LoadError("unknown image type")));
         assert!(!is_16_bit_from_memory(&[]));
     }
 }

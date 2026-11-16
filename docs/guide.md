@@ -30,7 +30,7 @@ Each port is verified byte for byte against its original (see
 | `bc6h_enc` | [bc6h_enc](https://github.com/0xc0de/bc6h_enc), the single-file form of DirectXTex's BC6H encoder | Signed and unsigned BC6H encoding; exhaustive and slow |
 | `miniz` | Rich Geldreich's [miniz](https://github.com/richgel999/miniz): compressor, decompressor and checksums | zlib and deflate in both directions, for ZLIB-supercompressed `.ktx2` files |
 | `zstd` | [zstd](https://github.com/facebook/zstd): the two fastest strategies and the entropy coders of `lib/compress`, and the reference decoder in `doc/educational_decoder` | Zstandard in both directions, for Zstandard-supercompressed `.ktx2` files. Compresses at levels 1 to 3 and the negative levels; decompresses frames of any level |
-| `stb_image` | Sean Barrett's [stb](https://github.com/nothings/stb), `stb_image.h`: the PNG, BMP and JPEG readers and the zlib decoder | Decodes `.png`, `.bmp` and `.jpg` at 8 or 16 bits per channel |
+| `stb_image` | Sean Barrett's [stb](https://github.com/nothings/stb), `stb_image.h`: every reader and the zlib decoder | Decodes `.png`, `.bmp`, `.jpg`, `.tga`, `.psd`, `.gif` (every frame), `.pgm`, `.ppm` and Radiance `.hdr`, at 8 or 16 bits per channel or as floats |
 | `stb_image_write` | stb, `stb_image_write.h`: the PNG, BMP and JPEG writers | Encodes 8-bit pixels to `.png`, `.bmp` and `.jpg` |
 | `tinyexr` | Syoyo Fujita's [tinyexr](https://github.com/syoyo/tinyexr), `tinyexr.h`: the single-part reader and writer | Reads and writes `.exr` as half, float or integer channels: scanlines or tiles, mip and rip levels, uncompressed or RLE, ZIP, PIZ, PXR24 or B44 |
 
@@ -41,7 +41,7 @@ These modules have no upstream counterpart.
 | Module | Purpose |
 |---|---|
 | `bc2` | BC2 (DXT3), which none of the originals provides. Colour is encoded by `rgbcx` as for BC3; alpha is stored at four bits per pixel. The decoder is verified against bcdec |
-| `image` | `Image` (8-bit RGBA) and `HdrImage` (half-float RGB), with mip-level generation. `Image::load` and `save` handle `.png`, `.bmp` and `.jpg`; `HdrImage::load` and `save` handle `.exr` |
+| `image` | `Image` (8-bit RGBA) and `HdrImage` (half-float RGB), with mip-level generation. `Image::load` reads every format `stb_image` reads, and `save` writes `.png`, `.bmp` and `.jpg`; `HdrImage::load` reads `.exr` and `.hdr`, and `save` writes `.exr` |
 | `texture` | `Texture`: a format, dimensions and the blocks of every mip level, for a single image, a texture array, a cube map or a volume texture. `compress` and `compress_hdr` build one from an image; `compress_many` and `compress_hdr_many` from several; `load` and `save` handle files |
 | `dds` | `.dds` reading and writing, with either header. For a single level, the writer produces the same bytes as bc7enc_rdo's `save_dds` |
 | `ktx` | `.ktx` (KTX 1) and `.ktx2` (KTX 2) reading and writing; `.ktx2` levels may be stored raw or supercompressed with zlib or Zstandard |

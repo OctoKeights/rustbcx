@@ -1758,7 +1758,7 @@ pub(crate) fn jpeg_info(s: &mut Context) -> Option<Info> {
         s.rewind();
         return None;
     }
-    Some(Info { kind: ImageType::Jpeg, x: s.img_x as i32, y: s.img_y as i32, comp: if s.img_n >= 3 { 3 } else { 1 }, is_16_bit: false, is_iphone_png: false })
+    Some(Info { kind: ImageType::Jpeg, x: s.img_x as i32, y: s.img_y as i32, comp: if s.img_n >= 3 { 3 } else { 1 }, is_16_bit: false, is_hdr: false, is_iphone_png: false })
 }
 
 #[cfg(test)]
