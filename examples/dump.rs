@@ -83,6 +83,8 @@
 //!   dump tinyexr_write_small <seed> <count>         every fourth the short way as well
 //!   dump tinyexr_read <seed> <count> <file>         the .exr files that program wrote to the
 //!   dump tinyexr_read_small <seed> <count> <file>   file, each read four ways
+//!   dump tinyexr_zfp_write <seed> <count>           the same of images for ZFP compression,
+//!   dump tinyexr_zfp_read <seed> <count> <file>     of floats with its settings
 //!   dump tinyexr_parts <seed> <count> <file>        files of many parts saved, and the
 //!                                                   ones that program wrote to the file read
 //!   dump tinyexr_deep <seed> <count> <file>         the deep files that program wrote, read
@@ -584,8 +586,8 @@ fn main() {
             };
             print!("{}", made_up::zstd_decode(what, blocks, &file));
         }
-        "tinyexr_write" | "tinyexr_write_small" => print!("{}", made_up::tinyexr_write(what, seed, blocks)),
-        "tinyexr_read" | "tinyexr_read_small" => {
+        "tinyexr_write" | "tinyexr_write_small" | "tinyexr_zfp_write" => print!("{}", made_up::tinyexr_write(what, seed, blocks)),
+        "tinyexr_read" | "tinyexr_read_small" | "tinyexr_zfp_read" => {
             let Some(file) = args.get(4).and_then(|path| std::fs::read(path).ok()) else {
                 eprintln!("usage: dump {what} <seed> <count> <file of files from compare/dump_tinyexr.cc>");
                 std::process::exit(2);

@@ -44,7 +44,13 @@
 //! whatever its memory holds, and it is given; where it is not, or the original would stop,
 //! the file is refused with [`PAST_THE_END`].
 //!
-//! The ZFP compression tinyexr adds to the format is not read or written.
+//! The ZFP compression tinyexr adds to the format is read and written, as tinyexr does with
+//! `TINYEXR_USE_ZFP`, with a port of what it uses of the zfp library v1.0.1: for floats only,
+//! with the settings in attributes of the header ([`ZfpSettings`] makes them). What tinyexr
+//! cannot write with it is refused with a message of the port's own: a block or a tile that is
+//! not of whole blocks of four by four ([`ZFP_NOT_MULTIPLE_OF_FOUR`]; tinyexr writes a length
+//! it never set), and settings that ask for more than a gigabyte for a block
+//! ([`ZFP_TOO_LARGE`]).
 
 // (The arithmetic is written as the original has it.)
 #![allow(clippy::if_same_then_else, clippy::manual_div_ceil, clippy::needless_range_loop, clippy::too_many_arguments)]
@@ -57,11 +63,13 @@ mod encode;
 mod parts;
 mod piz;
 mod pxr24;
+mod zfp;
 mod zip_rle;
 
 pub use chunk::{tile_levels, TileLevel};
 pub use deep::{load_deep_exr_from_memory, DeepImage};
-pub use encode::{save_exr_image_to_memory, save_exr_image_to_memory_as_tinyexr, save_exr_multipart_image_to_memory, save_exr_multipart_image_to_memory_as_tinyexr, save_exr_to_memory};
+pub use encode::{save_exr_image_to_memory, save_exr_image_to_memory_as_tinyexr, save_exr_multipart_image_to_memory, save_exr_multipart_image_to_memory_as_tinyexr, save_exr_to_memory, ZFP_NOT_MULTIPLE_OF_FOUR, ZFP_TOO_LARGE};
+pub use zfp::{ZfpSettings, ZFP_COMPRESSIONTYPE_ACCURACY, ZFP_COMPRESSIONTYPE_PRECISION, ZFP_COMPRESSIONTYPE_RATE};
 pub use parts::{load_exr_multipart_image_from_memory, load_exr_multipart_image_from_memory_as_tinyexr, parse_exr_multipart_header_from_memory, PAST_THE_END};
 
 /// The original's error codes (`TINYEXR_ERROR_*`).
@@ -95,7 +103,8 @@ pub const COMPRESSIONTYPE_PIZ: i32 = 4;
 pub const COMPRESSIONTYPE_PXR24: i32 = 5;
 pub const COMPRESSIONTYPE_B44: i32 = 6;
 pub const COMPRESSIONTYPE_B44A: i32 = 7;
-/// A tinyexr extension, which needs the ZFP library: not ported.
+/// A tinyexr extension, of floats only, with the zfp library's coder; its settings are in
+/// attributes of the header, which [`ZfpSettings`] makes.
 pub const COMPRESSIONTYPE_ZFP: i32 = 128;
 
 /// The levels of a tiled file (`TINYEXR_TILE_*`).
@@ -499,8 +508,7 @@ pub(super) fn parse_exr_header(info: &mut HeaderInfo, empty_header: &mut bool, v
             }
 
             if compression == COMPRESSIONTYPE_ZFP {
-                *err = "ZFP compression is not supported.".to_string();
-                return Err(ERROR_UNSUPPORTED_FORMAT);
+                ok = true;
             }
 
             if compression == COMPRESSIONTYPE_PXR24 || compression == COMPRESSIONTYPE_B44 || compression == COMPRESSIONTYPE_B44A {
@@ -1239,12 +1247,15 @@ mod tests {
         let mut flat = image.clone();
         flat.height = 0;
         assert_eq!(save_exr_image_to_memory(&flat, &header).unwrap_err().code, ERROR_INVALID_ARGUMENT);
+        // ZFP of a block that is not of whole blocks of four by four.
+        let (odd, mut zfp) = image_of(6, 4, COMPRESSIONTYPE_ZFP, floats, PIXELTYPE_FLOAT, PIXELTYPE_FLOAT);
+        assert_eq!(save_exr_image_to_memory(&odd, &zfp).unwrap_err().message, ZFP_NOT_MULTIPLE_OF_FOUR);
         // And what the original refuses itself, with its message.
-        let mut zfp = header.clone();
-        zfp.compression_type = COMPRESSIONTYPE_ZFP;
-        let error = save_exr_image_to_memory(&image, &zfp).unwrap_err();
-        assert_eq!((error.code, error.message.as_str()), (ERROR_SERIALIZATION_FAILED, "ZFP compression is not supported in this build"));
+        zfp.requested_pixel_types[1] = PIXELTYPE_HALF;
+        let error = save_exr_image_to_memory(&odd, &zfp).unwrap_err();
+        assert_eq!((error.code, error.message.as_str()), (ERROR_SERIALIZATION_FAILED, "Pixel type must be FLOAT for ZFP compression"));
         let error = save_exr_to_memory(&[0.0; 8], 2, 2, 2, false).unwrap_err();
+        let _ = &image;
         assert_eq!((error.code, error.message.as_str()), (ERROR_INVALID_ARGUMENT, "Unsupported component value : 2\n"));
     }
 

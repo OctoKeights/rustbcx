@@ -7,6 +7,7 @@ use super::chunk::{level_index, num_scanline_blocks, precalculate_tile_info, til
 use super::decode::ChannelData;
 use super::piz::compress_piz;
 use super::pxr24::compress_pxr24;
+use super::zfp::{compress_zfp, zfp_param_for_writing, zfp_stream_size, ZfpParam};
 use super::zip_rle::{compress_rle, compress_zip};
 use super::{
     float_to_half_full, half_to_float, ChannelInfo, ExrError, ExrHeader, ExrImage, ExrTile, COMPRESSIONTYPE_B44, COMPRESSIONTYPE_B44A, COMPRESSIONTYPE_NONE, COMPRESSIONTYPE_PIZ, COMPRESSIONTYPE_PXR24,
@@ -70,6 +71,7 @@ fn encode_pixel_data(
     pixel_data_size: usize,
     file_types: &[i32],
     channel_offset_list: &[usize],
+    zfp: &ZfpParam,
     err: &mut String,
     as_tinyexr: bool,
 ) -> bool {
@@ -159,8 +161,12 @@ fn encode_pixel_data(
         let channel_sizes: Vec<usize> = file_types.iter().map(|&file_type| if file_type == PIXELTYPE_HALF { 1 } else { 2 }).collect();
         out_data.extend_from_slice(&compress_piz(&buf, &channel_sizes, width, num_lines));
     } else if compression_type == COMPRESSIONTYPE_ZFP {
-        err.push_str("ZFP compression is disabled in this build.\n");
-        return false;
+        // 4 byte: scan line
+        // 4 byte: data size
+        // ~     : pixel data(compressed)
+        // (`check` has refused what the original would not compress.)
+        let Ok(block) = compress_zfp(&buf, width, num_lines, file_types.len(), zfp) else { return false };
+        out_data.extend_from_slice(&block);
     } else if compression_type == COMPRESSIONTYPE_PXR24 {
         let block = compress_pxr24(&buf, width, num_lines, file_types);
         // (The format's rule, which the original has for its other compressions and not for
@@ -204,6 +210,7 @@ fn encode_tiled_level(
     num_y_tiles: i32,
     channel_offset_list: &[usize],
     pixel_data_size: usize,
+    zfp: &ZfpParam,
     err: &mut String,
     as_tinyexr: bool,
 ) -> i32 {
@@ -244,6 +251,7 @@ fn encode_tiled_level(
             pixel_data_size,
             &exr_header.requested_pixel_types,
             channel_offset_list,
+            zfp,
             err,
             as_tinyexr,
         );
@@ -313,6 +321,9 @@ fn encode_chunk(
         }
     }
 
+    // Use ZFP compression parameter from custom attributes(if such a parameter exists)
+    let zfp = zfp_param_for_writing(&exr_header.custom_attributes);
+
     let mut offset = chunk_offset;
     // (In a file of many parts, each block has its part's number before it.)
     let doffset = if is_multipart { 4u64 } else { 0 };
@@ -350,7 +361,7 @@ fn encode_chunk(
             }
 
             let mut e = String::new();
-            let ret = encode_tiled_level(image, exr_header, data_list, block_idx, num_x_tiles, num_y_tiles, &channel_offset_list, pixel_data_size, &mut e, as_tinyexr);
+            let ret = encode_tiled_level(image, exr_header, data_list, block_idx, num_x_tiles, num_y_tiles, &channel_offset_list, pixel_data_size, &zfp, &mut e, as_tinyexr);
             if ret != 0 {
                 if !e.is_empty() {
                     err.push_str(&e);
@@ -396,6 +407,7 @@ fn encode_chunk(
                 pixel_data_size,
                 &exr_header.requested_pixel_types,
                 &channel_offset_list,
+                &zfp,
                 err,
                 as_tinyexr,
             );
@@ -464,11 +476,28 @@ fn check(exr_image: &ExrImage, exr_header: &ExrHeader) -> Result<(), ExrError> {
         }
         Ok(())
     };
+    // ZFP: blocks and tiles of whole blocks of four by four, and settings that do not ask for
+    // more than there may be. (The original looks at neither; it writes a length it never set
+    // for the first, and asks for the memory for the second.)
+    let zfp = (exr_header.compression_type == COMPRESSIONTYPE_ZFP).then(|| zfp_param_for_writing(&exr_header.custom_attributes));
+    let check_zfp = |sizes: &[(i32, i32)]| {
+        let Some(zfp) = &zfp else { return Ok(()) };
+        if sizes.iter().any(|&(width, lines)| width % 4 != 0 || lines % 4 != 0) {
+            return refuse(ZFP_NOT_MULTIPLE_OF_FOUR);
+        }
+        if sizes.iter().any(|&(width, lines)| zfp_stream_size(zfp, width, lines, num_channels).is_none()) {
+            return refuse(ZFP_TOO_LARGE);
+        }
+        Ok(())
+    };
     if exr_image.tiles.is_empty() {
         if exr_image.width < 1 || exr_image.height < 1 {
             return refuse("An image needs a width and a height.");
         }
-        return check_images(&exr_image.images, exr_image.width as usize * exr_image.height as usize);
+        check_images(&exr_image.images, exr_image.width as usize * exr_image.height as usize)?;
+        let lines = num_scanline_blocks(exr_header.compression_type);
+        let sizes: Vec<(i32, i32)> = (0..exr_image.height).step_by(lines as usize).map(|start| (exr_image.width, lines.min(exr_image.height - start))).collect();
+        return check_zfp(&sizes);
     }
     if exr_header.tile_size_x < 1 || exr_header.tile_size_y < 1 {
         return refuse("A tiled image needs a tile size.");
@@ -484,8 +513,18 @@ fn check(exr_image: &ExrImage, exr_header: &ExrHeader) -> Result<(), ExrError> {
         }
         level = image.next_level.as_deref();
     }
-    Ok(())
+    let mut sizes = Vec::new();
+    let mut level = Some(exr_image);
+    while let Some(image) = level {
+        sizes.extend(image.tiles.iter().map(|tile| (tile.width, tile.height)));
+        level = image.next_level.as_deref();
+    }
+    check_zfp(&sizes)
 }
+
+/// What the port refuses to write with ZFP compression.
+pub const ZFP_NOT_MULTIPLE_OF_FOUR: &str = "ZFP compression needs blocks and tiles whose width and height are multiples of four.";
+pub const ZFP_TOO_LARGE: &str = "ZFP compression with these settings needs more than a gigabyte for a block.";
 
 /// `SaveEXRImageToMemory`: an image as the bytes of a `.exr` file of one part.
 ///
@@ -566,7 +605,12 @@ fn save_parts(parts: &[(&ExrImage, &ExrHeader)], as_tinyexr: bool) -> Result<Vec
             return fail(ERROR_SERIALIZATION_FAILED, "Invalid argument for SaveEXRNPartImageToMemory");
         }
         if exr_header.compression_type == COMPRESSIONTYPE_ZFP {
-            return fail(ERROR_SERIALIZATION_FAILED, "ZFP compression is not supported in this build");
+            // All channels must be fp32.
+            // No fp16 support in ZFP atm(as of 2023 June)
+            // (`check` refuses a header without a type for each channel.)
+            if exr_header.requested_pixel_types.iter().take(exr_header.channels.len()).any(|&file_type| file_type != PIXELTYPE_FLOAT) {
+                return fail(ERROR_SERIALIZATION_FAILED, "Pixel type must be FLOAT for ZFP compression");
+            }
         }
     }
     for &(exr_image, exr_header) in parts {

@@ -3,6 +3,7 @@
 //! around them in tinyexr v3.4.0 (`tinyexr.h`).
 
 use super::decode::{allocate_image, compute_channel_layout, decode_pixel_data, decode_tiled_pixel_data};
+use super::zfp::{find_zfp_compression_param, ZfpParam};
 use super::{
     ExrHeader, ExrImage, ExrTile, COMPRESSIONTYPE_B44, COMPRESSIONTYPE_B44A, COMPRESSIONTYPE_PIZ, COMPRESSIONTYPE_PXR24, COMPRESSIONTYPE_ZFP, COMPRESSIONTYPE_ZIP, ERROR_INVALID_ARGUMENT,
     ERROR_INVALID_DATA, ERROR_INVALID_HEADER, TILE_MIPMAP_LEVELS, TILE_ONE_LEVEL, TILE_RIPMAP_LEVELS, TILE_ROUND_DOWN, TILE_ROUND_UP,
@@ -71,7 +72,7 @@ fn level_size(toplevel_size: i32, level: i32, tile_rounding_mode: i32) -> i32 {
 
 /// `DecodeTiledLevel`: the tiles of one level of a tiled image.
 #[allow(clippy::too_many_arguments)]
-fn decode_tiled_level(exr_image: &mut ExrImage, exr_header: &ExrHeader, offset_data: &OffsetData, channel_offset_list: &[usize], pixel_data_size: i32, head: &[u8], err: &mut String, as_tinyexr: bool) -> i32 {
+fn decode_tiled_level(exr_image: &mut ExrImage, exr_header: &ExrHeader, offset_data: &OffsetData, channel_offset_list: &[usize], pixel_data_size: i32, head: &[u8], err: &mut String, zfp: Option<&ZfpParam>, as_tinyexr: bool) -> i32 {
     let size = head.len();
     let num_channels = exr_header.channels.len() as i32;
 
@@ -178,6 +179,7 @@ fn decode_tiled_level(exr_image: &mut ExrImage, exr_header: &ExrHeader, offset_d
                 pixel_data_size as usize,
                 &exr_header.channels,
                 channel_offset_list,
+                zfp,
                 as_tinyexr,
             );
             tile.images = images;
@@ -215,6 +217,14 @@ pub(super) fn decode_chunk(exr_image: &mut ExrImage, exr_header: &mut ExrHeader,
     let num_channels = exr_header.channels.len() as i32;
 
     let num_scanline_blocks = num_scanline_blocks(exr_header.compression_type);
+
+    let mut zfp = None;
+    if exr_header.compression_type == COMPRESSIONTYPE_ZFP {
+        zfp = find_zfp_compression_param(&exr_header.custom_attributes, err);
+        if zfp.is_none() {
+            return ERROR_INVALID_HEADER;
+        }
+    }
 
     if exr_header.data_window.max_x < exr_header.data_window.min_x || exr_header.data_window.max_y < exr_header.data_window.min_y {
         err.push_str("Invalid data window.\n");
@@ -305,7 +315,7 @@ pub(super) fn decode_chunk(exr_image: &mut ExrImage, exr_header: &mut ExrHeader,
             level_image.level_x = level_x;
             level_image.level_y = level_y;
 
-            let ret = decode_tiled_level(&mut level_image, exr_header, offset_data, &channel_offset_list, pixel_data_size, head, err, as_tinyexr);
+            let ret = decode_tiled_level(&mut level_image, exr_header, offset_data, &channel_offset_list, pixel_data_size, head, err, zfp.as_ref(), as_tinyexr);
             decoded.push(level_image);
             if ret != 0 {
                 result = ret;
@@ -405,6 +415,7 @@ pub(super) fn decode_chunk(exr_image: &mut ExrImage, exr_header: &mut ExrHeader,
                             pixel_data_size as usize,
                             &exr_header.channels,
                             &channel_offset_list,
+                            zfp.as_ref(),
                             as_tinyexr,
                         ) {
                             invalid_data = true;

@@ -76,20 +76,22 @@
 #
 # The .exr files (src/tinyexr) are compared with tinyexr (https://github.com/syoyo/tinyexr),
 # whose checkout goes in $TINYEXR. compare/dump_tinyexr.cc is built against its tinyexr.h
-# without threads and with the miniz in $MINIZ (the one src/miniz is the port of), with memory
-# that starts as zeros and with overflow that wraps (-fwrapv), so that the damaged files among
-# those it reads have one answer. Dumps: tinyexr_write, with a tenth of [blocks] as the number
+# without threads, with the miniz in $MINIZ (the one src/miniz is the port of), and with ZFP
+# compression (TINYEXR_USE_ZFP) against the zfp library v1.0.1 in $ZFP, built as its own build
+# has it by default; with memory that starts as zeros and with overflow that wraps (-fwrapv),
+# so that the damaged files among those it reads have one answer. Dumps: tinyexr_write, with a tenth of [blocks] as the number
 # of made-up images, each saved by both sides, and every fourth saved the short way as well;
 # and tinyexr_read, with as many images, each saved by tinyexr, a third of them then damaged,
 # and read four ways. For that one the C++ side writes its files to a file, which the Rust
 # side reads. Both are of the crate's functions that do exactly as tinyexr does
 # (`..._as_tinyexr`): for PXR24 and B44 blocks that do not come out smaller than their pixels
-# the others follow the format, as compare/files.sh checks with another reader.
+# the others follow the format, as compare/files.sh checks with another reader. And
+# tinyexr_zfp_write and tinyexr_zfp_read are the same of images made for ZFP compression.
 #
 # Without the ISPC compiler the bc7e dumps and bc6h_pack are left out, without $BCDEC bc2 and
 # the BC6H dumps, without $ISPCTC bc6h_pack, without $BC6HENC bc6h_enc, without $MINIZ miniz,
 # stb_image and the tinyexr dumps, without $STB stb_image_write and stb_image, without $ZSTD
-# the three zstd dumps, and without $TINYEXR the two tinyexr dumps; the script says so and
+# the three zstd dumps, and without $TINYEXR or $ZFP the tinyexr dumps; the script says so and
 # fails.
 set -u
 if [ $# -lt 1 ]; then
@@ -100,7 +102,7 @@ here=$(cd "$(dirname "$0")/.." && pwd)
 source=$1
 blocks=${2:-200000}
 seeds=${3:-3}
-dumps=${4:-bc7decomp unpack bc1 bc345 bc7enc bc7block ert rdo bc7e_presets bc7e_settings rdo_bc7e bc2 bc6h_unpack bc6h_pack bc6h_enc miniz stb_image_write stb_image stb_image_more zstd_decode zstd_compress zstd_compress_more zstd_compress_long zstd_entropy tinyexr_write tinyexr_read tinyexr_parts tinyexr_deep}
+dumps=${4:-bc7decomp unpack bc1 bc345 bc7enc bc7block ert rdo bc7e_presets bc7e_settings rdo_bc7e bc2 bc6h_unpack bc6h_pack bc6h_enc miniz stb_image_write stb_image stb_image_more zstd_decode zstd_compress zstd_compress_more zstd_compress_long zstd_entropy tinyexr_write tinyexr_read tinyexr_parts tinyexr_deep tinyexr_zfp_write tinyexr_zfp_read}
 tmp=${TMPDIR:-/tmp}/rustbcx-compare
 mkdir -p "$tmp" || exit 2
 
@@ -193,7 +195,7 @@ for what in $dumps; do
         reference=$tmp/dump-miniz
         count=$((blocks / 100))
         ;;
-    tinyexr_write | tinyexr_read | tinyexr_parts | tinyexr_deep)
+    tinyexr_write | tinyexr_read | tinyexr_parts | tinyexr_deep | tinyexr_zfp_write | tinyexr_zfp_read)
         if [ "$built_tinyexr" -eq 0 ]; then
             if [ -z "${TINYEXR:-}" ] || [ ! -f "$TINYEXR/tinyexr.h" ]; then
                 echo "$what: NOT COMPARED, no tinyexr (put its checkout in \$TINYEXR)"
@@ -205,14 +207,21 @@ for what in $dumps; do
                 bad=$((bad + 1))
                 continue
             fi
-            mkdir -p "$tmp/miniz" "$tmp/tinyexr-obj" && echo "#define MINIZ_EXPORT" > "$tmp/miniz/miniz_export.h" || exit 2
+            if [ -z "${ZFP:-}" ] || [ ! -f "$ZFP/include/zfp.h" ]; then
+                echo "$what: NOT COMPARED, no zfp (put its checkout, v1.0.1, in \$ZFP)"
+                bad=$((bad + 1))
+                continue
+            fi
+            mkdir -p "$tmp/miniz" "$tmp/tinyexr-obj" "$tmp/zfp-obj" && echo "#define MINIZ_EXPORT" > "$tmp/miniz/miniz_export.h" || exit 2
             (cd "$tmp/tinyexr-obj" && ${CC:-cc} -O2 -c -DMINIZ_NO_ARCHIVE_APIS -I "$tmp/miniz" -I "$MINIZ" "$MINIZ/miniz.c" "$MINIZ/miniz_tdef.c" "$MINIZ/miniz_tinfl.c") || exit 2
-            ${CXX:-c++} -O2 -fwrapv -ffp-contract=off -DMINIZ_NO_ARCHIVE_APIS -I "$tmp/miniz" -I "$MINIZ" -I "$TINYEXR" "$here/compare/dump_tinyexr.cc" "$tmp"/tinyexr-obj/*.o -o "$tmp/dump-tinyexr" || exit 2
+            (cd "$tmp/zfp-obj" && rm -f ./*.o && ${CC:-cc} -O2 -fwrapv -ffp-contract=off -c -I "$ZFP/include" "$ZFP"/src/*.c) || exit 2
+            ${CXX:-c++} -O2 -fwrapv -ffp-contract=off -DMINIZ_NO_ARCHIVE_APIS -I "$tmp/miniz" -I "$MINIZ" -I "$TINYEXR" -I "$ZFP/include" "$here/compare/dump_tinyexr.cc" "$tmp"/tinyexr-obj/*.o "$tmp"/zfp-obj/*.o -o "$tmp/dump-tinyexr" || exit 2
             built_tinyexr=1
         fi
         reference=$tmp/dump-tinyexr
         count=$((blocks / 10))
         [ "$what" = tinyexr_read ] && extra=$tmp/exr-files.bin
+        [ "$what" = tinyexr_zfp_read ] && extra=$tmp/exr-zfp.bin
         [ "$what" = tinyexr_parts ] && extra=$tmp/exr-parts.bin
         [ "$what" = tinyexr_deep ] && extra=$tmp/exr-deep.bin
         ;;

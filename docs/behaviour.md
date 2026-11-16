@@ -121,8 +121,9 @@
 - **No BasisLZ.** The third `.ktx2` supercompression scheme cannot carry these formats at
   all; it is specific to Basis Universal's ETC1S format.
 
-- **No DWAA, DWAB or ZFP `.exr` compression.** Files using them are neither read nor
-  written. Multi-part files are read and written, and deep images read (tinyexr does not
+- **No DWAA or DWAB `.exr` compression.** Files using them are neither read nor written.
+  ZFP, tinyexr's own extension, is read and written, for blocks and tiles of whole four by
+  four blocks. Multi-part files are read and written, and deep images read (tinyexr does not
   write them).
 
 - **x86 float-to-integer semantics are built in.** Where an original converts a float that

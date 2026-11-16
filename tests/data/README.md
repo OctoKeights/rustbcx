@@ -109,14 +109,18 @@ tinyexr saves of made-up images. `exr_files.bin` holds such files, a third of th
 the same program wrote them, and `tinyexr_read_expected.txt` what tinyexr reads of each, as it
 prints it. `exr_parts.bin` with `tinyexr_parts_expected.txt`, and `exr_deep.bin` with
 `tinyexr_deep_expected.txt`, are the same for files of many parts and for deep files (made up
-by that program: tinyexr writes none). `tests/tinyexr_golden.rs` checks that the port prints
-the same for all of them. To make them again:
+by that program: tinyexr writes none). `tinyexr_zfp_write_expected.txt`, and `exr_zfp.bin`
+with `tinyexr_zfp_read_expected.txt`, are the same for images made for ZFP compression.
+`tests/tinyexr_golden.rs` checks that the port prints the same for all of them. To make them
+again:
 
-    TINYEXR=<checkout of tinyexr> MINIZ=<checkout of miniz> compare/compare.sh <checkout of bc7enc_rdo> 3000 1 "tinyexr_write"
+    TINYEXR=<checkout of tinyexr> MINIZ=<checkout of miniz> ZFP=<checkout of zfp 1.0.1> compare/compare.sh <checkout of bc7enc_rdo> 3000 1 "tinyexr_write"
     "${TMPDIR:-/tmp}/rustbcx-compare/dump-tinyexr" tinyexr_write_small 5 300 > tests/data/tinyexr_write_expected.txt
     "${TMPDIR:-/tmp}/rustbcx-compare/dump-tinyexr" tinyexr_read_small 11 100 tests/data/exr_files.bin > tests/data/tinyexr_read_expected.txt
     "${TMPDIR:-/tmp}/rustbcx-compare/dump-tinyexr" tinyexr_parts 7 60 tests/data/exr_parts.bin > tests/data/tinyexr_parts_expected.txt
     "${TMPDIR:-/tmp}/rustbcx-compare/dump-tinyexr" tinyexr_deep 13 80 tests/data/exr_deep.bin > tests/data/tinyexr_deep_expected.txt
+    "${TMPDIR:-/tmp}/rustbcx-compare/dump-tinyexr" tinyexr_zfp_write 5 300 > tests/data/tinyexr_zfp_write_expected.txt
+    "${TMPDIR:-/tmp}/rustbcx-compare/dump-tinyexr" tinyexr_zfp_read 11 100 tests/data/exr_zfp.bin > tests/data/tinyexr_zfp_read_expected.txt
 
 No texture or picture from anywhere is in this repository: every block the tests and the
 comparison pack, and every file they read, is made up from a seed.

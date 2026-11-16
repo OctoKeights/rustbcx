@@ -5,10 +5,11 @@
 use super::b44::decompress_b44;
 use super::piz::decompress_piz;
 use super::pxr24::decompress_pxr24;
+use super::zfp::{decompress_zfp, ZfpParam};
 use super::zip_rle::{decompress_rle, decompress_zip};
 use super::{
-    half_to_float, ChannelInfo, COMPRESSIONTYPE_B44, COMPRESSIONTYPE_B44A, COMPRESSIONTYPE_NONE, COMPRESSIONTYPE_PIZ, COMPRESSIONTYPE_PXR24, COMPRESSIONTYPE_RLE, COMPRESSIONTYPE_ZIP,
-    COMPRESSIONTYPE_ZIPS, PIXELTYPE_FLOAT, PIXELTYPE_HALF, PIXELTYPE_UINT,
+    half_to_float, ChannelInfo, COMPRESSIONTYPE_B44, COMPRESSIONTYPE_B44A, COMPRESSIONTYPE_NONE, COMPRESSIONTYPE_PIZ, COMPRESSIONTYPE_PXR24, COMPRESSIONTYPE_RLE, COMPRESSIONTYPE_ZFP,
+    COMPRESSIONTYPE_ZIP, COMPRESSIONTYPE_ZIPS, PIXELTYPE_FLOAT, PIXELTYPE_HALF, PIXELTYPE_UINT,
 };
 
 /// The values of one channel of an image or of a tile, line after line. (The original has a
@@ -187,7 +188,8 @@ fn block_size(width: i32, num_lines: i32, pixel_data_size: usize) -> Option<usiz
 /// `DecodePixelData`: the block of `data_len` bytes at the start of `data` (which goes on
 /// to the end of the file), decompressed and stored in `out_images`: `num_lines` lines of
 /// `width` pixels, from the line `line_no` (or `y`, for a block that is not compressed) of
-/// an image of `height` lines whose lines are `x_stride` values apart.
+/// an image of `height` lines whose lines are `x_stride` values apart. `zfp` is what the
+/// header's attributes say of ZFP compression, for a block of it.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn decode_pixel_data(
     out_images: &mut [ChannelData],
@@ -205,6 +207,7 @@ pub(crate) fn decode_pixel_data(
     pixel_data_size: usize,
     channels: &[ChannelInfo],
     channel_offset_list: &[usize],
+    zfp: Option<&ZfpParam>,
     as_tinyexr: bool,
 ) -> bool {
     let block = &data[..data_len];
@@ -250,6 +253,40 @@ pub(crate) fn decode_pixel_data(
 
         // For ZIP_COMPRESSION: the same layout as PIZ.
         unpack_lines(out_images, requested_pixel_types, &out_buf, line_order, width, height, x_stride, line_no, num_lines, pixel_data_size, channels, channel_offset_list)
+    } else if compression_type == COMPRESSIONTYPE_ZFP {
+        // (`decode_chunk` has found the settings; this code path should not be reachable.)
+        let Some(zfp) = zfp else { return false };
+
+        // Allocate original data size.
+        let Some(size) = block_size(width, num_lines, pixel_data_size) else { return false };
+        let mut out_buf = vec![0u8; size];
+        if size == 0 {
+            return false;
+        }
+        // (The answer is not looked at; but settings that ask for more memory than there is
+        // stop the original.)
+        if decompress_zfp(&mut out_buf, width, num_lines, channels.len(), block, zfp).is_none() {
+            return false;
+        }
+
+        // For ZFP_COMPRESSION: the same layout as PIZ, but every channel has to be of floats.
+        let width = width as usize;
+        for (c, channel) in channels.iter().enumerate() {
+            if channel.pixel_type != PIXELTYPE_FLOAT || requested_pixel_types[c] != PIXELTYPE_FLOAT {
+                return false;
+            }
+            for v in 0..num_lines as usize {
+                let line_ptr = v * pixel_data_size * width + channel_offset_list[c] * width;
+                for u in 0..width {
+                    let index = image_index(line_order, height, line_no, x_stride, v, u);
+                    if !put_four(&mut out_images[c], index, u32_at(&out_buf, line_ptr + 4 * u)) {
+                        // (A place outside the image: the original writes there all the same.)
+                        return false;
+                    }
+                }
+            }
+        }
+        true
     } else if compression_type == COMPRESSIONTYPE_RLE {
         // Allocate original data size.
         let Some(size) = block_size(width, num_lines, pixel_data_size) else { return false };
@@ -432,6 +469,7 @@ pub(crate) fn decode_tiled_pixel_data(
     pixel_data_size: usize,
     channels: &[ChannelInfo],
     channel_offset_list: &[usize],
+    zfp: Option<&ZfpParam>,
     as_tinyexr: bool,
 ) -> bool {
     // Here, data_width and data_height are the dimensions of the current (sub)level.
@@ -453,5 +491,5 @@ pub(crate) fn decode_tiled_pixel_data(
     }
 
     // Image size = tile size.
-    decode_pixel_data(out_images, requested_pixel_types, data, data_len, compression_type, /* line_order */ 0, *width, tile_size_y, /* stride */ tile_size_x, /* y */ 0, /* line_no */ 0, *height, pixel_data_size, channels, channel_offset_list, as_tinyexr)
+    decode_pixel_data(out_images, requested_pixel_types, data, data_len, compression_type, /* line_order */ 0, *width, tile_size_y, /* stride */ tile_size_x, /* y */ 0, /* line_no */ 0, *height, pixel_data_size, channels, channel_offset_list, zfp, as_tinyexr)
 }

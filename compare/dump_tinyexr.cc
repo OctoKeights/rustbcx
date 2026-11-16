@@ -21,6 +21,10 @@
 //                                              tinyexr)
 //   dump tinyexr_deep <seed> <count> <file>    made-up deep files of scanlines and of tiles,
 //                                              a third of them damaged, read the same way
+//   dump tinyexr_zfp_write <seed> <count>        as tinyexr_write and tinyexr_read, of images
+//   dump tinyexr_zfp_read <seed> <count> <file>  made for ZFP compression: of floats, most of
+//                                                whole blocks of four by four, with the
+//                                                attributes of its settings
 //   dump tinyexr_read <seed> <count> <file>         made-up images of every kind tinyexr writes
 //   dump tinyexr_read_small <seed> <count> <file>   (scanlines and tiles, with mip and rip
 //                                                   levels, three types of value, eight
@@ -33,7 +37,8 @@
 //                                                   green, blue and alpha; and it is written to
 //                                                   the file, with how it was read.
 //
-// Built without threads and without OpenMP, against the miniz that src/miniz is the port of,
+// Built without threads and without OpenMP, with ZFP compression against the zfp library
+// v1.0.1, against the miniz that src/miniz is the port of,
 // and with memory that starts as zeros: tinyexr leaves what a damaged file does not fill as
 // malloc gave it.
 //
@@ -55,6 +60,8 @@
 #include <set>
 #include <sstream>
 #include <string>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include <sys/mman.h>
@@ -77,10 +84,18 @@ struct Padded
     std::size_t total;
 };
 static std::vector<Padded> g_padded;
+// The size of each allocation made while a deep file is read: a damaged file can have a line
+// of other than the count of samples its table says, and only the allocation says which.
+static std::unordered_map<void*, std::size_t> g_sizes;
 static void* HarnessMalloc(std::size_t size)
 {
     if (!g_pad || size != g_pad_for)
-        return std::calloc(1, size);
+    {
+        void* memory = std::calloc(1, size);
+        if (g_pad && memory)
+            g_sizes[memory] = size;
+        return memory;
+    }
     const std::size_t page = 4096;
     if (static_cast<std::size_t>(sysconf(_SC_PAGESIZE)) != page)
     {
@@ -102,6 +117,7 @@ static void* HarnessMalloc(std::size_t size)
 }
 static void HarnessFree(void* memory)
 {
+    g_sizes.erase(memory);
     for (std::size_t k = 0; k < g_padded.size(); ++k)
     {
         if (g_padded[k].memory == memory)
@@ -126,7 +142,7 @@ static void HarnessFree(void* memory)
 #define TINYEXR_USE_THREAD 0
 #define TINYEXR_USE_OPENMP 0
 #define TINYEXR_USE_PIZ 1
-#define TINYEXR_USE_ZFP 0
+#define TINYEXR_USE_ZFP 1
 #define TINYEXR_IMPLEMENTATION
 #include "tinyexr.h"
 #undef malloc
@@ -361,12 +377,62 @@ void SetChunkCount(Made& m, std::uint32_t count)
     }
 }
 
+// Whether the images are made for ZFP compression (the `tinyexr_zfp` dumps): of floats, most
+// of them of whole blocks of four by four, with the attributes of ZFP's settings.
+bool g_zfp = false;
+
+// A double such as the settings of ZFP have: a rate, a tolerance, or one that is not either.
+// (A rate of less than nothing asks for most of four gigabits a block, which is more than a
+// gigabyte for two blocks or more, and so is refused; for an image or a tile of one block,
+// of one channel, it would be written, as half a gigabyte. `many` says there is more than
+// one.)
+double ZfpDouble(bool tolerance, bool many)
+{
+    static const double kRates[16] = { 0.5, 1, 2, 2, 4, 7.3, 8, 12, 16, 24, 31.9, 32, 40, 0, -0.01, 1e-9 };
+    static const double kTolerances[16] = { 1e-3, 0.5, 1e-7, 0.01, 2, 1e-30, 0, -1, 1e-40, 1e30, 1e-320, 0.25, 3, 1e-5, 100, 1e300 };
+    const std::uint32_t kind = Next() % 32;
+    if (kind < 16)
+        return tolerance ? kTolerances[kind] : kRates[kind];
+    if (kind < 28)
+        return static_cast<double>(Next() % 400) / (tolerance ? 1000.0 : 10.0);
+    // Not a number, infinity, and (as a rate) more bits than there may be.
+    if (kind == 28)
+        return std::numeric_limits<double>::quiet_NaN();
+    if (kind == 29)
+        return std::numeric_limits<double>::infinity();
+    return kind == 30 && many ? -1.0 : 100.0;
+}
+
+void AddDouble(Made& m, const char* name, double value)
+{
+    Attribute attribute;
+    attribute.name = name;
+    attribute.type = "double";
+    attribute.value.resize(8);
+    std::memcpy(attribute.value.data(), &value, 8);
+    m.attributes.push_back(attribute);
+}
+
 Made MakeImage(bool small)
 {
     Made m;
     m.tiled = Next() % 3 == 0;
-    const std::uint32_t size_kind = small ? 0 : Next() % 8;
-    if (size_kind < 5)
+    const std::uint32_t size_kind = g_zfp ? 8 + Next() % 8 : small ? 0 : Next() % 8;
+    if (size_kind >= 8)
+    {
+        // (For ZFP: of whole blocks, now and then not.)
+        if (size_kind < 15)
+        {
+            m.width = 4 * (1 + static_cast<int>(Next() % 12));
+            m.height = 4 * (1 + static_cast<int>(Next() % 12));
+        }
+        else
+        {
+            m.width = 1 + static_cast<int>(Next() % 40);
+            m.height = 1 + static_cast<int>(Next() % 40);
+        }
+    }
+    else if (size_kind < 5)
     {
         m.width = 1 + static_cast<int>(Next() % (small ? 10 : 40));
         m.height = 1 + static_cast<int>(Next() % (small ? 36 : 40));
@@ -409,6 +475,16 @@ Made MakeImage(bool small)
     {
         Channel channel;
         channel.name = names_kind == 2 ? "Y" : kNames[start + c];
+        if (g_zfp)
+        {
+            // Floats, halves or integers handed over, stored as floats, now and then not.
+            const std::uint32_t type = Next() % 16;
+            channel.memory_type = type < 10 ? TINYEXR_PIXELTYPE_FLOAT : type < 15 ? TINYEXR_PIXELTYPE_HALF : TINYEXR_PIXELTYPE_UINT;
+            const std::uint32_t as_half = Next() % 24 == 0;
+            channel.file_type = as_half && channel.memory_type != TINYEXR_PIXELTYPE_UINT ? TINYEXR_PIXELTYPE_HALF : TINYEXR_PIXELTYPE_FLOAT;
+            m.channels.push_back(channel);
+            continue;
+        }
         channel.memory_type = static_cast<int>(Next() % 3);
         const std::uint32_t as_half = Next() % 2;
         channel.file_type = channel.memory_type == TINYEXR_PIXELTYPE_UINT ? TINYEXR_PIXELTYPE_UINT : as_half ? TINYEXR_PIXELTYPE_HALF : TINYEXR_PIXELTYPE_FLOAT;
@@ -418,11 +494,52 @@ Made MakeImage(bool small)
     // Its compression: one of the eight, PIZ more often; now and then one that is not written.
     const std::uint32_t compression = Next() % 20;
     m.compression = compression < 16 ? static_cast<int>(compression % 8) : compression == 16 ? TINYEXR_COMPRESSIONTYPE_ZFP : compression == 17 ? 9 : TINYEXR_COMPRESSIONTYPE_PIZ;
+    if (g_zfp)
+        m.compression = TINYEXR_COMPRESSIONTYPE_ZFP;
+    // (A ZFP file without the attributes of its settings, as these other images are, is
+    // written, at 2 bits a value, and not read.)
+    else if (m.compression == TINYEXR_COMPRESSIONTYPE_ZFP)
+        m.plain = false;
     m.long_name = Next() % 8 == 0;
+    if (g_zfp)
+    {
+        // The settings: a rate, a precision or a tolerance, each with its type; now and then
+        // a type it does not know, none, a type of other than one byte, or no value for it.
+        const std::uint32_t kind = Next() % 32;
+        const std::uint32_t type = kind < 12 ? 0 : kind < 18 ? 1 : kind < 28 ? 2 : kind == 28 ? 3 + Next() % 253 : 0;
+        if (kind != 29)
+        {
+            Attribute attribute;
+            attribute.name = "zfpCompressionType";
+            attribute.type = "uchar";
+            attribute.value.assign(kind == 30 ? 2 : 1, static_cast<unsigned char>(type));
+            m.attributes.push_back(attribute);
+        }
+        if (kind != 31)
+        {
+            if (type == 0)
+                AddDouble(m, "zfpCompressionRate", ZfpDouble(false, m.channels.size() > 1));
+            else if (type == 1)
+            {
+                Attribute attribute;
+                attribute.name = "zfpCompressionPrecision";
+                attribute.type = "int";
+                const std::uint32_t precision = Next() % 70;
+                attribute.value.assign(4, 0);
+                std::memcpy(attribute.value.data(), &precision, 4);
+                m.attributes.push_back(attribute);
+            }
+            else
+                AddDouble(m, "zfpCompressionTolerance", ZfpDouble(true, m.channels.size() > 1));
+        }
+        // (A file without them saves, at 2 bits a value, and is not read.)
+        if (kind >= 28)
+            m.plain = false;
+    }
     // Now and then attributes of its own: text; a type, a name or a count of chunks, which
     // the parts of a file of many parts have and tinyexr reads in any file; more attributes
     // than tinyexr keeps.
-    if (Next() % 3 == 0)
+    if (!g_zfp && Next() % 3 == 0)
     {
         const std::uint32_t attributes = 1 + Next() % 3;
         for (std::uint32_t j = 0; j < attributes; ++j)
@@ -494,7 +611,13 @@ Made MakeImage(bool small)
 
     m.tile_size_x = 1 + static_cast<int>(Next() % static_cast<std::uint32_t>(std::min(m.width, 64)));
     m.tile_size_y = 1 + static_cast<int>(Next() % static_cast<std::uint32_t>(std::min(m.height, 64)));
-    m.level_mode = static_cast<int>(Next() % 3);
+    if (g_zfp && Next() % 8 != 0)
+    {
+        // (Of whole blocks, and of one level, most of them.)
+        m.tile_size_x = (m.tile_size_x + 3) & ~3;
+        m.tile_size_y = (m.tile_size_y + 3) & ~3;
+    }
+    m.level_mode = g_zfp && Next() % 4 != 0 ? TINYEXR_TILE_ONE_LEVEL : static_cast<int>(Next() % 3);
     m.rounding_mode = static_cast<int>(Next() % 2);
     m.without_last_level = Next() % 16 == 0;
 
@@ -648,6 +771,66 @@ Prepared::Prepared(Made& m)
     }
 }
 
+// What the port refuses to write with ZFP compression, with a message of its own (as
+// `check` in src/tinyexr/encode.rs has it), or none: a block or a tile that is not of whole
+// blocks of four by four, for which tinyexr writes a length it never set; settings that ask
+// for more than a gigabyte for a block. (Where a channel is not to be stored as floats,
+// tinyexr refuses the image itself, first.)
+const char* ZfpRefusal(const Prepared& prepared)
+{
+    const EXRHeader& header = prepared.header;
+    if (header.compression_type != TINYEXR_COMPRESSIONTYPE_ZFP)
+        return NULL;
+    for (int c = 0; c < header.num_channels; ++c)
+    {
+        if (header.requested_pixel_types[c] != TINYEXR_PIXELTYPE_FLOAT)
+            return NULL;
+    }
+    tinyexr::ZFPCompressionParam param;
+    if (!tinyexr::FindZFPCompressionParam(&param, header.custom_attributes, header.num_custom_attributes, NULL))
+    {
+        param.type = 0;
+        param.rate = 2;
+    }
+    std::vector<std::pair<int, int>> sizes;
+    const EXRImage& image = prepared.images[0];
+    if (!image.tiles)
+    {
+        for (int start = 0; start < image.height; start += 16)
+            sizes.push_back(std::make_pair(image.width, std::min(16, image.height - start)));
+    }
+    else
+    {
+        for (const EXRImage* level = &image; level; level = level->next_level)
+        {
+            for (int t = 0; t < level->num_tiles; ++t)
+                sizes.push_back(std::make_pair(level->tiles[t].width, level->tiles[t].height));
+        }
+    }
+    for (const std::pair<int, int>& size : sizes)
+    {
+        if (size.first % 4 != 0 || size.second % 4 != 0)
+            return "ZFP compression needs blocks and tiles whose width and height are multiples of four.";
+    }
+    for (const std::pair<int, int>& size : sizes)
+    {
+        zfp_stream* zfp = zfp_stream_open(NULL);
+        if (param.type == TINYEXR_ZFP_COMPRESSIONTYPE_RATE)
+            zfp_stream_set_rate(zfp, param.rate, zfp_type_float, 2, 0);
+        else if (param.type == TINYEXR_ZFP_COMPRESSIONTYPE_PRECISION)
+            zfp_stream_set_precision(zfp, param.precision);
+        else
+            zfp_stream_set_accuracy(zfp, param.tolerance);
+        zfp_field* field = zfp_field_2d(NULL, zfp_type_float, static_cast<unsigned int>(size.first), static_cast<unsigned int>(size.second * header.num_channels));
+        const std::size_t bytes = zfp_stream_maximum_size(zfp, field);
+        zfp_field_free(field);
+        zfp_stream_close(zfp);
+        if (bytes > (static_cast<std::size_t>(1) << 30))
+            return "ZFP compression with these settings needs more than a gigabyte for a block.";
+    }
+    return NULL;
+}
+
 // The image saved by tinyexr: the file's bytes, or none, tinyexr's message, and what it gave
 // as the size (nothing, or one of its error numbers).
 std::vector<unsigned char> Save(Made& m, std::string& message, std::uint32_t& refusal)
@@ -656,10 +839,17 @@ std::vector<unsigned char> Save(Made& m, std::string& message, std::uint32_t& re
     EXRHeader& header = prepared.header;
     std::vector<EXRImage>& images = prepared.images;
 
+    std::vector<unsigned char> file;
+    if (const char* refused = ZfpRefusal(prepared))
+    {
+        refusal = static_cast<std::uint32_t>(TINYEXR_ERROR_INVALID_ARGUMENT);
+        message = refused;
+        return file;
+    }
+
     unsigned char* memory = NULL;
     const char* err = NULL;
     const std::size_t size = SaveEXRImageToMemory(&images[0], &header, &memory, &err);
-    std::vector<unsigned char> file;
     // (Nothing, or one of its error numbers as a size.)
     if (size == 0 || size > (static_cast<std::size_t>(1) << 40))
     {
@@ -1384,10 +1574,28 @@ int Parts(const char* name, std::uint32_t count, std::FILE* out)
                 images.push_back(prepared.back()->images[0]);
                 headers.push_back(&prepared.back()->header);
             }
+            // (What the port refuses of the first part it refuses, unless tinyexr refuses one
+            // of them first, for a channel that is not to be stored as floats.)
+            const char* refused = NULL;
+            bool not_floats = false;
+            for (const std::unique_ptr<Prepared>& part : prepared)
+            {
+                if (part->header.compression_type != TINYEXR_COMPRESSIONTYPE_ZFP)
+                    continue;
+                for (int c = 0; c < part->header.num_channels; ++c)
+                    not_floats = not_floats || part->header.requested_pixel_types[c] != TINYEXR_PIXELTYPE_FLOAT;
+                if (!refused)
+                    refused = ZfpRefusal(*part);
+            }
             unsigned char* memory = NULL;
             const char* err = NULL;
-            const std::size_t size = SaveEXRMultipartImageToMemory(images.data(), headers.data(), num_parts, &memory, &err);
-            if (size == 0 || size > (static_cast<std::size_t>(1) << 40))
+            const std::size_t size = refused && !not_floats ? 0 : SaveEXRMultipartImageToMemory(images.data(), headers.data(), num_parts, &memory, &err);
+            if (refused && !not_floats)
+            {
+                refusal = static_cast<std::uint32_t>(TINYEXR_ERROR_INVALID_ARGUMENT);
+                message = refused;
+            }
+            else if (size == 0 || size > (static_cast<std::size_t>(1) << 40))
             {
                 refusal = static_cast<std::uint32_t>(size);
                 message = err ? err : "";
@@ -1683,6 +1891,8 @@ void ReadDeep(const char* path, std::size_t size, unsigned char pad)
     const char* err = NULL;
     const int ret = LoadDeepEXR(&deep, path, &err);
     g_pad = 0;
+    std::unordered_map<void*, std::size_t> sizes;
+    sizes.swap(g_sizes);
     AddNumber(static_cast<std::uint32_t>(ret));
     // (Its message names the file, which the port has no name for.)
     if (ret == TINYEXR_ERROR_INVALID_FILE)
@@ -1711,7 +1921,18 @@ void ReadDeep(const char* path, std::size_t size, unsigned char pad)
             if (!deep.image[c][y])
                 continue;
             AddNumber(static_cast<std::uint32_t>(y));
-            Add(deep.image[c][y], static_cast<std::size_t>(deep.offset_table[y][deep.width - 1]) * 4);
+            // (A line of the samples there are, which a damaged file of scanlines can have
+            // other than the count of: its allocation's. A file of tiles allocates a value for
+            // a line of none.)
+            std::size_t samples = sizes.count(deep.image[c][y]) ? sizes[deep.image[c][y]] / 4 : 0;
+            if (samples == 1 && deep.offset_table[y][deep.width - 1] == 0)
+                samples = 0;
+            if (static_cast<std::size_t>(static_cast<std::uint32_t>(deep.offset_table[y][deep.width - 1])) != samples)
+            {
+                static const char kOther[] = "a line of other than its count of samples";
+                Add(kOther, sizeof kOther - 1);
+            }
+            Add(deep.image[c][y], samples * 4);
         }
     }
 }
@@ -1836,17 +2057,19 @@ int main(int argc, char** argv)
         }
         return ret;
     }
-    if (argc >= 4 && (std::strcmp(argv[1], "tinyexr_write") == 0 || std::strcmp(argv[1], "tinyexr_write_small") == 0))
+    if (argc >= 4 && (std::strcmp(argv[1], "tinyexr_write") == 0 || std::strcmp(argv[1], "tinyexr_write_small") == 0 || std::strcmp(argv[1], "tinyexr_zfp_write") == 0))
     {
         g_state = std::strtoull(argv[2], NULL, 10);
+        g_zfp = std::strcmp(argv[1], "tinyexr_zfp_write") == 0;
         return Write(argv[1], std::strcmp(argv[1], "tinyexr_write_small") == 0, static_cast<std::uint32_t>(std::strtoul(argv[3], NULL, 10)));
     }
-    if (argc < 5 || (std::strcmp(argv[1], "tinyexr_read") != 0 && std::strcmp(argv[1], "tinyexr_read_small") != 0))
+    if (argc < 5 || (std::strcmp(argv[1], "tinyexr_read") != 0 && std::strcmp(argv[1], "tinyexr_read_small") != 0 && std::strcmp(argv[1], "tinyexr_zfp_read") != 0))
     {
-        std::fprintf(stderr, "usage: dump tinyexr_read|tinyexr_read_small|tinyexr_parts|tinyexr_deep <seed> <count> <file>\n       dump tinyexr_write|tinyexr_write_small <seed> <count>\n");
+        std::fprintf(stderr, "usage: dump tinyexr_read|tinyexr_read_small|tinyexr_zfp_read|tinyexr_parts|tinyexr_deep <seed> <count> <file>\n       dump tinyexr_write|tinyexr_write_small|tinyexr_zfp_write <seed> <count>\n");
         return 2;
     }
     const bool small = std::strcmp(argv[1], "tinyexr_read_small") == 0;
+    g_zfp = std::strcmp(argv[1], "tinyexr_zfp_read") == 0;
     g_state = std::strtoull(argv[2], NULL, 10);
     const std::uint32_t count = static_cast<std::uint32_t>(std::strtoul(argv[3], NULL, 10));
     std::FILE* out = std::fopen(argv[4], "wb");
@@ -1894,7 +2117,7 @@ int main(int argc, char** argv)
             // starts with.
             if (Next() % 3 == 0)
             {
-                const std::uint32_t how = Next() % 9;
+                const std::uint32_t how = Next() % (g_zfp ? 10 : 9);
                 sound = false;
                 damaged = true;
                 if (how == 0)
@@ -1972,6 +2195,29 @@ int main(int argc, char** argv)
                         const std::size_t at = FindAttribute(file, "lineOrder", "lineOrder");
                         if (at)
                             file[at] = static_cast<unsigned char>(pick % 4);
+                    }
+                }
+                else if (how == 9)
+                {
+                    // (ZFP) one of its settings made up.
+                    const std::uint32_t which = Next() % 4;
+                    if (which == 0)
+                    {
+                        const std::size_t at = FindAttribute(file, "zfpCompressionType", "uchar");
+                        const std::uint32_t type = Next() % 5;
+                        if (at)
+                            file[at] = static_cast<unsigned char>(type);
+                    }
+                    else
+                    {
+                        const char* name = which == 1 ? "zfpCompressionRate" : which == 2 ? "zfpCompressionTolerance" : "zfpCompressionPrecision";
+                        const std::size_t at = FindAttribute(file, name, which == 3 ? "int" : "double");
+                        const double value = ZfpDouble(which == 2, made.channels.size() > 1);
+                        const std::uint32_t precision = Next();
+                        if (at && which < 3 && at + 8 <= file.size())
+                            std::memcpy(&file[at], &value, 8);
+                        else if (at && at + 4 <= file.size())
+                            std::memcpy(&file[at], &precision, 4);
                     }
                 }
                 else

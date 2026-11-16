@@ -15,6 +15,11 @@
 //! of many parts saved, and read; `tests/data/exr_parts.bin` the files it read (a third of
 //! them damaged) with what came of each. `tests/data/tinyexr_deep_expected.txt` and
 //! `tests/data/exr_deep.bin` are the same for `tinyexr_deep 13 80`, of made-up deep files.
+//!
+//! `tests/data/tinyexr_zfp_write_expected.txt` is what it printed for `tinyexr_zfp_write 5 300`,
+//! and `tests/data/tinyexr_zfp_read_expected.txt` for `tinyexr_zfp_read 11 100` (whose files
+//! are `tests/data/exr_zfp.bin`): the same of images for ZFP compression, of floats with the
+//! attributes of its settings, built with `TINYEXR_USE_ZFP` and zfp 1.0.1.
 
 mod made_up;
 
@@ -37,6 +42,14 @@ fn reads_as_tinyexr_does() {
         assert_eq!(ours, theirs, "line {}", line + 1);
     }
     assert_eq!(printed.lines().count(), expected.lines().count());
+}
+
+#[test]
+fn zfp_is_written_and_read_as_tinyexr_does() {
+    let printed = made_up::tinyexr_write("tinyexr_zfp_write", 5, 300);
+    assert_eq!(printed, include_str!("data/tinyexr_zfp_write_expected.txt"));
+    let printed = made_up::tinyexr_read("tinyexr_zfp_read", 100, include_bytes!("data/exr_zfp.bin"));
+    assert_eq!(printed, include_str!("data/tinyexr_zfp_read_expected.txt"));
 }
 
 #[test]

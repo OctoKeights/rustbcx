@@ -18,6 +18,13 @@
   against tinyexr on 120,000 files, damaged and not (the `tinyexr_parts` and `tinyexr_deep`
   dumps).
 
+- **ZFP `.exr` compression.** `tinyexr` now reads and writes the ZFP compression tinyexr
+  adds to the format (`COMPRESSIONTYPE_ZFP`), with a port of the zfp library's coder of
+  blocks of floats: at a fixed rate, a precision or a tolerance, set by the attributes
+  `ZfpSettings` makes. Checked against tinyexr built with `TINYEXR_USE_ZFP` and zfp 1.0.1 on
+  100,000 made-up images, saved and read back, a third of them damaged (the
+  `tinyexr_zfp_write` and `tinyexr_zfp_read` dumps).
+
 - **Every Zstandard level.** `zstd::compress` now takes levels 4 to 22 as well, with all
   nine of zstd's strategies: greedy and lazy (with hash chains, rows of a hash table, or a
   binary tree), and the optimal ones; with the splitting of blocks the slower levels do, the

@@ -3309,14 +3309,52 @@ fn exr_values(r: &mut Random, pixel_type: i32, w: i32, h: i32) -> rustbcx::tinye
     }
 }
 
-fn exr_image(r: &mut Random, small: bool) -> ExrMade {
+/// A double such as the settings of ZFP have: a rate, a tolerance, or one that is not either.
+/// (`ZfpDouble`: less than nothing, which asks for most of four gigabits a block, only where
+/// there is more than one channel, `many`.)
+fn exr_zfp_double(r: &mut Random, tolerance: bool, many: bool) -> f64 {
+    const RATES: [f64; 16] = [0.5, 1.0, 2.0, 2.0, 4.0, 7.3, 8.0, 12.0, 16.0, 24.0, 31.9, 32.0, 40.0, 0.0, -0.01, 1e-9];
+    const TOLERANCES: [f64; 16] = [1e-3, 0.5, 1e-7, 0.01, 2.0, 1e-30, 0.0, -1.0, 1e-40, 1e30, 1e-320, 0.25, 3.0, 1e-5, 100.0, 1e300];
+    let kind = r.next() % 32;
+    if kind < 16 {
+        return if tolerance { TOLERANCES[kind as usize] } else { RATES[kind as usize] };
+    }
+    if kind < 28 {
+        return f64::from(r.next() % 400) / if tolerance { 1000.0 } else { 10.0 };
+    }
+    match kind {
+        28 => f64::NAN,
+        29 => f64::INFINITY,
+        30 if many => -1.0,
+        _ => 100.0,
+    }
+}
+
+/// A made-up image (`MakeImage`); for ZFP compression (`g_zfp`), of floats, most of them of
+/// whole blocks of four by four, with the attributes of ZFP's settings.
+fn exr_image(r: &mut Random, small: bool, zfp: bool) -> ExrMade {
     use rustbcx::tinyexr::{self, Attribute, Box2i, ChannelInfo, ExrHeader, ExrImage, ExrTile};
     const NAMES: [&str; 8] = ["A", "B", "G", "R", "Z", "id", "light.B", "light.G"];
     let mut plain = true;
     let tiled = r.next().is_multiple_of(3);
-    let size_kind = if small { 0 } else { r.next() % 8 };
+    let size_kind = if zfp {
+        8 + r.next() % 8
+    } else if small {
+        0
+    } else {
+        r.next() % 8
+    };
     let (width, height);
-    if size_kind < 5 {
+    if size_kind >= 8 {
+        // (For ZFP: of whole blocks, now and then not.)
+        if size_kind < 15 {
+            width = 4 * (1 + (r.next() % 12) as i32);
+            height = 4 * (1 + (r.next() % 12) as i32);
+        } else {
+            width = 1 + (r.next() % 40) as i32;
+            height = 1 + (r.next() % 40) as i32;
+        }
+    } else if size_kind < 5 {
         width = 1 + (r.next() % if small { 10 } else { 40 }) as i32;
         height = 1 + (r.next() % if small { 36 } else { 40 }) as i32;
     } else if size_kind < 7 {
@@ -3346,6 +3384,23 @@ fn exr_image(r: &mut Random, small: bool) -> ExrMade {
     let mut header = ExrHeader::default();
     for c in 0..count {
         let name = if names_kind == 2 { "Y" } else { NAMES[(start + c) as usize] };
+        if zfp {
+            // Floats, halves or integers handed over, stored as floats, now and then not.
+            let kind = r.next() % 16;
+            let memory_type = if kind < 10 {
+                tinyexr::PIXELTYPE_FLOAT
+            } else if kind < 15 {
+                tinyexr::PIXELTYPE_HALF
+            } else {
+                tinyexr::PIXELTYPE_UINT
+            };
+            let as_half = r.next().is_multiple_of(24);
+            let file_type = if as_half && memory_type != tinyexr::PIXELTYPE_UINT { tinyexr::PIXELTYPE_HALF } else { tinyexr::PIXELTYPE_FLOAT };
+            header.channels.push(ChannelInfo { name: name.to_string(), pixel_type: file_type, x_sampling: 1, y_sampling: 1, p_linear: 0 });
+            header.pixel_types.push(memory_type);
+            header.requested_pixel_types.push(file_type);
+            continue;
+        }
         let memory_type = (r.next() % 3) as i32;
         let as_half = r.next() % 2;
         let file_type = if memory_type == tinyexr::PIXELTYPE_UINT {
@@ -3371,11 +3426,54 @@ fn exr_image(r: &mut Random, small: bool) -> ExrMade {
     } else {
         tinyexr::COMPRESSIONTYPE_PIZ
     };
+    if zfp {
+        header.compression_type = tinyexr::COMPRESSIONTYPE_ZFP;
+    } else if header.compression_type == tinyexr::COMPRESSIONTYPE_ZFP {
+        // (A ZFP file without the attributes of its settings, as these other images are, is
+        // written, at 2 bits a value, and not read.)
+        plain = false;
+    }
     header.long_name = i32::from(r.next().is_multiple_of(8));
+    if zfp {
+        // The settings: a rate, a precision or a tolerance, each with its type; now and then
+        // a type it does not know, none, a type of other than one byte, or no value for it.
+        let kind = r.next() % 32;
+        let zfp_type = if kind < 12 {
+            0
+        } else if kind < 18 {
+            1
+        } else if kind < 28 {
+            2
+        } else if kind == 28 {
+            3 + r.next() % 253
+        } else {
+            0
+        };
+        let attribute = |name: &str, type_name: &str, value: Vec<u8>| Attribute { name: name.to_string(), type_name: type_name.to_string(), value };
+        if kind != 29 {
+            header.custom_attributes.push(attribute("zfpCompressionType", "uchar", vec![zfp_type as u8; if kind == 30 { 2 } else { 1 }]));
+        }
+        if kind != 31 {
+            if zfp_type == 0 {
+                let rate = exr_zfp_double(r, false, header.channels.len() > 1);
+                header.custom_attributes.push(attribute("zfpCompressionRate", "double", rate.to_le_bytes().to_vec()));
+            } else if zfp_type == 1 {
+                let precision = r.next() % 70;
+                header.custom_attributes.push(attribute("zfpCompressionPrecision", "int", precision.to_le_bytes().to_vec()));
+            } else {
+                let tolerance = exr_zfp_double(r, true, header.channels.len() > 1);
+                header.custom_attributes.push(attribute("zfpCompressionTolerance", "double", tolerance.to_le_bytes().to_vec()));
+            }
+        }
+        // (A file without them saves, at 2 bits a value, and is not read.)
+        if kind >= 28 {
+            plain = false;
+        }
+    }
     // Now and then attributes of its own.
     let mut with_chunk_count = false;
     let mut wrong_chunk_count = 0u32;
-    if r.next().is_multiple_of(3) {
+    if !zfp && r.next().is_multiple_of(3) {
         let attributes = 1 + r.next() % 3;
         for j in 0..attributes {
             let kind = r.next() % 16;
@@ -3457,7 +3555,12 @@ fn exr_image(r: &mut Random, small: bool) -> ExrMade {
     header.tiled = 1;
     header.tile_size_x = 1 + (r.next() % width.min(64) as u32) as i32;
     header.tile_size_y = 1 + (r.next() % height.min(64) as u32) as i32;
-    header.tile_level_mode = (r.next() % 3) as i32;
+    if zfp && !r.next().is_multiple_of(8) {
+        // (Of whole blocks, and of one level, most of them.)
+        header.tile_size_x = (header.tile_size_x + 3) & !3;
+        header.tile_size_y = (header.tile_size_y + 3) & !3;
+    }
+    header.tile_level_mode = if zfp && !r.next().is_multiple_of(4) { tinyexr::TILE_ONE_LEVEL } else { (r.next() % 3) as i32 };
     header.tile_rounding_mode = (r.next() % 2) as i32;
     let without_last_level = r.next().is_multiple_of(16);
 
@@ -3521,7 +3624,7 @@ pub fn tinyexr_write(name: &str, seed: u64, count: u32) -> String {
         }
     }
     for i in 0..count {
-        let made = exr_image(&mut r, small);
+        let made = exr_image(&mut r, small, name.starts_with("tinyexr_zfp"));
         match tinyexr::save_exr_image_to_memory_as_tinyexr(&made.image, &made.header) {
             Err(error) => {
                 not_saved += 1;
@@ -3554,6 +3657,7 @@ pub fn tinyexr_write(name: &str, seed: u64, count: u32) -> String {
                         for c in 0..made.header.channels.len() {
                             let file_type = made.header.requested_pixel_types[c];
                             let kept = made.header.pixel_types[c] == file_type
+                                && comp != tinyexr::COMPRESSIONTYPE_ZFP
                                 && !(comp == tinyexr::COMPRESSIONTYPE_PXR24 && file_type == tinyexr::PIXELTYPE_FLOAT)
                                 && !((comp == tinyexr::COMPRESSIONTYPE_B44 || comp == tinyexr::COMPRESSIONTYPE_B44A) && file_type == tinyexr::PIXELTYPE_HALF);
                             if !kept {
@@ -3846,7 +3950,7 @@ pub fn tinyexr_parts(name: &str, seed: u64, count: u32, file: &[u8]) -> String {
         let mut parts = Vec::new();
         let mut names: Vec<String> = Vec::new();
         for p in 0..num_parts {
-            parts.push(exr_image(&mut r, true));
+            parts.push(exr_image(&mut r, true, false));
             let kind = r.next() % 40;
             let part_name = if kind == 0 {
                 String::new()
