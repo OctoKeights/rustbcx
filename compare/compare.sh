@@ -66,11 +66,13 @@
 # zstd_decode, with a tenth of [blocks] as the number of frames. The C side writes its frames
 # to a file, which the Rust side reads.
 # The compressor is compared with that library's own: compare/dump_zstd_compress.c has
-# ZSTD_compress make frames of made-up data at the levels that are ported, and
-# compare/dump_zstd_entropy.c asks the entropy coders inside it one function at a time, for
-# what a whole frame seldom or never asks of them. Dumps: zstd_compress, with a hundredth of
-# [blocks] as the number of sources (of up to five megabytes each), and zstd_entropy, with
-# [blocks] as the number of rounds.
+# ZSTD_compress make frames of made-up data at every level, and compare/dump_zstd_entropy.c
+# asks the entropy coders inside it one function at a time, for what a whole frame seldom or
+# never asks of them. Dumps: zstd_compress (levels 1 to 3, 4 for some sizes, 0 and the negative ones) and
+# zstd_compress_more (4 to 22), each with a hundredth of [blocks] as the number of sources (of
+# up to five megabytes each); zstd_compress_long, one source of 64 to 80 megabytes at level 22
+# for each seed, which takes long-distance matching; and zstd_entropy, with [blocks] as the
+# number of rounds.
 #
 # The .exr files (src/tinyexr) are compared with tinyexr (https://github.com/syoyo/tinyexr),
 # whose checkout goes in $TINYEXR. compare/dump_tinyexr.cc is built against its tinyexr.h
@@ -98,7 +100,7 @@ here=$(cd "$(dirname "$0")/.." && pwd)
 source=$1
 blocks=${2:-200000}
 seeds=${3:-3}
-dumps=${4:-bc7decomp unpack bc1 bc345 bc7enc bc7block ert rdo bc7e_presets bc7e_settings rdo_bc7e bc2 bc6h_unpack bc6h_pack bc6h_enc miniz stb_image_write stb_image stb_image_more zstd_decode zstd_compress zstd_entropy tinyexr_write tinyexr_read tinyexr_parts tinyexr_deep}
+dumps=${4:-bc7decomp unpack bc1 bc345 bc7enc bc7block ert rdo bc7e_presets bc7e_settings rdo_bc7e bc2 bc6h_unpack bc6h_pack bc6h_enc miniz stb_image_write stb_image stb_image_more zstd_decode zstd_compress zstd_compress_more zstd_compress_long zstd_entropy tinyexr_write tinyexr_read tinyexr_parts tinyexr_deep}
 tmp=${TMPDIR:-/tmp}/rustbcx-compare
 mkdir -p "$tmp" || exit 2
 
@@ -124,7 +126,7 @@ cpp_sources="$source/bc7decomp.cpp $source/bc7decomp_ref.cpp $source/bc7enc.cpp 
 for what in $dumps; do
     extra=
     case $what in
-    zstd_decode | zstd_compress | zstd_entropy)
+    zstd_decode | zstd_compress | zstd_compress_more | zstd_compress_long | zstd_entropy)
         if [ "$built_zstd" -eq 0 ]; then
             if [ -z "${ZSTD:-}" ] || [ ! -f "$ZSTD/doc/educational_decoder/zstd_decompress.c" ]; then
                 echo "$what: NOT COMPARED, no zstd (put its checkout in \$ZSTD)"
@@ -145,9 +147,13 @@ for what in $dumps; do
             count=$((blocks / 10))
             extra=$tmp/zstd-frames.bin
             ;;
-        zstd_compress)
+        zstd_compress | zstd_compress_more)
             reference=$tmp/dump-zstd-compress
             count=$((blocks / 100))
+            ;;
+        zstd_compress_long)
+            reference=$tmp/dump-zstd-compress
+            count=1
             ;;
         *)
             reference=$tmp/dump-zstd-entropy

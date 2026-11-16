@@ -1,8 +1,8 @@
 //! Huffman coding of literals: a port of `lib/compress/huf_compress.c` of zstd v1.5.7, as a
 //! 64-bit build has it.
 //!
-//! The search for the best table depth (`HUF_flags_optimalDepth`) is left out: the original
-//! turns it on only for the strategies from `ZSTD_btultra` up, which are not ported.
+//! From `ZSTD_btultra` up the depth of the table is the one that comes out smallest
+//! (`HUF_flags_optimalDepth`); below, a quicker estimate.
 
 // (The arithmetic is written as the original has it.)
 #![allow(clippy::manual_div_ceil, clippy::needless_range_loop)]
@@ -580,6 +580,75 @@ fn estimate_compressed_size(ctable: &HufCTable, count: &[u32], max_symbol_value:
     nb_bits >> 3
 }
 
+/// `HUF_optimalTableLog` with `HUF_flags_optimalDepth`: of the depths from the least the
+/// symbols need, the one that comes out smallest, table and all (as far as the sizes come
+/// down).
+fn optimal_table_log_by_depth(max_table_log: u32, max_symbol_value: u32, table: &mut HufCompressTables) -> u32 {
+    // (The room the original's workspace leaves for the description.)
+    let mut dst = [0u8; 4096];
+    // `HUF_cardinality`, `HUF_minTableLog`.
+    let symbol_cardinality = table.count[..=max_symbol_value as usize].iter().filter(|&&c| c != 0).count() as u32;
+    let min_table_log = highbit32(symbol_cardinality) + 1;
+    let mut opt_size = usize::MAX - 1;
+    let mut opt_log = max_table_log;
+
+    // Search until size increases.
+    for opt_log_guess in min_table_log..=max_table_log {
+        let Ok(max_bits) = build_ctable(&mut table.ctable, &table.count, max_symbol_value, opt_log_guess, &mut table.huff_node_tbl, &mut table.rank_position) else {
+            continue;
+        };
+        if max_bits < opt_log_guess && opt_log_guess > min_table_log {
+            break;
+        }
+        let Ok(h_size) = write_ctable(&mut dst, &table.ctable, max_symbol_value, max_bits) else {
+            continue;
+        };
+
+        let new_size = estimate_compressed_size(&table.ctable, &table.count, max_symbol_value) + h_size;
+        if new_size > opt_size + 1 {
+            break;
+        }
+        if new_size < opt_size {
+            opt_size = new_size;
+            opt_log = opt_log_guess;
+        }
+    }
+    opt_log
+}
+
+/// What `ZSTD_buildBlockEntropyStats_literals` asks of the Huffman coder, for the block
+/// splitter's estimates: the literals of `src` counted in `table.count` (`HIST_count_wksp`),
+/// the largest count, and the highest symbol.
+pub(crate) fn count_literals(table: &mut HufCompressTables, src: &[u8]) -> (usize, u32) {
+    let mut max_symbol_value = HUF_SYMBOLVALUE_MAX;
+    let largest = hist::count_simple(&mut table.count, &mut max_symbol_value, src) as usize;
+    (largest, max_symbol_value)
+}
+
+/// With the counts of [`count_literals`]: whether `ctable` codes every symbol counted
+/// (`HUF_validateCTable`).
+pub(crate) fn counted_fit(table: &HufCompressTables, ctable: &HufCTable, max_symbol_value: u32) -> bool {
+    validate_ctable(ctable, &table.count, max_symbol_value)
+}
+
+/// With the counts of [`count_literals`]: a new table for them in `ctable`, of the depth
+/// `HUF_optimalTableLog` takes, and its depth.
+pub(crate) fn build_table_for_counts(table: &mut HufCompressTables, ctable: &mut HufCTable, src_size: usize, max_symbol_value: u32, huff_log: u32, optimal_depth: bool) -> CResult<u32> {
+    let huff_log = if optimal_depth { optimal_table_log_by_depth(huff_log, max_symbol_value, table) } else { fse_compress::optimal_table_log_internal(huff_log, src_size, max_symbol_value, 1) };
+    build_ctable(ctable, &table.count, max_symbol_value, huff_log, &mut table.huff_node_tbl, &mut table.rank_position)
+}
+
+/// With the counts of [`count_literals`]: what the literals come to with `ctable`, in bytes
+/// (`HUF_estimateCompressedSize`).
+pub(crate) fn estimate_counted(table: &HufCompressTables, ctable: &HufCTable, max_symbol_value: u32) -> usize {
+    estimate_compressed_size(ctable, &table.count, max_symbol_value)
+}
+
+/// The description of `ctable` (`HUF_writeCTable_wksp`).
+pub(crate) fn write_table(dst: &mut [u8], ctable: &HufCTable, max_symbol_value: u32, huff_log: u32) -> CResult<usize> {
+    write_ctable(dst, ctable, max_symbol_value, huff_log)
+}
+
 /// `HUF_validateCTable`: whether the table has a code for every symbol that is counted.
 fn validate_ctable(ctable: &HufCTable, count: &[u32], max_symbol_value: u32) -> bool {
     let (_, header_max_symbol_value) = read_ctable_header(ctable);
@@ -832,8 +901,8 @@ const SUSPECT_INCOMPRESSIBLE_SAMPLE_RATIO: usize = 10; // must be >= 2
 /// (`old_huf_table`, where `repeat` allows it; `repeat` is `None` afterwards if the table
 /// is new). 0 if `src` is not worth it, 1 if it is one byte over and over.
 ///
-/// `prefer_repeat` and `suspect_uncompressible` are the original's `HUF_flags_preferRepeat`
-/// and `HUF_flags_suspectUncompressible`.
+/// `prefer_repeat`, `suspect_uncompressible` and `optimal_depth` are the original's
+/// `HUF_flags_preferRepeat`, `HUF_flags_suspectUncompressible` and `HUF_flags_optimalDepth`.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn compress_repeat(
     dst: &mut [u8],
@@ -846,6 +915,7 @@ pub(crate) fn compress_repeat(
     repeat: &mut HufRepeat,
     prefer_repeat: bool,
     suspect_uncompressible: bool,
+    optimal_depth: bool,
 ) -> CResult<usize> {
     let src_size = src.len();
     let dst_size = dst.len();
@@ -919,7 +989,7 @@ pub(crate) fn compress_repeat(
     }
 
     // Build the Huffman tree.
-    huff_log = fse_compress::optimal_table_log_internal(huff_log, src_size, max_symbol_value, 1);
+    huff_log = if optimal_depth { optimal_table_log_by_depth(huff_log, max_symbol_value, table) } else { fse_compress::optimal_table_log_internal(huff_log, src_size, max_symbol_value, 1) };
     {
         let max_bits = build_ctable(&mut table.ctable, &table.count, max_symbol_value, huff_log, &mut table.huff_node_tbl, &mut table.rank_position)?;
         huff_log = max_bits;

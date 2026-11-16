@@ -18,6 +18,15 @@
   against tinyexr on 120,000 files, damaged and not (the `tinyexr_parts` and `tinyexr_deep`
   dumps).
 
+- **Every Zstandard level.** `zstd::compress` now takes levels 4 to 22 as well, with all
+  nine of zstd's strategies: greedy and lazy (with hash chains, rows of a hash table, or a
+  binary tree), and the optimal ones; with the splitting of blocks the slower levels do, the
+  Huffman tables of the best depth, the choice of each sequence table by its cost, and the
+  long-distance matching level 22 does for sources over 64 MB. Checked against
+  `ZSTD_compress` on 6,000 sources of up to 5 MB (the `zstd_compress_more` dump) and on
+  sources of 64 to 80 MB (`zstd_compress_long`), every frame byte for byte.
+  `zstd::level_is_ported` is deprecated: it is always true.
+
 - **Breaking:** `LoadOptions` gains the four gamma and scale settings and is no longer `Eq`;
   `Info` gains `is_hdr`; `ImageType` gains a variant for each new format.
 

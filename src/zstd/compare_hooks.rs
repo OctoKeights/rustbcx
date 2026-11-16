@@ -20,6 +20,12 @@ fn code(error: CError) -> u32 {
     }
 }
 
+/// The number of the strategy (`ZSTD_strategy`) that `level` takes for a source of
+/// `src_size` bytes: 1 for `ZSTD_fast` to 9 for `ZSTD_btultra2`.
+pub fn strategy_of(level: i32, src_size: usize) -> u32 {
+    super::zstd_compress::get_cparams_internal(level, src_size as u64).strategy as u32
+}
+
 /// `FSE_optimalTableLog`.
 pub fn fse_optimal_table_log(max_table_log: u32, src_size: usize, max_symbol_value: u32) -> u32 {
     fse_compress::optimal_table_log(max_table_log, src_size, max_symbol_value)
@@ -68,7 +74,7 @@ impl Huf {
     pub fn compress(&mut self, dst: &mut [u8], src: &[u8], four: bool, repeat: &mut u32, prefer_repeat: bool, suspect_uncompressible: bool) -> Result<usize, u32> {
         let mut mode = repeat_from(*repeat);
         let nb_streams = if four { HufNbStreams::Four } else { HufNbStreams::Single };
-        let answer = huf_compress::compress_repeat(dst, src, 255, 11, nb_streams, &mut self.tables, &mut self.old, &mut mode, prefer_repeat, suspect_uncompressible);
+        let answer = huf_compress::compress_repeat(dst, src, 255, 11, nb_streams, &mut self.tables, &mut self.old, &mut mode, prefer_repeat, suspect_uncompressible, false);
         *repeat = mode as u32;
         answer.map_err(code)
     }

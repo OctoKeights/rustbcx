@@ -93,13 +93,15 @@ prints the same from the same frames. To make them again:
     "${TMPDIR:-/tmp}/rustbcx-compare/dump-zstd" zstd_decode_small 6 120 tests/data/zstd_frames.bin > tests/data/zstd_decode_expected.txt
 
 `zstd_compress_expected.txt` is what `compare/dump_zstd_compress.c` prints of the frames the
-zstd library's `ZSTD_compress` makes of made-up data, and `zstd_entropy_expected.txt` what
+zstd library's `ZSTD_compress` makes of made-up data (`zstd_compress_more_expected.txt` the
+same at the levels from 4 up), and `zstd_entropy_expected.txt` what
 `compare/dump_zstd_entropy.c` prints of the answers of the entropy coders inside that
 library, asked one function at a time; `tests/zstd_compress_golden.rs` checks that the port
 of the compressor prints the same. To make them again:
 
     ZSTD=<checkout of zstd> compare/compare.sh <checkout of bc7enc_rdo> 3000 1 "zstd_compress zstd_entropy"
     "${TMPDIR:-/tmp}/rustbcx-compare/dump-zstd-compress" zstd_compress_small 7 200 > tests/data/zstd_compress_expected.txt
+    "${TMPDIR:-/tmp}/rustbcx-compare/dump-zstd-compress" zstd_compress_more_small 7 160 > tests/data/zstd_compress_more_expected.txt
     "${TMPDIR:-/tmp}/rustbcx-compare/dump-zstd-entropy" zstd_entropy 9 4000 > tests/data/zstd_entropy_expected.txt
 
 `tinyexr_write_expected.txt` is what `compare/dump_tinyexr.cc` prints of the `.exr` files

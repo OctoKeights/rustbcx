@@ -2602,8 +2602,16 @@ const ZSTD_LEVELS: [i32; 20] = [1, 1, 2, 2, 3, 3, 3, 0, 4, 4, -1, -1, -2, -3, -5
 /// `compare/dump_zstd_compress.c` does with `ZSTD_compress`. With `check`, each frame is
 /// also decoded by the port of the reference decoder and compared with its data.
 pub fn zstd_compress(name: &str, seed: u64, count: u32, check: bool) -> String {
+    zstd_compress_up_to(name, seed, count, check, 9)
+}
+
+/// The `zstd_compress` dumps, and the `zstd_compress_more` ones (levels 4 to 22), where a
+/// level whose strategy for the size is past `highest` is taken as level 3.
+pub fn zstd_compress_up_to(name: &str, seed: u64, count: u32, check: bool, highest: u32) -> String {
     const MAX_DATA: u32 = 5000000;
     let small = name == "zstd_compress_small";
+    let more = name.starts_with("zstd_compress_more");
+    let more_small = name == "zstd_compress_more_small";
     let mut r = Random { state: seed };
     let mut hash = Hash::new();
     let (mut in_total, mut frame_total) = (0u64, 0u64);
@@ -2624,8 +2632,22 @@ pub fn zstd_compress(name: &str, seed: u64, count: u32, check: bool) -> String {
         if small && max > 300000 {
             max = 300000;
         }
+        if more_small && max > 40000 {
+            max = 40000;
+        }
         let mut len = (r.next() % (max + 1)) as usize;
-        let mut level = ZSTD_LEVELS[(r.next() % 20) as usize];
+        let mut level;
+        if more {
+            level = 4 + (r.next() % 19) as i32;
+            if r.next().is_multiple_of(20) {
+                level = 23 + (r.next() % 5) as i32;
+            }
+            if rustbcx::zstd::compare_hooks::strategy_of(level, len.max(1)) > highest {
+                level = 3;
+            }
+        } else {
+            level = ZSTD_LEVELS[(r.next() % 20) as usize];
+        }
         // A block of nothing but matches of four bytes has so many sequences that their
         // number is written the long way: it takes level 3 and a source of exactly this size.
         if kind == 12 && r.next() % 2 == 0 {
@@ -2633,7 +2655,7 @@ pub fn zstd_compress(name: &str, seed: u64, count: u32, check: bool) -> String {
             level = 3;
         }
         // Level 4 takes a strategy that is ported for these sizes only.
-        if level == 4 && !(len > 256 * 1024 || (len > 16 * 1024 && len <= 128 * 1024)) {
+        if !more && level == 4 && !(len > 256 * 1024 || (len > 16 * 1024 && len <= 128 * 1024)) {
             level = 3;
         }
         data.clear();
@@ -2647,11 +2669,61 @@ pub fn zstd_compress(name: &str, seed: u64, count: u32, check: bool) -> String {
         hash.add(&(level as u32).to_le_bytes());
         hash.add(&(frame.len() as u32).to_le_bytes());
         hash.add(&frame);
+        if std::env::var_os("SHOW_EACH").is_some() {
+            eprintln!("frame {i}: {len} bytes at level {level}, {} bytes, {:016x}", frame.len(), hash.value);
+        }
         in_total += len as u64;
         frame_total += frame.len() as u64;
         if (i + 1) % 10 == 0 || i + 1 == count {
             out.push_str(&format!("{name} {} {:016x}\n", i + 1, hash.value));
         }
+    }
+    out.push_str(&format!("{name} bytes: {in_total}; bytes of frames: {frame_total}\n"));
+    out
+}
+
+/// The `zstd_compress_long` dump: made-up data of 64 to 80 megabytes, as `FillLong` in
+/// `compare/dump_zstd_compress.c` makes it, compressed at level 22, which takes
+/// long-distance matching for so much.
+pub fn zstd_compress_long(name: &str, seed: u64, count: u32, check: bool) -> String {
+    let mut r = Random { state: seed };
+    let mut hash = Hash::new();
+    let (mut in_total, mut frame_total) = (0u64, 0u64);
+    let mut out = String::new();
+    for i in 0..count {
+        let len = 64 * 1024 * 1024 + (r.next() % 16000000) as usize;
+        let level = 22;
+        let mut data = vec![0u8; len];
+        let mut at = 0;
+        while at < len {
+            let piece = (1 + (r.next() % 4000000) as usize).min(len - at);
+            if at > 1000000 && r.next().is_multiple_of(2) {
+                let dist = 1 + r.next() as usize % at.min(70000000);
+                let changes = r.next() % 16;
+                for i in at..at + piece {
+                    data[i] = data[i - dist];
+                }
+                for _ in 0..changes {
+                    let place = at + r.next() as usize % piece;
+                    data[place] = r.next() as u8;
+                }
+            } else {
+                let kind = r.next() % 13;
+                fill_data(&mut r, &mut data[at..at + piece], kind);
+            }
+            at += piece;
+        }
+        let frame = rustbcx::zstd::compress(&data, level).expect("every level is ported");
+        if check {
+            assert_eq!(rustbcx::zstd::decompress(&frame, len).as_deref(), Ok(&data[..]), "frame {i} does not give its data back");
+        }
+        hash.add(&(len as u32).to_le_bytes());
+        hash.add(&(level as u32).to_le_bytes());
+        hash.add(&(frame.len() as u32).to_le_bytes());
+        hash.add(&frame);
+        in_total += len as u64;
+        frame_total += frame.len() as u64;
+        out.push_str(&format!("{name} {} {:016x}\n", i + 1, hash.value));
     }
     out.push_str(&format!("{name} bytes: {in_total}; bytes of frames: {frame_total}\n"));
     out

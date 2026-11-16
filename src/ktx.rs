@@ -18,9 +18,9 @@ pub enum Supercompression {
     /// As zlib streams ([`crate::miniz`]), at a level from 1, the quickest, to 9, the
     /// smallest (10 tries harder still, and below 0 is miniz's default).
     Zlib(i32),
-    /// As Zstandard frames ([`crate::zstd`]), at one of zstd's levels: 1 to 3, or a negative
-    /// one, which is quicker and compresses less; 0 is zstd's default, 3. (The port of the
-    /// compressor has these levels for a level of any size; see [`crate::zstd::compress`].)
+    /// As Zstandard frames ([`crate::zstd`]), at one of zstd's levels: 1, the quickest, to
+    /// 22, the smallest, or a negative one, which is quicker still and compresses less; 0 is
+    /// zstd's default, 3.
     Zstd(i32),
 }
 
@@ -245,8 +245,7 @@ pub fn write_ktx2(texture: &Texture) -> Option<Vec<u8>> {
 }
 
 /// The bytes of a `.ktx2` file (KTX version 2) for a texture, its levels supercompressed as
-/// asked. None when the texture is not whole ([`Texture::is_valid`]), or when Zstandard is
-/// asked for at a level the compressor does not take ([`crate::zstd::level_is_ported`]).
+/// asked. None when the texture is not whole ([`Texture::is_valid`]).
 pub fn write_ktx2_with(texture: &Texture, supercompression: Supercompression) -> Option<Vec<u8>> {
     if !texture.is_valid() {
         return None;
@@ -493,7 +492,7 @@ mod tests {
         assert_eq!(write_ktx2_with(&out, Supercompression::None).unwrap(), plain);
 
         // The same with Zstandard: the scheme is 2, and each level is one frame.
-        for zstd_level in [-5, 1, 3] {
+        for zstd_level in [-5, 1, 3, 9, 19] {
             let file = write_ktx2_with(&out, Supercompression::Zstd(zstd_level)).unwrap();
             assert!(file.len() < plain.len() / 4, "{zstd_level}: {} {}", file.len(), plain.len());
             assert_eq!(read_ktx2(&file).unwrap(), out, "{zstd_level}");
@@ -505,8 +504,6 @@ mod tests {
             }
             assert_eq!(entry(0, 0) + entry(0, 1), file.len());
         }
-        // A level the port of the compressor does not have.
-        assert_eq!(write_ktx2_with(&out, Supercompression::Zstd(19)), None);
     }
 
     #[test]

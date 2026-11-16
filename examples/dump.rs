@@ -69,6 +69,14 @@
 //!   dump zstd_decode <seed> <count> <file>         the frames that program wrote to the file,
 //!   dump zstd_decode_small <seed> <count> <file>   each asked its size and decoded
 //!
+//! And of the comparison with zstd's compressor, as `compare/dump_zstd_compress.c` does:
+//!
+//!   dump zstd_compress <seed> <count>              made-up data compressed at levels 1 to 4,
+//!   dump zstd_compress_small <seed> <count>        0 and the negative ones
+//!   dump zstd_compress_more <seed> <count>         the same at levels 4 to 22
+//!   dump zstd_compress_more_small <seed> <count>
+//!   dump zstd_compress_long <seed> <count>         64 to 80 megabytes at level 22
+//!
 //! And of the comparison with tinyexr, as `compare/dump_tinyexr.cc` does:
 //!
 //!   dump tinyexr_write <seed> <count>               made-up images saved as .exr files, and
@@ -596,6 +604,11 @@ fn main() {
             }
         }
         "zstd_compress" | "zstd_compress_small" => print!("{}", made_up::zstd_compress(what, seed, blocks, false)),
+        "zstd_compress_long" => print!("{}", made_up::zstd_compress_long(what, seed, blocks, false)),
+        "zstd_compress_more" | "zstd_compress_more_small" => {
+            let highest = args.get(4).map_or(9, |arg| arg.parse().expect("a strategy"));
+            print!("{}", made_up::zstd_compress_up_to(what, seed, blocks, false, highest));
+        }
         "zstd_entropy" => print!("{}", made_up::zstd_entropy(seed, blocks)),
         "bc6h_unpack" => print!("{}", made_up::bc6h_unpack(seed, blocks)),
         "bc6h_pack" => print!("{}", made_up::bc6h_pack(seed, blocks)),

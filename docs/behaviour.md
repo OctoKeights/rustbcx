@@ -115,12 +115,8 @@
   faster. With a nightly compiler, the `nightly-simd` feature implements the hottest loop of
   `bc7e` with `std::simd` (see [Performance](performance.md)).
 
-- **Zstandard compression is limited to levels 1 to 3 and the negative levels.** zstd has
-  nine match-finding strategies, one per level; the two fastest are ported, which is what
-  those levels use. (Level 4 uses one of them for some source sizes;
-  `zstd::level_is_ported` reports which.) Higher levels, up to 22, are refused until their
-  strategies are ported; the crate does not substitute a weaker one. Frames of every level
-  can be decompressed. Frames are written whole, without a dictionary or checksum.
+- **Zstandard frames are written whole, without a dictionary or checksum.** Every level is
+  supported, from the negative ones to 22. Frames of every kind can be decompressed.
 
 - **No BasisLZ.** The third `.ktx2` supercompression scheme cannot carry these formats at
   all; it is specific to Basis Universal's ETC1S format.
