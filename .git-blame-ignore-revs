@@ -3,3 +3,6 @@
 
 # Format the crate with rustfmt
 5ecadab1d580d5c99c2c41826e14de77467ee6e3
+
+# Move to the 2024 edition (rustfmt's 2024 style)
+e74c55220e73ce094038139313b31cec34ef1e69

@@ -504,10 +504,10 @@ where
         yl *= yl;
         let mut smooth_block_mse_scale = lerp(params.smooth_block_max_mse_scale, 1.0, yl);
 
-        if let Some(scales) = block_mse_scales {
-            if scales[block_index as usize] > 0.0 {
-                smooth_block_mse_scale = scales[block_index as usize];
-            }
+        if let Some(scales) = block_mse_scales
+            && scales[block_index as usize] > 0.0
+        {
+            smooth_block_mse_scale = scales[block_index as usize];
         }
 
         if smooth_block_mse_scale > 1.0 {

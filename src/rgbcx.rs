@@ -1593,10 +1593,10 @@ impl Rgbcx {
         results: &mut Bc1EncodeResults,
         force_selectors: Option<&[u8; 16]>,
     ) -> bool {
-        if let Some(forced) = force_selectors {
-            if forced.contains(&3) {
-                return false;
-            }
+        if let Some(forced) = force_selectors
+            && forced.contains(&3)
+        {
+            return false;
         }
 
         let mut trial_sels = [0u8; 16];
