@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.2
+
+Documentation only: the README is now a concise overview, with the detail moved to the pages
+under `docs/`. No change to the code's behaviour.
+
 ## 0.3.0
 
 Every block format of the family, every shape of texture, and the files around them: the
