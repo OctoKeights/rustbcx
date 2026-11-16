@@ -75,6 +75,9 @@
 //!   dump tinyexr_write_small <seed> <count>         every fourth the short way as well
 //!   dump tinyexr_read <seed> <count> <file>         the .exr files that program wrote to the
 //!   dump tinyexr_read_small <seed> <count> <file>   file, each read four ways
+//!   dump tinyexr_parts <seed> <count> <file>        files of many parts saved, and the
+//!                                                   ones that program wrote to the file read
+//!   dump tinyexr_deep <seed> <count> <file>         the deep files that program wrote, read
 //!
 //! And of the comparison with bc7e.ispc, as `compare/dump_bc7e.cpp` does with the ISPC encoder:
 //!
@@ -580,6 +583,17 @@ fn main() {
                 std::process::exit(2);
             };
             print!("{}", made_up::tinyexr_read(what, blocks, &file));
+        }
+        "tinyexr_parts" | "tinyexr_deep" => {
+            let Some(file) = args.get(4).and_then(|path| std::fs::read(path).ok()) else {
+                eprintln!("usage: dump {what} <seed> <count> <file of files from compare/dump_tinyexr.cc>");
+                std::process::exit(2);
+            };
+            if what == "tinyexr_parts" {
+                print!("{}", made_up::tinyexr_parts(what, seed, blocks, &file));
+            } else {
+                print!("{}", made_up::tinyexr_deep(what, blocks, &file));
+            }
         }
         "zstd_compress" | "zstd_compress_small" => print!("{}", made_up::zstd_compress(what, seed, blocks, false)),
         "zstd_entropy" => print!("{}", made_up::zstd_entropy(seed, blocks)),

@@ -98,7 +98,7 @@ here=$(cd "$(dirname "$0")/.." && pwd)
 source=$1
 blocks=${2:-200000}
 seeds=${3:-3}
-dumps=${4:-bc7decomp unpack bc1 bc345 bc7enc bc7block ert rdo bc7e_presets bc7e_settings rdo_bc7e bc2 bc6h_unpack bc6h_pack bc6h_enc miniz stb_image_write stb_image stb_image_more zstd_decode zstd_compress zstd_entropy tinyexr_write tinyexr_read}
+dumps=${4:-bc7decomp unpack bc1 bc345 bc7enc bc7block ert rdo bc7e_presets bc7e_settings rdo_bc7e bc2 bc6h_unpack bc6h_pack bc6h_enc miniz stb_image_write stb_image stb_image_more zstd_decode zstd_compress zstd_entropy tinyexr_write tinyexr_read tinyexr_parts tinyexr_deep}
 tmp=${TMPDIR:-/tmp}/rustbcx-compare
 mkdir -p "$tmp" || exit 2
 
@@ -187,7 +187,7 @@ for what in $dumps; do
         reference=$tmp/dump-miniz
         count=$((blocks / 100))
         ;;
-    tinyexr_write | tinyexr_read)
+    tinyexr_write | tinyexr_read | tinyexr_parts | tinyexr_deep)
         if [ "$built_tinyexr" -eq 0 ]; then
             if [ -z "${TINYEXR:-}" ] || [ ! -f "$TINYEXR/tinyexr.h" ]; then
                 echo "$what: NOT COMPARED, no tinyexr (put its checkout in \$TINYEXR)"
@@ -207,6 +207,8 @@ for what in $dumps; do
         reference=$tmp/dump-tinyexr
         count=$((blocks / 10))
         [ "$what" = tinyexr_read ] && extra=$tmp/exr-files.bin
+        [ "$what" = tinyexr_parts ] && extra=$tmp/exr-parts.bin
+        [ "$what" = tinyexr_deep ] && extra=$tmp/exr-deep.bin
         ;;
     stb_image | stb_image_more)
         if [ "$built_stbi" -eq 0 ]; then

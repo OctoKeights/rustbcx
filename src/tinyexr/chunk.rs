@@ -210,7 +210,7 @@ fn decode_tiled_level(exr_image: &mut ExrImage, exr_header: &ExrHeader, offset_d
 }
 
 /// `DecodeChunk`: every block of the file `head` into `exr_image`.
-fn decode_chunk(exr_image: &mut ExrImage, exr_header: &mut ExrHeader, offset_data: &OffsetData, head: &[u8], err: &mut String, as_tinyexr: bool) -> i32 {
+pub(super) fn decode_chunk(exr_image: &mut ExrImage, exr_header: &mut ExrHeader, offset_data: &OffsetData, head: &[u8], err: &mut String, as_tinyexr: bool) -> i32 {
     let size = head.len();
     let num_channels = exr_header.channels.len() as i32;
 

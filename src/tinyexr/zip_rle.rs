@@ -49,7 +49,7 @@ fn reorder_and_predict(src: &[u8]) -> Vec<u8> {
 
 /// What both decompressors end with: the differences summed up, and the bytes put back in
 /// their order, into `dst`.
-fn unpredict_and_reorder(dst: &mut [u8], tmp_buf: &mut [u8]) {
+pub(crate) fn unpredict_and_reorder(dst: &mut [u8], tmp_buf: &mut [u8]) {
     let size = tmp_buf.len();
     // Predictor.
     for t in 1..size {

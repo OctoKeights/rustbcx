@@ -1,5 +1,5 @@
-//! Writing a file: a port of `SaveEXRImageToMemory` (the one part of
-//! `SaveEXRNPartImageToMemory`), `EncodeChunk`, `EncodeTiledLevel`, `EncodePixelData` and
+//! Writing a file: a port of `SaveEXRImageToMemory` and `SaveEXRMultipartImageToMemory`
+//! (`SaveEXRNPartImageToMemory`), `EncodeChunk`, `EncodeTiledLevel`, `EncodePixelData` and
 //! `SaveEXRToMemory` of tinyexr v3.4.0 (`tinyexr.h`).
 
 use super::b44::compress_b44;
@@ -23,6 +23,16 @@ fn write_attribute_to_memory(out: &mut Vec<u8>, name: &str, type_name: &str, dat
     out.extend_from_slice(&c_string(type_name));
     out.push(0);
 
+    out.extend_from_slice(&(data.len() as i32).to_le_bytes());
+    out.extend_from_slice(data);
+}
+
+/// `WriteAttributeToMemory` of a name that is bytes.
+fn write_attribute_bytes(out: &mut Vec<u8>, name: &[u8], type_name: &[u8], data: &[u8]) {
+    out.extend_from_slice(name);
+    out.push(0);
+    out.extend_from_slice(type_name);
+    out.push(0);
     out.extend_from_slice(&(data.len() as i32).to_le_bytes());
     out.extend_from_slice(data);
 }
@@ -266,7 +276,18 @@ fn encode_tiled_level(
 /// `EncodeChunk`: every block of the image, in `data_list`, and where each will be in the
 /// file, in `offset_data`. `total_size` comes back as the size of the file.
 #[allow(clippy::too_many_arguments)]
-fn encode_chunk(exr_image: &ExrImage, exr_header: &ExrHeader, num_blocks: i32, chunk_offset: u64, offset_data: &mut OffsetData, data_list: &mut Vec<Vec<u8>>, total_size: &mut u64, err: &mut String, as_tinyexr: bool) -> i32 {
+fn encode_chunk(
+    exr_image: &ExrImage,
+    exr_header: &ExrHeader,
+    num_blocks: i32,
+    chunk_offset: u64,
+    is_multipart: bool,
+    offset_data: &mut OffsetData,
+    data_list: &mut Vec<Vec<u8>>,
+    total_size: &mut u64,
+    err: &mut String,
+    as_tinyexr: bool,
+) -> i32 {
     let num_scanlines = num_scanline_blocks(exr_header.compression_type);
 
     data_list.clear();
@@ -293,6 +314,8 @@ fn encode_chunk(exr_image: &ExrImage, exr_header: &ExrHeader, num_blocks: i32, c
     }
 
     let mut offset = chunk_offset;
+    // (In a file of many parts, each block has its part's number before it.)
+    let doffset = if is_multipart { 4u64 } else { 0 };
 
     if !exr_image.tiles.is_empty() {
         let mut level_image = Some(exr_image);
@@ -338,7 +361,7 @@ fn encode_chunk(exr_image: &ExrImage, exr_header: &ExrHeader, num_blocks: i32, c
             for j in 0..num_y_tiles as usize {
                 for i in 0..num_x_tiles as usize {
                     offset_data.offsets[level as usize][j][i] = offset;
-                    offset += data_list[block_idx].len() as u64;
+                    offset += data_list[block_idx].len() as u64 + doffset;
                     block_idx += 1;
                 }
             }
@@ -398,7 +421,7 @@ fn encode_chunk(exr_image: &ExrImage, exr_header: &ExrHeader, num_blocks: i32, c
         let offsets = &mut offset_data.offsets[0][0];
         for (slot, data) in offsets.iter_mut().zip(data_list.iter()) {
             *slot = offset;
-            offset += data.len() as u64;
+            offset += data.len() as u64 + doffset;
         }
 
         *total_size = offset;
@@ -509,17 +532,47 @@ pub fn save_exr_image_to_memory_as_tinyexr(exr_image: &ExrImage, exr_header: &Ex
 }
 
 fn save_image(exr_image: &ExrImage, exr_header: &ExrHeader, as_tinyexr: bool) -> Result<Vec<u8>, ExrError> {
+    save_parts(&[(exr_image, exr_header)], as_tinyexr)
+}
+
+/// `SaveEXRMultipartImageToMemory`: images as the parts of one `.exr` file, each with its
+/// header, as [`save_exr_image_to_memory`] writes one. Each part needs a `name`, and no two
+/// the same; the size of the first part is every part's display window. With one part the
+/// file is the one [`save_exr_image_to_memory`] writes.
+pub fn save_exr_multipart_image_to_memory(parts: &[(&ExrImage, &ExrHeader)]) -> Result<Vec<u8>, ExrError> {
+    save_multipart(parts, false)
+}
+
+/// `SaveEXRMultipartImageToMemory` exactly as tinyexr has it
+/// ([`save_exr_image_to_memory_as_tinyexr`] says where that differs).
+pub fn save_exr_multipart_image_to_memory_as_tinyexr(parts: &[(&ExrImage, &ExrHeader)]) -> Result<Vec<u8>, ExrError> {
+    save_multipart(parts, true)
+}
+
+fn save_multipart(parts: &[(&ExrImage, &ExrHeader)], as_tinyexr: bool) -> Result<Vec<u8>, ExrError> {
+    if parts.is_empty() {
+        return Err(ExrError { code: ERROR_SERIALIZATION_FAILED, message: "Invalid argument for SaveEXRNPartImageToMemory".to_string() });
+    }
+    save_parts(parts, as_tinyexr)
+}
+
+/// `SaveEXRNPartImageToMemory`.
+fn save_parts(parts: &[(&ExrImage, &ExrHeader)], as_tinyexr: bool) -> Result<Vec<u8>, ExrError> {
     let fail = |code: i32, message: &str| Err(ExrError { code, message: message.to_string() });
+    let num_parts = parts.len();
 
-    if exr_header.compression_type < 0 {
-        return fail(ERROR_SERIALIZATION_FAILED, "Invalid argument for SaveEXRNPartImageToMemory");
+    for &(_, exr_header) in parts {
+        if exr_header.compression_type < 0 {
+            return fail(ERROR_SERIALIZATION_FAILED, "Invalid argument for SaveEXRNPartImageToMemory");
+        }
+        if exr_header.compression_type == COMPRESSIONTYPE_ZFP {
+            return fail(ERROR_SERIALIZATION_FAILED, "ZFP compression is not supported in this build");
+        }
     }
-    if exr_header.compression_type == COMPRESSIONTYPE_ZFP {
-        return fail(ERROR_SERIALIZATION_FAILED, "ZFP compression is not supported in this build");
+    for &(exr_image, exr_header) in parts {
+        check(exr_image, exr_header)?;
     }
-    check(exr_image, exr_header)?;
 
-    let tiled = !exr_image.tiles.is_empty();
     let mut memory = Vec::new();
 
     // Header
@@ -527,97 +580,151 @@ fn save_image(exr_image: &ExrImage, exr_header: &ExrHeader, as_tinyexr: bool) ->
 
     // Version
     // using value from the first header
+    let long_name = parts[0].1.long_name;
     {
         let mut marker = [2u8, 0, 0, 0];
         // @todo
-        if tiled {
+        // tiled
+        if num_parts == 1 && !parts[0].0.tiles.is_empty() {
             marker[1] |= 0x2;
         }
-        if exr_header.long_name != 0 {
+        // long_name
+        if long_name != 0 {
             marker[1] |= 0x4;
+        }
+        // multipart
+        if num_parts > 1 {
+            marker[1] |= 0x10;
         }
         memory.extend_from_slice(&marker);
     }
 
-    let chunk_count;
-    let mut offset_data = OffsetData::default();
-    if !tiled {
-        let num_scanlines = num_scanline_blocks(exr_header.compression_type);
-        chunk_count = (exr_image.height + num_scanlines - 1) / num_scanlines;
-        // `InitSingleResolutionOffsets`.
-        offset_data.offsets = vec![vec![vec![0u64; chunk_count as usize]]];
-        offset_data.num_x_levels = 1;
-        offset_data.num_y_levels = 1;
-    } else {
-        let Some((num_x_tiles, num_y_tiles)) = precalculate_tile_info(exr_header) else {
-            return fail(ERROR_INVALID_DATA, "Failed to precalculate Tile info");
-        };
-        let (shape, ntiles) = tile_offsets_shape(&mut offset_data, exr_header, &num_x_tiles, &num_y_tiles);
-        if ntiles > 0 {
-            chunk_count = ntiles;
+    let mut total_chunk_count = 0i32;
+    let mut chunk_count = vec![0i32; num_parts];
+    let mut offset_data: Vec<OffsetData> = (0..num_parts).map(|_| OffsetData::default()).collect();
+    for (i, &(exr_image, exr_header)) in parts.iter().enumerate() {
+        if exr_image.tiles.is_empty() {
+            let num_scanlines = num_scanline_blocks(exr_header.compression_type);
+            chunk_count[i] = (exr_image.height + num_scanlines - 1) / num_scanlines;
+            // `InitSingleResolutionOffsets`.
+            offset_data[i].offsets = vec![vec![vec![0u64; chunk_count[i] as usize]]];
+            offset_data[i].num_x_levels = 1;
+            offset_data[i].num_y_levels = 1;
         } else {
-            return fail(ERROR_INVALID_DATA, "Failed to compute Tile offsets");
+            let Some((num_x_tiles, num_y_tiles)) = precalculate_tile_info(exr_header) else {
+                return fail(ERROR_INVALID_DATA, "Failed to precalculate Tile info");
+            };
+            let (shape, ntiles) = tile_offsets_shape(&mut offset_data[i], exr_header, &num_x_tiles, &num_y_tiles);
+            if ntiles > 0 {
+                chunk_count[i] = ntiles;
+            } else {
+                return fail(ERROR_INVALID_DATA, "Failed to compute Tile offsets");
+            }
+            offset_data[i].offsets = shape.iter().map(|&(rows, columns)| vec![vec![0u64; columns]; rows]).collect();
         }
-        offset_data.offsets = shape.iter().map(|&(rows, columns)| vec![vec![0u64; columns]; rows]).collect();
+        total_chunk_count = total_chunk_count.wrapping_add(chunk_count[i]);
     }
 
     // Write attributes to memory buffer.
-    {
-        let data = write_channel_info(&exr_header.channels, &exr_header.requested_pixel_types);
-        write_attribute_to_memory(&mut memory, "channels", "chlist", &data);
-    }
-
-    write_attribute_to_memory(&mut memory, "compression", "compression", &[exr_header.compression_type as u8]);
-
-    {
-        let mut data = Vec::with_capacity(16);
-        for value in [0, 0, exr_image.width.wrapping_sub(1), exr_image.height.wrapping_sub(1)] {
-            data.extend_from_slice(&value.to_le_bytes());
+    let mut partnames: Vec<Vec<u8>> = Vec::new();
+    for (i, &(exr_image, exr_header)) in parts.iter().enumerate() {
+        //channels
+        {
+            let data = write_channel_info(&exr_header.channels, &exr_header.requested_pixel_types);
+            write_attribute_to_memory(&mut memory, "channels", "chlist", &data);
         }
-        write_attribute_to_memory(&mut memory, "dataWindow", "box2i", &data);
-        // Note: must be the same across parts (currently, using value from the first header)
-        write_attribute_to_memory(&mut memory, "displayWindow", "box2i", &data);
-    }
 
-    // @fixme: the original writes increasing Y whatever the header says.
-    write_attribute_to_memory(&mut memory, "lineOrder", "lineOrder", &[0]);
+        write_attribute_to_memory(&mut memory, "compression", "compression", &[exr_header.compression_type as u8]);
 
-    write_attribute_to_memory(&mut memory, "pixelAspectRatio", "float", &1.0f32.to_le_bytes());
+        {
+            let mut data = Vec::with_capacity(16);
+            for value in [0, 0, exr_image.width.wrapping_sub(1), exr_image.height.wrapping_sub(1)] {
+                data.extend_from_slice(&value.to_le_bytes());
+            }
+            write_attribute_to_memory(&mut memory, "dataWindow", "box2i", &data);
 
-    write_attribute_to_memory(&mut memory, "screenWindowCenter", "v2f", &[0; 8]);
-
-    write_attribute_to_memory(&mut memory, "screenWindowWidth", "float", &1.0f32.to_le_bytes());
-
-    if tiled {
-        let mut tile_mode = (exr_header.tile_level_mode & 0x3) as u8;
-        if exr_header.tile_rounding_mode != 0 {
-            tile_mode |= 1 << 4;
+            let first = parts[0].0;
+            let mut data0 = Vec::with_capacity(16);
+            for value in [0, 0, first.width.wrapping_sub(1), first.height.wrapping_sub(1)] {
+                data0.extend_from_slice(&value.to_le_bytes());
+            }
+            // Note: must be the same across parts (currently, using value from the first header)
+            write_attribute_to_memory(&mut memory, "displayWindow", "box2i", &data0);
         }
-        let mut data = Vec::with_capacity(9);
-        data.extend_from_slice(&exr_header.tile_size_x.to_le_bytes());
-        data.extend_from_slice(&exr_header.tile_size_y.to_le_bytes());
-        data.push(tile_mode);
-        write_attribute_to_memory(&mut memory, "tiles", "tiledesc", &data);
+
+        // @fixme: the original writes increasing Y whatever the header says.
+        write_attribute_to_memory(&mut memory, "lineOrder", "lineOrder", &[0]);
+
+        // Note: must be the same across parts
+        write_attribute_to_memory(&mut memory, "pixelAspectRatio", "float", &1.0f32.to_le_bytes());
+
+        write_attribute_to_memory(&mut memory, "screenWindowCenter", "v2f", &[0; 8]);
+
+        write_attribute_to_memory(&mut memory, "screenWindowWidth", "float", &1.0f32.to_le_bytes());
+
+        if !exr_image.tiles.is_empty() {
+            let mut tile_mode = (exr_header.tile_level_mode & 0x3) as u8;
+            if exr_header.tile_rounding_mode != 0 {
+                tile_mode |= 1 << 4;
+            }
+            let mut data = Vec::with_capacity(9);
+            data.extend_from_slice(&exr_header.tile_size_x.to_le_bytes());
+            data.extend_from_slice(&exr_header.tile_size_y.to_le_bytes());
+            data.push(tile_mode);
+            write_attribute_to_memory(&mut memory, "tiles", "tiledesc", &data);
+        }
+
+        // must be present for multi-part files - according to spec.
+        if num_parts > 1 {
+            // name (the original's is a C string of at most 255 bytes)
+            {
+                let name = exr_header.name.as_bytes();
+                let name = &name[..name.iter().position(|&byte| byte == 0).unwrap_or(name.len()).min(255)];
+                if !name.is_empty() {
+                    if !partnames.iter().any(|seen| seen == name) {
+                        partnames.push(name.to_vec());
+                    }
+                    if partnames.len() != i + 1 {
+                        return fail(ERROR_SERIALIZATION_FAILED, "'name' attributes must be unique for a multi-part file");
+                    }
+                    write_attribute_bytes(&mut memory, b"name", b"string", name);
+                } else {
+                    return fail(ERROR_SERIALIZATION_FAILED, "Invalid 'name' attribute for a multi-part file");
+                }
+            }
+            // type
+            {
+                let type_name = if !exr_image.tiles.is_empty() { "tiledimage" } else { "scanlineimage" };
+                write_attribute_to_memory(&mut memory, "type", "string", type_name.as_bytes());
+            }
+            // chunkCount
+            write_attribute_to_memory(&mut memory, "chunkCount", "int", &chunk_count[i].to_le_bytes());
+        }
+
+        // Custom attributes
+        for attribute in &exr_header.custom_attributes {
+            write_attribute_to_memory(&mut memory, &attribute.name, &attribute.type_name, &attribute.value);
+        }
+
+        // end of header
+        memory.push(0);
+    }
+    if num_parts > 1 {
+        // end of header list
+        memory.push(0);
     }
 
-    // Custom attributes
-    for attribute in &exr_header.custom_attributes {
-        write_attribute_to_memory(&mut memory, &attribute.name, &attribute.type_name, &attribute.value);
-    }
-
-    // end of header
-    memory.push(0);
-
-    let chunk_offset = memory.len() as u64 + chunk_count as u64 * 8;
+    let mut chunk_offset = memory.len() as u64 + total_chunk_count as i64 as u64 * 8;
 
     let mut total_size = 0u64;
-    let mut data_list = Vec::new();
-    {
+    let mut data_lists: Vec<Vec<Vec<u8>>> = vec![Vec::new(); num_parts];
+    for (i, &(exr_image, exr_header)) in parts.iter().enumerate() {
         let mut e = String::new();
-        let ret = encode_chunk(exr_image, exr_header, chunk_count, chunk_offset, &mut offset_data, &mut data_list, &mut total_size, &mut e, as_tinyexr);
+        let ret = encode_chunk(exr_image, exr_header, chunk_count[i], chunk_offset, num_parts > 1, &mut offset_data[i], &mut data_lists[i], &mut total_size, &mut e, as_tinyexr);
         if ret != 0 {
             return Err(ExrError { code: ERROR_SERIALIZATION_FAILED, message: e });
         }
+        chunk_offset = total_size;
     }
 
     // Allocating required memory
@@ -627,11 +734,18 @@ fn save_image(exr_image: &ExrImage, exr_header: &ExrHeader, as_tinyexr: bool) ->
     }
 
     // Writing header, then the offsets, then the blocks.
-    for offset in offset_data.offsets.iter().flatten().flatten() {
-        memory.extend_from_slice(&offset.to_le_bytes());
+    for data in &offset_data {
+        for offset in data.offsets.iter().flatten().flatten() {
+            memory.extend_from_slice(&offset.to_le_bytes());
+        }
     }
-    for data in &data_list {
-        memory.extend_from_slice(data);
+    for (i, data_list) in data_lists.iter().enumerate() {
+        for data in data_list {
+            if num_parts > 1 {
+                memory.extend_from_slice(&(i as u32).to_le_bytes());
+            }
+            memory.extend_from_slice(data);
+        }
     }
 
     if memory.len() as u64 != total_size {

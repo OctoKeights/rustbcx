@@ -35,8 +35,16 @@
 //! - A small PIZ block of many different values, which the original writes past its buffer
 //!   for, is written as the original would write it with room enough.
 //!
-//! Files of several parts and deep images are not read or written, nor is the ZFP
-//! compression tinyexr adds to the format.
+//! Files of several parts are read and written
+//! ([`parse_exr_multipart_header_from_memory`], [`load_exr_multipart_image_from_memory`],
+//! [`save_exr_multipart_image_to_memory`]), and deep images read
+//! ([`load_deep_exr_from_memory`]; tinyexr does not write them). Their readers in the original
+//! read past the end of a damaged file without a look. The port makes those reads with zeros
+//! and then with ones past the end: where the answer is the same, it is the original's answer
+//! whatever its memory holds, and it is given; where it is not, or the original would stop,
+//! the file is refused with [`PAST_THE_END`].
+//!
+//! The ZFP compression tinyexr adds to the format is not read or written.
 
 // (The arithmetic is written as the original has it.)
 #![allow(clippy::if_same_then_else, clippy::manual_div_ceil, clippy::needless_range_loop, clippy::too_many_arguments)]
@@ -44,13 +52,17 @@
 mod b44;
 mod chunk;
 mod decode;
+mod deep;
 mod encode;
+mod parts;
 mod piz;
 mod pxr24;
 mod zip_rle;
 
 pub use chunk::{tile_levels, TileLevel};
-pub use encode::{save_exr_image_to_memory, save_exr_image_to_memory_as_tinyexr, save_exr_to_memory};
+pub use deep::{load_deep_exr_from_memory, DeepImage};
+pub use encode::{save_exr_image_to_memory, save_exr_image_to_memory_as_tinyexr, save_exr_multipart_image_to_memory, save_exr_multipart_image_to_memory_as_tinyexr, save_exr_to_memory};
+pub use parts::{load_exr_multipart_image_from_memory, load_exr_multipart_image_from_memory_as_tinyexr, parse_exr_multipart_header_from_memory, PAST_THE_END};
 
 /// The original's error codes (`TINYEXR_ERROR_*`).
 pub const ERROR_INVALID_MAGIC_NUMBER: i32 = -1;
@@ -160,7 +172,7 @@ pub struct Box2i {
 
 /// The original's `HeaderInfo`: a header as it is parsed, before it becomes an `ExrHeader`.
 #[derive(Clone, Debug, Default)]
-struct HeaderInfo {
+pub(super) struct HeaderInfo {
     channels: Vec<ChannelInfo>,
     attributes: Vec<Attribute>,
 
@@ -288,7 +300,7 @@ fn bytes_to_string(bytes: &[u8]) -> String {
 
 /// `ReadAttribute`: the attribute at the start of `marker`: its name, the name of its type,
 /// its value, and how many bytes all of it took.
-fn read_attribute(marker: &[u8]) -> Option<(String, String, Vec<u8>, usize)> {
+pub(super) fn read_attribute(marker: &[u8]) -> Option<(String, String, Vec<u8>, usize)> {
     let mut size = marker.len();
     let mut at = 0usize;
     let strnlen = |from: usize, size: usize| marker[from..from + size].iter().position(|&b| b == 0).unwrap_or(size);
@@ -340,7 +352,7 @@ fn read_attribute(marker: &[u8]) -> Option<(String, String, Vec<u8>, usize)> {
 }
 
 /// `ReadChannelInfo`: the channels of a `channels` attribute, added to `channels`.
-fn read_channel_info(channels: &mut Vec<ChannelInfo>, data: &[u8]) -> bool {
+pub(super) fn read_channel_info(channels: &mut Vec<ChannelInfo>, data: &[u8]) -> bool {
     let mut p = 0usize;
 
     loop {
@@ -376,13 +388,20 @@ fn read_channel_info(channels: &mut Vec<ChannelInfo>, data: &[u8]) -> bool {
     true
 }
 
-/// `ParseEXRHeader`: the attributes of a header at the start of `buf`.
-fn parse_exr_header(info: &mut HeaderInfo, version: &ExrVersion, err: &mut String, buf: &[u8]) -> Result<(), i32> {
+/// `ParseEXRHeader`: the attributes of a header at the start of `buf`. In a file of many
+/// parts, an empty header (a lone zero byte) is the end of the list of headers: then
+/// `empty_header` is set and `info` is left as it is.
+pub(super) fn parse_exr_header(info: &mut HeaderInfo, empty_header: &mut bool, version: &ExrVersion, err: &mut String, buf: &[u8]) -> Result<(), i32> {
     let mut size = buf.len();
     let mut marker = 0usize;
 
-    // (An empty header is how the list of headers of a multipart file ends; multipart files
-    // are not ported, and the original's caller refuses them before it gets here.)
+    *empty_header = false;
+
+    if version.multipart && size > 0 && buf[marker] == 0 {
+        // End of header list.
+        *empty_header = true;
+        return Ok(());
+    }
 
     // According to the spec, the header of every OpenEXR file must contain at least the
     // following attributes:
@@ -741,7 +760,7 @@ pub fn is_exr_from_memory(memory: &[u8]) -> bool {
 
 /// `ConvertHeader`: a parsed header as an `ExrHeader`. `None`, with the reason added to
 /// `err`, where its type attribute and its tiles disagree.
-fn convert_header(info: &HeaderInfo, warn: &mut String, err: &mut String) -> Option<ExrHeader> {
+pub(super) fn convert_header(info: &HeaderInfo, warn: &mut String, err: &mut String) -> Option<ExrHeader> {
     let mut exr_header = ExrHeader {
         pixel_aspect_ratio: info.pixel_aspect_ratio,
         screen_window_center: info.screen_window_center,
@@ -836,7 +855,7 @@ fn parse_exr_header_from_memory_whole(version: &ExrVersion, memory: &[u8]) -> (E
     let mut ret = 0;
     {
         let mut err_str = String::new();
-        if let Err(code) = parse_exr_header(&mut info, version, &mut err_str, marker) {
+        if let Err(code) = parse_exr_header(&mut info, &mut false, version, &mut err_str, marker) {
             ret = code;
             if !err_str.is_empty() {
                 err = err_str;

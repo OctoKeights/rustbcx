@@ -86,6 +86,14 @@
      the file can hold; a compressed tile positioned beyond the image's edge; and a final
      uncompressed block shorter than its scanlines.
 
+- **Damaged multi-part and deep files get tinyexr's answer only where it is defined.**
+  tinyexr's readers for these read past the end of a damaged file without checking. rustbcx
+  makes the same reads twice, with zeros and then with ones beyond the end. If both give the
+  same result, that is tinyexr's result whatever its memory holds, and it is returned;
+  otherwise, or where tinyexr would crash or exhaust memory, the file is rejected with
+  `tinyexr::PAST_THE_END`. A deep file of scanlines whose block fails to decompress is
+  returned empty, with success, as tinyexr returns it.
+
   A damaged header can still request a very large image, as with any image format. Inspect
   the header's data window first when files come from untrusted sources.
 
@@ -117,8 +125,9 @@
 - **No BasisLZ.** The third `.ktx2` supercompression scheme cannot carry these formats at
   all; it is specific to Basis Universal's ETC1S format.
 
-- **`.exr` support is limited to single-part files.** Multi-part files, deep images, and the
-  DWAA, DWAB and ZFP compression methods are neither read nor written.
+- **No DWAA, DWAB or ZFP `.exr` compression.** Files using them are neither read nor
+  written. Multi-part files are read and written, and deep images read (tinyexr does not
+  write them).
 
 - **x86 float-to-integer semantics are built in.** Where an original converts a float that
   does not fit into an integer, the ports return what x86 returns, on every processor, so

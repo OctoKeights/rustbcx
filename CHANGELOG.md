@@ -9,6 +9,15 @@
   `HdrImage::load` reads `.hdr` as well as `.exr`. Checked against stb_image byte for byte on
   860,000 made-up files (the `stb_image_more` dump).
 
+- **Multi-part and deep `.exr` files.** `tinyexr` now reads and writes files of several
+  parts (`parse_exr_multipart_header_from_memory`, `load_exr_multipart_image_from_memory`,
+  `save_exr_multipart_image_to_memory`) and reads deep images, of scanlines and of tiles
+  (`load_deep_exr_from_memory`). tinyexr's readers for these read past the end of a damaged
+  file; the port makes those reads with zeros and with ones there, and gives tinyexr's answer
+  where it is the same either way, refusing the file with `PAST_THE_END` otherwise. Checked
+  against tinyexr on 120,000 files, damaged and not (the `tinyexr_parts` and `tinyexr_deep`
+  dumps).
+
 - **Breaking:** `LoadOptions` gains the four gamma and scale settings and is no longer `Eq`;
   `Info` gains `is_hdr`; `ImageType` gains a variant for each new format.
 

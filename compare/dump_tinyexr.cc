@@ -11,6 +11,16 @@
 //                                             not save one; and for every fourth, floats of
 //                                             one, three or four to a pixel saved the short
 //                                             way, as halves or as floats
+//   dump tinyexr_parts <seed> <count> <file>   files of one to four parts, each made as for
+//                                              tinyexr_write_small and named (now and then
+//                                              not, or as the one before), saved: the bytes
+//                                              or the message; a third of them damaged, and
+//                                              read in a program of their own, with zeros
+//                                              and with ones past the end (to the file, with
+//                                              whether that made a difference, or stopped
+//                                              tinyexr)
+//   dump tinyexr_deep <seed> <count> <file>    made-up deep files of scanlines and of tiles,
+//                                              a third of them damaged, read the same way
 //   dump tinyexr_read <seed> <count> <file>         made-up images of every kind tinyexr writes
 //   dump tinyexr_read_small <seed> <count> <file>   (scanlines and tiles, with mip and rip
 //                                                   levels, three types of value, eight
@@ -40,13 +50,78 @@
 #include <cstring>
 #include <exception>
 #include <limits>
+#include <memory>
 #include <new>
 #include <set>
 #include <sstream>
 #include <string>
 #include <vector>
 
-#define malloc(size) calloc(1, (size))
+#include <sys/mman.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+// What tinyexr allocates starts as zeros. An allocation of `g_pad_for` bytes (the file tinyexr
+// reads a deep image from) starts a page, and is followed by `g_pad` bytes of `g_pad_byte`
+// and on to the end of a page (4096 bytes): what a reader that reads past the end of the
+// file finds there. Before it, and after that, is a gigabyte of memory that cannot be read,
+// so that a reader that reads before the file, or far past its end, stops. (The port refuses
+// such a file; it takes what is as far past the end as here to be all zeros and then all
+// ones.)
+static std::size_t g_pad = 0, g_pad_for = 0;
+static unsigned char g_pad_byte = 0;
+struct Padded
+{
+    void* memory;
+    unsigned char* base;
+    std::size_t total;
+};
+static std::vector<Padded> g_padded;
+static void* HarnessMalloc(std::size_t size)
+{
+    if (!g_pad || size != g_pad_for)
+        return std::calloc(1, size);
+    const std::size_t page = 4096;
+    if (static_cast<std::size_t>(sysconf(_SC_PAGESIZE)) != page)
+    {
+        std::fprintf(stderr, "the deep files are compared only where a page is 4096 bytes\n");
+        std::abort();
+    }
+    const std::size_t guard = static_cast<std::size_t>(1) << 30;
+    const std::size_t usable = (size + g_pad + page - 1) / page * page;
+    const std::size_t total = guard + usable + guard;
+    void* base = mmap(NULL, total, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
+    if (base == MAP_FAILED)
+        return NULL;
+    unsigned char* memory = static_cast<unsigned char*>(base) + guard;
+    if (mprotect(memory, usable, PROT_READ | PROT_WRITE) != 0)
+        std::abort();
+    std::memset(memory + size, g_pad_byte, usable - size);
+    g_padded.push_back(Padded { memory, static_cast<unsigned char*>(base), total });
+    return memory;
+}
+static void HarnessFree(void* memory)
+{
+    for (std::size_t k = 0; k < g_padded.size(); ++k)
+    {
+        if (g_padded[k].memory == memory)
+        {
+            munmap(g_padded[k].base, g_padded[k].total);
+            g_padded.erase(g_padded.begin() + static_cast<std::ptrdiff_t>(k));
+            return;
+        }
+    }
+    std::free(memory);
+}
+
+// (Without __linux__ and __unix__, tinyexr reads a file into memory it allocates, rather than
+// mapping it, so that what is outside it is what is put there here.)
+#pragma push_macro("__linux__")
+#pragma push_macro("__unix__")
+#undef __linux__
+#undef __unix__
+#define malloc(size) HarnessMalloc(size)
+#define free(memory) HarnessFree(memory)
 #define TINYEXR_USE_MINIZ 1
 #define TINYEXR_USE_THREAD 0
 #define TINYEXR_USE_OPENMP 0
@@ -55,9 +130,16 @@
 #define TINYEXR_IMPLEMENTATION
 #include "tinyexr.h"
 #undef malloc
+#undef free
+#pragma pop_macro("__linux__")
+#pragma pop_macro("__unix__")
 
+// (And no more than a gigabyte at once, which the port takes to be more than there may be: a
+// file that has tinyexr ask for more stops it.)
 void* operator new(std::size_t size)
 {
+    if (size > (static_cast<std::size_t>(1) << 30))
+        throw std::bad_alloc();
     void* memory = std::malloc(size + 65536);
     if (!memory)
         throw std::bad_alloc();
@@ -461,15 +543,31 @@ Made MakeImage(bool small)
     return m;
 }
 
-// The image saved by tinyexr: the file's bytes, or none, tinyexr's message, and what it gave
-// as the size (nothing, or one of its error numbers).
-std::vector<unsigned char> Save(Made& m, std::string& message, std::uint32_t& refusal)
+// A made-up image as tinyexr's writer takes it: its header, and its first level (which leads to
+// the others).
+struct Prepared
+{
+    EXRHeader header;
+    std::vector<EXRChannelInfo> channels;
+    std::vector<int> pixel_types, requested_pixel_types;
+    std::vector<EXRAttribute> attributes;
+    std::vector<EXRImage> images;
+    std::vector<unsigned char*> pointers;
+    std::vector<std::vector<EXRTile>> tiles;
+    std::vector<std::vector<std::vector<unsigned char*>>> tile_pointers;
+
+    Prepared(const Prepared&) = delete;
+    Prepared& operator=(const Prepared&) = delete;
+    explicit Prepared(Made& m);
+};
+
+Prepared::Prepared(Made& m)
 {
     const std::size_t count = m.channels.size();
-    EXRHeader header;
     InitEXRHeader(&header);
-    std::vector<EXRChannelInfo> channels(count);
-    std::vector<int> pixel_types(count), requested_pixel_types(count);
+    channels.resize(count);
+    pixel_types.resize(count);
+    requested_pixel_types.resize(count);
     for (std::size_t c = 0; c < count; ++c)
     {
         std::memset(&channels[c], 0, sizeof(EXRChannelInfo));
@@ -485,7 +583,7 @@ std::vector<unsigned char> Save(Made& m, std::string& message, std::uint32_t& re
     header.long_name = m.long_name;
     header.data_window.max_x = m.width - 1;
     header.data_window.max_y = m.height - 1;
-    std::vector<EXRAttribute> attributes(m.attributes.size());
+    attributes.resize(m.attributes.size());
     for (std::size_t j = 0; j < attributes.size(); ++j)
     {
         std::memset(&attributes[j], 0, sizeof(EXRAttribute));
@@ -497,10 +595,10 @@ std::vector<unsigned char> Save(Made& m, std::string& message, std::uint32_t& re
     header.num_custom_attributes = static_cast<int>(attributes.size());
     header.custom_attributes = attributes.data();
 
-    std::vector<EXRImage> images(m.tiled ? m.levels.size() : 1);
-    std::vector<unsigned char*> pointers(count);
-    std::vector<std::vector<EXRTile>> tiles(m.levels.size());
-    std::vector<std::vector<std::vector<unsigned char*>>> tile_pointers(m.levels.size());
+    images.resize(m.tiled ? m.levels.size() : 1);
+    pointers.resize(count);
+    tiles.resize(m.levels.size());
+    tile_pointers.resize(m.levels.size());
     for (EXRImage& image : images)
         InitEXRImage(&image);
     if (!m.tiled)
@@ -548,6 +646,15 @@ std::vector<unsigned char> Save(Made& m, std::string& message, std::uint32_t& re
             images[l].next_level = l + 1 < given ? &images[l + 1] : NULL;
         }
     }
+}
+
+// The image saved by tinyexr: the file's bytes, or none, tinyexr's message, and what it gave
+// as the size (nothing, or one of its error numbers).
+std::vector<unsigned char> Save(Made& m, std::string& message, std::uint32_t& refusal)
+{
+    Prepared prepared(m);
+    EXRHeader& header = prepared.header;
+    std::vector<EXRImage>& images = prepared.images;
 
     unsigned char* memory = NULL;
     const char* err = NULL;
@@ -947,16 +1054,788 @@ int Write(const char* name, bool small, std::uint32_t count)
             }
         }
 
+#ifdef SHOW_EACH
+        std::fprintf(stderr, "file %u %016llx\n", i, static_cast<unsigned long long>(g_hash));
+#endif
         if ((i + 1) % 200 == 0 || i + 1 == count)
             std::printf("%s %u %016llx\n", name, i + 1, static_cast<unsigned long long>(g_hash));
     }
     std::printf("%s bytes of files: %llu; saved: %u, not saved: %u, saved the short way: %u\n", name, static_cast<unsigned long long>(file_total), saved, not_saved, short_way);
     return 0;
 }
+
+// ---------- Files of many parts, and deep images ----------
+
+// A second generator, for what is done to the files of many parts: so that the first makes
+// the same images in both programs.
+std::uint64_t g_state2;
+std::uint32_t Next2()
+{
+    g_state2 = g_state2 * 6364136223846793005ull + 1442695040888963407ull;
+    return static_cast<std::uint32_t>(g_state2 >> 32);
+}
+
+// `Special`, from the second generator.
+std::uint32_t Special2()
+{
+    const std::uint32_t kind = Next2() % 8;
+    const std::uint32_t small = Next2() % 64;
+    static const std::uint32_t kValues[6] = { 0, 0xffffffffu, 0x7fffffffu, 0x80000000u, 1024 * 8192, 1024 * 8192 + 1 };
+    return kind < 6 ? kValues[kind] : kind == 6 ? small : 0u - small;
+}
+
+// A message, or a mark where there is none or it is empty.
+void AddMessage2(const char* err)
+{
+    if (err && err[0])
+        AddString(err);
+    else
+        AddNumber(0xfffffffeu);
+    if (err)
+        FreeEXRErrorMessage(err);
+}
+
+void AddHeader(const EXRHeader& header)
+{
+    AddFloat(header.pixel_aspect_ratio);
+    AddNumber(static_cast<std::uint32_t>(header.line_order));
+    AddNumber(static_cast<std::uint32_t>(header.data_window.min_x));
+    AddNumber(static_cast<std::uint32_t>(header.data_window.min_y));
+    AddNumber(static_cast<std::uint32_t>(header.data_window.max_x));
+    AddNumber(static_cast<std::uint32_t>(header.data_window.max_y));
+    AddNumber(static_cast<std::uint32_t>(header.display_window.min_x));
+    AddNumber(static_cast<std::uint32_t>(header.display_window.min_y));
+    AddNumber(static_cast<std::uint32_t>(header.display_window.max_x));
+    AddNumber(static_cast<std::uint32_t>(header.display_window.max_y));
+    AddFloat(header.screen_window_center[0]);
+    AddFloat(header.screen_window_center[1]);
+    AddFloat(header.screen_window_width);
+    AddNumber(static_cast<std::uint32_t>(header.chunk_count));
+    AddNumber(static_cast<std::uint32_t>(header.tiled));
+    AddNumber(static_cast<std::uint32_t>(header.tile_size_x));
+    AddNumber(static_cast<std::uint32_t>(header.tile_size_y));
+    AddNumber(static_cast<std::uint32_t>(header.tile_level_mode));
+    AddNumber(static_cast<std::uint32_t>(header.tile_rounding_mode));
+    AddNumber(static_cast<std::uint32_t>(header.long_name));
+    AddNumber(static_cast<std::uint32_t>(header.non_image));
+    AddNumber(static_cast<std::uint32_t>(header.multipart));
+    AddNumber(header.header_len);
+    AddNumber(static_cast<std::uint32_t>(header.num_custom_attributes));
+    for (int j = 0; j < header.num_custom_attributes; ++j)
+    {
+        AddName(header.custom_attributes[j].name);
+        AddName(header.custom_attributes[j].type);
+        AddNumber(static_cast<std::uint32_t>(header.custom_attributes[j].size));
+        Add(header.custom_attributes[j].value, static_cast<std::size_t>(header.custom_attributes[j].size));
+    }
+    AddNumber(static_cast<std::uint32_t>(header.num_channels));
+    for (int c = 0; c < header.num_channels; ++c)
+    {
+        AddName(header.channels[c].name);
+        AddNumber(static_cast<std::uint32_t>(header.channels[c].pixel_type));
+        AddNumber(static_cast<std::uint32_t>(header.channels[c].x_sampling));
+        AddNumber(static_cast<std::uint32_t>(header.channels[c].y_sampling));
+        AddNumber(header.channels[c].p_linear);
+        AddNumber(static_cast<std::uint32_t>(header.pixel_types[c]));
+        AddNumber(static_cast<std::uint32_t>(header.requested_pixel_types[c]));
+    }
+    AddNumber(static_cast<std::uint32_t>(header.compression_type));
+    AddName(header.name);
+}
+
+void AddImage(const EXRImage& image, const EXRHeader& header)
+{
+    for (int c = 0; c < header.num_channels; ++c)
+        AddNumber(static_cast<std::uint32_t>(header.pixel_types[c]));
+    for (const EXRImage* level = &image; level; level = level->next_level)
+    {
+        AddNumber(static_cast<std::uint32_t>(level->level_x));
+        AddNumber(static_cast<std::uint32_t>(level->level_y));
+        AddNumber(static_cast<std::uint32_t>(level->width));
+        AddNumber(static_cast<std::uint32_t>(level->height));
+        AddNumber(static_cast<std::uint32_t>(level->num_channels));
+        AddNumber(static_cast<std::uint32_t>(level->num_tiles));
+        if (level->tiles)
+        {
+            for (int t = 0; t < level->num_tiles; ++t)
+            {
+                const EXRTile& tile = level->tiles[t];
+                AddNumber(static_cast<std::uint32_t>(tile.offset_x));
+                AddNumber(static_cast<std::uint32_t>(tile.offset_y));
+                AddNumber(static_cast<std::uint32_t>(tile.level_x));
+                AddNumber(static_cast<std::uint32_t>(tile.level_y));
+                AddNumber(static_cast<std::uint32_t>(tile.width));
+                AddNumber(static_cast<std::uint32_t>(tile.height));
+                for (int c = 0; c < level->num_channels; ++c)
+                    Add(tile.images[c], static_cast<std::size_t>(header.tile_size_x) * static_cast<std::size_t>(header.tile_size_y) * TypeSize(header.requested_pixel_types[c]));
+            }
+        }
+        else
+        {
+            for (int c = 0; c < level->num_channels; ++c)
+                Add(level->images[c], static_cast<std::size_t>(level->width) * static_cast<std::size_t>(level->height) * TypeSize(header.requested_pixel_types[c]));
+        }
+    }
+}
+
+// Whether a part is left unread: by the rule for a file of one part.
+bool Left(const EXRHeader& header)
+{
+    const std::int64_t limit = 1024 * 8192;
+    const std::int64_t w = static_cast<std::int64_t>(header.data_window.max_x) - header.data_window.min_x + 1;
+    const std::int64_t h = static_cast<std::int64_t>(header.data_window.max_y) - header.data_window.min_y + 1;
+    const std::int64_t tile_x = header.tile_size_x, tile_y = header.tile_size_y;
+    const bool refused = w <= 0 || h <= 0 || w > limit || h > limit || (header.tiled && (tile_x > limit || tile_y > limit));
+    if (refused)
+        return false;
+    if (header.tiled)
+        return w * h > (1 << 22) || tile_x <= 0 || tile_y <= 0 || tile_x * tile_y > (1 << 16) || (w / tile_x + 1) * (h / tile_y + 1) * tile_x * tile_y > (1 << 23);
+    return w * h > (1 << 22) || header.chunk_count > (1 << 24);
+}
+
+bool ReadAll(int fd, void* data, std::size_t size)
+{
+    unsigned char* at = static_cast<unsigned char*>(data);
+    while (size)
+    {
+        const ssize_t got = read(fd, at, size);
+        if (got <= 0)
+            return false;
+        at += got;
+        size -= static_cast<std::size_t>(got);
+    }
+    return true;
+}
+
+// What a reading of a file comes to with zeros outside it and with ones, and whether it
+// stopped either time (threw, ended the program, or took too long): in a program of its own.
+struct Outcome
+{
+    std::uint64_t hash[2];
+    std::uint32_t stopped;
+};
+
+template <typename F>
+Outcome Isolated(F reading)
+{
+    Outcome outcome;
+    std::memset(&outcome, 0, sizeof outcome);
+    outcome.stopped = 1;
+    std::fflush(stdout);
+    int fds[2];
+    if (pipe(fds) != 0)
+        std::exit(2);
+    const pid_t pid = fork();
+    if (pid < 0)
+        std::exit(2);
+    if (pid == 0)
+    {
+        close(fds[0]);
+        alarm(20);
+        Outcome mine;
+        std::memset(&mine, 0, sizeof mine);
+        for (int k = 0; k < 2; ++k)
+        {
+            g_hash = 14695981039346656037ull;
+            bool threw = false;
+            try
+            {
+                reading(static_cast<unsigned char>(k ? 0xff : 0x00));
+            }
+            catch (...)
+            {
+                threw = true;
+            }
+            if (threw)
+            {
+                mine.stopped = 1;
+                break;
+            }
+            mine.hash[k] = g_hash;
+        }
+        if (write(fds[1], &mine, sizeof mine) != static_cast<ssize_t>(sizeof mine))
+            _exit(1);
+        _exit(0);
+    }
+    close(fds[1]);
+    Outcome got;
+    if (ReadAll(fds[0], &got, sizeof got))
+        outcome = got;
+    close(fds[0]);
+    int status = 0;
+    waitpid(pid, &status, 0);
+    return outcome;
+}
+
+// Into the hash, what came of a reading: 1 where it depends on what is outside the file, 2
+// where tinyexr stopped, or 0 and the hash of what it read. The flags.
+std::uint32_t AddOutcome(const Outcome& outcome)
+{
+    std::uint32_t flags = 0;
+    if (outcome.stopped)
+        flags = 2;
+    else if (outcome.hash[0] != outcome.hash[1])
+        flags = 1;
+    AddNumber(flags);
+    if (!flags)
+        Add(&outcome.hash[0], 8);
+    return flags;
+}
+
+// The reading of a file of many parts, as examples/dump.rs does it: its version, its headers,
+// and the images of its parts (of the parts the wish has a bit for, halves as floats); with
+// `pad` past its end.
+void ReadParts(const std::vector<unsigned char>& file, std::uint32_t wish, unsigned char pad)
+{
+    const std::size_t size = file.size();
+    std::vector<unsigned char> memory(2 * size + 64, pad);
+    std::copy(file.begin(), file.end(), memory.begin());
+    EXRVersion version;
+    int ret = ParseEXRVersionFromMemory(&version, memory.data(), size);
+    AddNumber(static_cast<std::uint32_t>(ret));
+    if (ret != TINYEXR_SUCCESS)
+        return;
+    AddNumber(static_cast<std::uint32_t>(version.version));
+    AddNumber(static_cast<std::uint32_t>(version.tiled));
+    AddNumber(static_cast<std::uint32_t>(version.long_name));
+    AddNumber(static_cast<std::uint32_t>(version.non_image));
+    AddNumber(static_cast<std::uint32_t>(version.multipart));
+
+    EXRHeader** headers = NULL;
+    int num = 0;
+    const char* err = NULL;
+    ret = ParseEXRMultipartHeaderFromMemory(&headers, &num, &version, memory.data(), size, &err);
+    AddNumber(static_cast<std::uint32_t>(ret));
+    AddMessage2(err);
+    if (ret != TINYEXR_SUCCESS)
+        return;
+    AddNumber(static_cast<std::uint32_t>(num));
+    bool left = num > 64;
+    std::int64_t chunks = 0;
+    for (int i = 0; i < num; ++i)
+    {
+        AddHeader(*headers[i]);
+        left = left || Left(*headers[i]);
+        chunks += headers[i]->chunk_count > 0 ? headers[i]->chunk_count : 0;
+    }
+    if (left || chunks > (1 << 16))
+    {
+        AddNumber(0xfffffffbu);
+        return;
+    }
+    for (int i = 0; i < num; ++i)
+    {
+        if (i < 32 && ((wish >> i) & 1))
+        {
+            for (int c = 0; c < headers[i]->num_channels; ++c)
+            {
+                if (headers[i]->pixel_types[c] == TINYEXR_PIXELTYPE_HALF)
+                    headers[i]->requested_pixel_types[c] = TINYEXR_PIXELTYPE_FLOAT;
+            }
+        }
+    }
+    // (Room past the end for the tables of offsets of every part.)
+    memory.resize(2 * size + 64 + static_cast<std::size_t>(chunks) * 8, pad);
+    std::vector<EXRImage> images(static_cast<std::size_t>(num));
+    for (EXRImage& image : images)
+        InitEXRImage(&image);
+    err = NULL;
+    ret = LoadEXRMultipartImageFromMemory(images.data(), const_cast<const EXRHeader**>(headers), static_cast<unsigned int>(num), memory.data(), size, &err);
+    AddNumber(static_cast<std::uint32_t>(ret));
+    AddMessage2(err);
+    if (ret == TINYEXR_SUCCESS)
+    {
+        for (int i = 0; i < num; ++i)
+            AddImage(images[static_cast<std::size_t>(i)], *headers[i]);
+    }
+}
+
+// The `tinyexr_parts` dump: files of one to four parts (one now and then), each made as for
+// the `tinyexr_write_small` dump, saved by tinyexr: the bytes, or the message. Each file (a
+// third of them damaged, by the second generator) is read in a program of its own, with zeros
+// and with ones past its end, and written to the file of files with what came of it.
+int Parts(const char* name, std::uint32_t count, std::FILE* out)
+{
+    std::uint64_t file_total = 0;
+    std::uint32_t saved = 0, not_saved = 0, past_end = 0, stopped = 0;
+    for (std::uint32_t i = 0; i < count; ++i)
+    {
+        const std::uint32_t num_parts = Next() % 10 == 0 ? 1 : 2 + Next() % 3;
+        std::vector<Made> parts;
+        std::vector<std::string> names;
+        for (std::uint32_t p = 0; p < num_parts; ++p)
+        {
+            parts.push_back(MakeImage(true));
+            // Its name: its own, none, or the one before's.
+            const std::uint32_t kind = Next() % 40;
+            names.push_back(kind == 0 ? std::string() : kind == 1 && p > 0 ? names.back() : "part" + std::to_string(p));
+        }
+        std::vector<unsigned char> file;
+        std::string message;
+        std::uint32_t refusal = 0;
+        {
+            std::vector<std::unique_ptr<Prepared>> prepared;
+            std::vector<EXRImage> images;
+            std::vector<const EXRHeader*> headers;
+            for (std::size_t p = 0; p < parts.size(); ++p)
+            {
+                prepared.emplace_back(new Prepared(parts[p]));
+                std::strncpy(prepared.back()->header.name, names[p].c_str(), 255);
+                images.push_back(prepared.back()->images[0]);
+                headers.push_back(&prepared.back()->header);
+            }
+            unsigned char* memory = NULL;
+            const char* err = NULL;
+            const std::size_t size = SaveEXRMultipartImageToMemory(images.data(), headers.data(), num_parts, &memory, &err);
+            if (size == 0 || size > (static_cast<std::size_t>(1) << 40))
+            {
+                refusal = static_cast<std::uint32_t>(size);
+                message = err ? err : "";
+                FreeEXRErrorMessage(err);
+            }
+            else
+            {
+                file.assign(memory, memory + size);
+                std::free(memory);
+            }
+        }
+        if (file.empty())
+        {
+            ++not_saved;
+            AddNumber(refusal);
+            AddString(message.c_str());
+        }
+        else
+        {
+            ++saved;
+            file_total += file.size();
+            AddNumber(static_cast<std::uint32_t>(file.size()));
+            Add(file.data(), file.size());
+        }
+
+        // A third damaged: bits turned over, the end cut off, a byte made up, a byte of the
+        // headers made zero, an offset or the part number of a block made up.
+        const std::uint32_t wish = Next2();
+        if (!file.empty() && Next2() % 3 == 0)
+        {
+            const std::uint32_t how = Next2() % 6;
+            if (how == 0)
+            {
+                for (std::uint32_t k = 1 + Next2() % 3; k > 0; --k)
+                {
+                    const std::uint32_t bit = Next2() % static_cast<std::uint32_t>(file.size() * 8);
+                    file[bit >> 3] ^= static_cast<unsigned char>(1u << (bit & 7));
+                }
+            }
+            else if (how == 1)
+                file.resize(Next2() % file.size());
+            else if (how == 2)
+                file[Next2() % file.size()] = static_cast<unsigned char>(Next2());
+            else if (how == 3)
+                file[Next2() % std::min<std::size_t>(file.size(), 600)] = 0;
+            else
+            {
+                // Past the headers (each to a zero byte, and a zero after the last), the table
+                // of offsets.
+                std::size_t at = 8;
+                while (at < file.size() && file[at])
+                {
+                    while (at < file.size() && file[at])
+                    {
+                        for (int text = 0; text < 2; ++text)
+                        {
+                            while (at < file.size() && file[at])
+                                ++at;
+                            ++at;
+                        }
+                        if (at + 4 > file.size())
+                            break;
+                        at += 4 + GetNumber(file, at);
+                    }
+                    ++at;
+                }
+                ++at;
+                const std::size_t entry = at + 8 * (Next2() % 8);
+                const std::uint32_t value = Special2();
+                if (how == 4)
+                    SetNumber(file, entry + 4 * (Next2() % 2), value);
+                else if (entry + 8 <= file.size())
+                    SetNumber(file, GetNumber(file, entry), value % 5);
+            }
+        }
+
+        const Outcome outcome = Isolated([&](unsigned char pad) { ReadParts(file, wish, pad); });
+        const std::uint32_t flags = AddOutcome(outcome);
+        past_end += flags == 1;
+        stopped += flags == 2;
+        WriteNumber(out, wish);
+        WriteNumber(out, flags);
+        WriteNumber(out, static_cast<std::uint32_t>(file.size()));
+        if (!file.empty())
+            std::fwrite(file.data(), 1, file.size(), out);
+
+#ifdef SHOW_EACH
+        std::fprintf(stderr, "file %u %016llx\n", i, static_cast<unsigned long long>(g_hash));
+#endif
+        if ((i + 1) % 200 == 0 || i + 1 == count)
+            std::printf("%s %u %016llx\n", name, i + 1, static_cast<unsigned long long>(g_hash));
+    }
+    std::printf("%s bytes of files: %llu; saved: %u, not saved: %u; read where it depends on what is past the end: %u, where tinyexr stops: %u\n", name, static_cast<unsigned long long>(file_total), saved, not_saved, past_end, stopped);
+    return 0;
+}
+
+void Put32(std::vector<unsigned char>& f, std::uint32_t v)
+{
+    for (int k = 0; k < 4; ++k)
+        f.push_back(static_cast<unsigned char>(v >> (8 * k)));
+}
+void Put64(std::vector<unsigned char>& f, std::uint64_t v)
+{
+    for (int k = 0; k < 8; ++k)
+        f.push_back(static_cast<unsigned char>(v >> (8 * k)));
+}
+void PutAttribute(std::vector<unsigned char>& f, const char* name, const char* type, const std::vector<unsigned char>& data)
+{
+    f.insert(f.end(), name, name + std::strlen(name) + 1);
+    f.insert(f.end(), type, type + std::strlen(type) + 1);
+    Put32(f, static_cast<std::uint32_t>(data.size()));
+    f.insert(f.end(), data.begin(), data.end());
+}
+
+// A block as a deep file stores it: compressed, or now and then as it is.
+std::vector<unsigned char> Pack(int compression, const std::vector<unsigned char>& raw)
+{
+    if (raw.empty() || compression == TINYEXR_COMPRESSIONTYPE_NONE || Next() % 8 == 0)
+        return raw;
+    std::vector<unsigned char> packed(raw.size() * 2 + 1024);
+    tinyexr::tinyexr_uint64 size = 0;
+    if (compression == TINYEXR_COMPRESSIONTYPE_RLE)
+        tinyexr::CompressRle(packed.data(), size, raw.data(), static_cast<unsigned long>(raw.size()));
+    else
+        tinyexr::CompressZip(packed.data(), size, raw.data(), static_cast<unsigned long>(raw.size()));
+    packed.resize(static_cast<std::size_t>(size));
+    return packed;
+}
+
+// A made-up deep image (tinyexr reads them, and does not write them): of scanlines, a block
+// a line (as tinyexr takes them, whatever the compression says), or of tiles of one level;
+// one to three channels of any type; up to three samples a pixel, now and then many.
+std::vector<unsigned char> MakeDeep()
+{
+    static const char* const kDeepNames[6] = { "A", "B", "G", "R", "Z", "ZBack" };
+    static const int kScanline[10] = { TINYEXR_COMPRESSIONTYPE_ZIPS, TINYEXR_COMPRESSIONTYPE_ZIPS, TINYEXR_COMPRESSIONTYPE_ZIPS, TINYEXR_COMPRESSIONTYPE_ZIPS, TINYEXR_COMPRESSIONTYPE_ZIPS, TINYEXR_COMPRESSIONTYPE_ZIP, TINYEXR_COMPRESSIONTYPE_NONE, TINYEXR_COMPRESSIONTYPE_RLE, TINYEXR_COMPRESSIONTYPE_PIZ, TINYEXR_COMPRESSIONTYPE_B44 };
+    static const int kTiled[5] = { TINYEXR_COMPRESSIONTYPE_NONE, TINYEXR_COMPRESSIONTYPE_RLE, TINYEXR_COMPRESSIONTYPE_ZIPS, TINYEXR_COMPRESSIONTYPE_ZIP, TINYEXR_COMPRESSIONTYPE_PIZ };
+    const bool tiled = Next() % 3 == 0;
+    const int w = 1 + static_cast<int>(Next() % 20);
+    const int h = 1 + static_cast<int>(Next() % 20);
+    const int dx = Next() % 4 == 0 ? static_cast<int>(Next() % 5) : 0;
+    const int dy = Next() % 4 == 0 ? static_cast<int>(Next() % 5) : 0;
+    const int compression = tiled ? kTiled[Next() % 5] : kScanline[Next() % 10];
+    const std::uint32_t many = Next() % 10 == 0 ? 40 : 4;
+    const std::uint32_t num_channels = 1 + Next() % 3;
+    const std::uint32_t first = Next() % (6 - num_channels + 1);
+    std::vector<int> types;
+    std::vector<unsigned char> f = { 0x76, 0x2f, 0x31, 0x01, 2, 8, 0, 0 };
+    if (Next() % 30 == 0)
+        f[5] = static_cast<unsigned char>(Next() % 32);
+    {
+        std::vector<unsigned char> chlist;
+        for (std::uint32_t c = 0; c < num_channels; ++c)
+        {
+            const char* channel = kDeepNames[first + c];
+            chlist.insert(chlist.end(), channel, channel + std::strlen(channel) + 1);
+            types.push_back(static_cast<int>(Next() % 3));
+            Put32(chlist, static_cast<std::uint32_t>(types.back()));
+            Put32(chlist, 0);
+            Put32(chlist, 1);
+            Put32(chlist, 1);
+        }
+        chlist.push_back(0);
+        PutAttribute(f, "channels", "chlist", chlist);
+    }
+    PutAttribute(f, "compression", "compression", { static_cast<unsigned char>(compression) });
+    {
+        std::vector<unsigned char> window;
+        Put32(window, static_cast<std::uint32_t>(dx));
+        Put32(window, static_cast<std::uint32_t>(dy));
+        Put32(window, static_cast<std::uint32_t>(dx + w - 1));
+        Put32(window, static_cast<std::uint32_t>(dy + h - 1));
+        PutAttribute(f, "dataWindow", "box2i", window);
+        PutAttribute(f, "displayWindow", "box2i", window);
+    }
+    PutAttribute(f, "lineOrder", "lineOrder", { 0 });
+    int tx = 1, ty = 1;
+    if (tiled)
+    {
+        PutAttribute(f, "type", "string", { 'd', 'e', 'e', 'p', 't', 'i', 'l', 'e' });
+        tx = 1 + static_cast<int>(Next() % 8);
+        ty = 1 + static_cast<int>(Next() % 8);
+        std::vector<unsigned char> desc;
+        Put32(desc, static_cast<std::uint32_t>(tx));
+        Put32(desc, static_cast<std::uint32_t>(ty));
+        desc.push_back(Next() % 20 == 0 ? 1 : 0);
+        PutAttribute(f, "tiles", "tiledesc", desc);
+    }
+    f.push_back(0);
+
+    // How many samples each pixel has, and their values.
+    std::vector<std::uint32_t> counts(static_cast<std::size_t>(w) * static_cast<std::size_t>(h));
+    for (std::uint32_t& count : counts)
+        count = Next() % many;
+    auto sample = [&](std::vector<unsigned char>& to, int type) {
+        const std::uint32_t value = Next();
+        if (type == TINYEXR_PIXELTYPE_HALF)
+        {
+            to.push_back(static_cast<unsigned char>(value));
+            to.push_back(static_cast<unsigned char>((value >> 8) & 0x7b));
+        }
+        else if (type == TINYEXR_PIXELTYPE_UINT)
+            Put32(to, value % 1000);
+        else
+        {
+            const float v = static_cast<float>(value % 10000) / 100.0f;
+            std::uint32_t bits;
+            std::memcpy(&bits, &v, 4);
+            Put32(to, bits);
+        }
+    };
+    auto block = [&](std::vector<unsigned char>& body, const std::vector<unsigned char>& table, const std::vector<unsigned char>& samples) {
+        const std::vector<unsigned char> packed_table = Pack(compression, table);
+        const std::vector<unsigned char> packed_samples = Pack(compression, samples);
+        Put64(body, packed_table.size());
+        Put64(body, packed_samples.size());
+        Put64(body, samples.size());
+        body.insert(body.end(), packed_table.begin(), packed_table.end());
+        body.insert(body.end(), packed_samples.begin(), packed_samples.end());
+    };
+
+    std::vector<std::vector<unsigned char>> blocks;
+    if (!tiled)
+    {
+        const int lines = compression == TINYEXR_COMPRESSIONTYPE_ZIP ? 16 : compression == TINYEXR_COMPRESSIONTYPE_B44 ? 32 : 1;
+        const int num_blocks = (h + lines - 1) / lines;
+        for (int b = 0; b < num_blocks; ++b)
+        {
+            std::vector<unsigned char> table, samples, body;
+            std::uint32_t run = 0;
+            for (int x = 0; x < w; ++x)
+            {
+                run += counts[static_cast<std::size_t>(b) * static_cast<std::size_t>(w) + static_cast<std::size_t>(x)];
+                Put32(table, run);
+            }
+            for (std::uint32_t c = 0; c < num_channels; ++c)
+                for (std::uint32_t s = 0; s < run; ++s)
+                    sample(samples, types[c]);
+            Put32(body, static_cast<std::uint32_t>(dy + b));
+            block(body, table, samples);
+            blocks.push_back(body);
+        }
+    }
+    else
+    {
+        const int nx = (w + tx - 1) / tx, ny = (h + ty - 1) / ty;
+        for (int j = 0; j < ny; ++j)
+        {
+            for (int i = 0; i < nx; ++i)
+            {
+                const int tw = std::min(tx, w - i * tx), th = std::min(ty, h - j * ty);
+                std::vector<unsigned char> table, samples, body;
+                std::uint32_t run = 0;
+                for (int ry = 0; ry < th; ++ry)
+                {
+                    for (int rx = 0; rx < tw; ++rx)
+                    {
+                        run += counts[static_cast<std::size_t>(j * ty + ry) * static_cast<std::size_t>(w) + static_cast<std::size_t>(i * tx + rx)];
+                        Put32(table, run);
+                    }
+                }
+                for (std::uint32_t c = 0; c < num_channels; ++c)
+                    for (std::uint32_t s = 0; s < run; ++s)
+                        sample(samples, types[c]);
+                Put32(body, static_cast<std::uint32_t>(i));
+                Put32(body, static_cast<std::uint32_t>(j));
+                Put32(body, 0);
+                Put32(body, 0);
+                block(body, table, samples);
+                blocks.push_back(body);
+            }
+        }
+    }
+    std::uint64_t at = f.size() + 8 * blocks.size();
+    for (const std::vector<unsigned char>& body : blocks)
+    {
+        Put64(f, at);
+        at += body.size();
+    }
+    for (const std::vector<unsigned char>& body : blocks)
+        f.insert(f.end(), body.begin(), body.end());
+    return f;
+}
+
+// The reading of a deep file, as examples/dump.rs does it, with `pad` outside it.
+void ReadDeep(const char* path, std::size_t size, unsigned char pad)
+{
+    g_pad = 65536;
+    g_pad_for = size;
+    g_pad_byte = pad;
+    DeepImage deep;
+    std::memset(&deep, 0, sizeof deep);
+    const char* err = NULL;
+    const int ret = LoadDeepEXR(&deep, path, &err);
+    g_pad = 0;
+    AddNumber(static_cast<std::uint32_t>(ret));
+    // (Its message names the file, which the port has no name for.)
+    if (ret == TINYEXR_ERROR_INVALID_FILE)
+    {
+        AddString("File size is zero");
+        FreeEXRErrorMessage(err);
+    }
+    else
+        AddMessage2(err);
+    if (ret != TINYEXR_SUCCESS)
+        return;
+    AddNumber(static_cast<std::uint32_t>(deep.width));
+    AddNumber(static_cast<std::uint32_t>(deep.height));
+    AddNumber(static_cast<std::uint32_t>(deep.num_channels));
+    for (int c = 0; c < deep.num_channels; ++c)
+        AddName(deep.channel_names[c]);
+    if (deep.width <= 0 || deep.height <= 0)
+        return;
+    for (int y = 0; y < deep.height; ++y)
+        for (int x = 0; x < deep.width; ++x)
+            AddNumber(static_cast<std::uint32_t>(deep.offset_table[y][x]));
+    for (int c = 0; c < deep.num_channels; ++c)
+    {
+        for (int y = 0; y < deep.height; ++y)
+        {
+            if (!deep.image[c][y])
+                continue;
+            AddNumber(static_cast<std::uint32_t>(y));
+            Add(deep.image[c][y], static_cast<std::size_t>(deep.offset_table[y][deep.width - 1]) * 4);
+        }
+    }
+}
+
+// The `tinyexr_deep` dump: made-up deep files, a third of them damaged, each read in a
+// program of its own, with zeros and with ones outside it, and written to the file of files
+// with what came of it.
+int Deep(const char* name, std::uint32_t count, std::FILE* out)
+{
+    std::uint64_t file_total = 0;
+    std::uint32_t past_end = 0, stopped = 0, left = 0;
+    char path[64];
+    std::snprintf(path, sizeof path, "/tmp/rustbcx-deep-%d.exr", static_cast<int>(getpid()));
+    for (std::uint32_t i = 0; i < count; ++i)
+    {
+        std::vector<unsigned char> file = MakeDeep();
+        // A third damaged: bits turned over, the end cut off, a byte made up, a number made
+        // up (one such as a damaged header has, or a small one).
+        if (Next() % 3 == 0)
+        {
+            const std::uint32_t how = Next() % 5;
+            if (how == 0)
+            {
+                for (std::uint32_t k = 1 + Next() % 3; k > 0; --k)
+                {
+                    const std::uint32_t bit = Next() % static_cast<std::uint32_t>(file.size() * 8);
+                    file[bit >> 3] ^= static_cast<unsigned char>(1u << (bit & 7));
+                }
+            }
+            else if (how == 1)
+                file.resize(Next() % file.size());
+            else if (how == 2)
+                file[Next() % file.size()] = static_cast<unsigned char>(Next());
+            else
+            {
+                const std::uint32_t at = Next() % static_cast<std::uint32_t>(file.size());
+                SetNumber(file, at, how == 3 ? Special() : Next() % 64);
+            }
+        }
+        file_total += file.size();
+        AddNumber(static_cast<std::uint32_t>(file.size()));
+        Add(file.data(), file.size());
+
+        // (A data window of more pixels than there is time and memory for is left unread.)
+        bool large = false;
+        {
+            const std::size_t at = FindAttribute(file, "dataWindow", "box2i");
+            if (at && at + 16 <= file.size())
+            {
+                const std::int64_t w = static_cast<std::int64_t>(static_cast<std::int32_t>(GetNumber(file, at + 8))) - static_cast<std::int32_t>(GetNumber(file, at)) + 1;
+                const std::int64_t h = static_cast<std::int64_t>(static_cast<std::int32_t>(GetNumber(file, at + 12))) - static_cast<std::int32_t>(GetNumber(file, at + 4)) + 1;
+                large = w > (1 << 22) || h > (1 << 22) || w * h > (1 << 22);
+            }
+        }
+        std::uint32_t flags = 4;
+        if (large)
+        {
+            ++left;
+            AddNumber(flags);
+        }
+        else
+        {
+            std::FILE* exr = std::fopen(path, "wb");
+            if (!exr || (!file.empty() && std::fwrite(file.data(), 1, file.size(), exr) != file.size()) || std::fclose(exr) != 0)
+            {
+                std::fprintf(stderr, "cannot write %s\n", path);
+                return 2;
+            }
+            const std::size_t size = file.size();
+            const Outcome outcome = Isolated([&](unsigned char pad) { ReadDeep(path, size, pad); });
+            flags = AddOutcome(outcome);
+            past_end += flags == 1;
+            stopped += flags == 2;
+        }
+        WriteNumber(out, flags);
+        WriteNumber(out, static_cast<std::uint32_t>(file.size()));
+        if (!file.empty())
+            std::fwrite(file.data(), 1, file.size(), out);
+
+#ifdef SHOW_EACH
+        std::fprintf(stderr, "file %u %016llx\n", i, static_cast<unsigned long long>(g_hash));
+#endif
+        if ((i + 1) % 200 == 0 || i + 1 == count)
+            std::printf("%s %u %016llx\n", name, i + 1, static_cast<unsigned long long>(g_hash));
+    }
+    std::remove(path);
+    std::printf("%s bytes of files: %llu; read where it depends on what is outside the file: %u, where tinyexr stops: %u, left: %u\n", name, static_cast<unsigned long long>(file_total), past_end, stopped, left);
+    return 0;
+}
 } // namespace
 
 int main(int argc, char** argv)
 {
+#ifdef SHOW_EACH
+    if (argc >= 3 && std::strcmp(argv[1], "tinyexr_deep_one") == 0)
+    {
+        std::FILE* f = std::fopen(argv[2], "rb");
+        std::fseek(f, 0, SEEK_END);
+        const std::size_t size = static_cast<std::size_t>(std::ftell(f));
+        std::fclose(f);
+        const Outcome outcome = Isolated([&](unsigned char pad) { ReadDeep(argv[2], size, pad); });
+        std::printf("%016llx %016llx stopped %u\n", static_cast<unsigned long long>(outcome.hash[0]), static_cast<unsigned long long>(outcome.hash[1]), outcome.stopped);
+        return 0;
+    }
+#endif
+    if (argc >= 5 && (std::strcmp(argv[1], "tinyexr_parts") == 0 || std::strcmp(argv[1], "tinyexr_deep") == 0))
+    {
+        g_state = std::strtoull(argv[2], NULL, 10);
+        g_state2 = g_state ^ 0x9e3779b97f4a7c15ull;
+        std::FILE* out = std::fopen(argv[4], "wb");
+        if (!out)
+        {
+            std::fprintf(stderr, "cannot write %s\n", argv[4]);
+            return 2;
+        }
+        const std::uint32_t count = static_cast<std::uint32_t>(std::strtoul(argv[3], NULL, 10));
+        const int ret = std::strcmp(argv[1], "tinyexr_parts") == 0 ? Parts(argv[1], count, out) : Deep(argv[1], count, out);
+        if (std::fclose(out) != 0)
+        {
+            std::fprintf(stderr, "cannot write %s\n", argv[4]);
+            return 2;
+        }
+        return ret;
+    }
     if (argc >= 4 && (std::strcmp(argv[1], "tinyexr_write") == 0 || std::strcmp(argv[1], "tinyexr_write_small") == 0))
     {
         g_state = std::strtoull(argv[2], NULL, 10);
@@ -964,7 +1843,7 @@ int main(int argc, char** argv)
     }
     if (argc < 5 || (std::strcmp(argv[1], "tinyexr_read") != 0 && std::strcmp(argv[1], "tinyexr_read_small") != 0))
     {
-        std::fprintf(stderr, "usage: dump tinyexr_read|tinyexr_read_small <seed> <count> <file>\n       dump tinyexr_write|tinyexr_write_small <seed> <count>\n");
+        std::fprintf(stderr, "usage: dump tinyexr_read|tinyexr_read_small|tinyexr_parts|tinyexr_deep <seed> <count> <file>\n       dump tinyexr_write|tinyexr_write_small <seed> <count>\n");
         return 2;
     }
     const bool small = std::strcmp(argv[1], "tinyexr_read_small") == 0;

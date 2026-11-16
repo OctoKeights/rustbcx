@@ -32,7 +32,7 @@ Each port is verified byte for byte against its original (see
 | `zstd` | [zstd](https://github.com/facebook/zstd): the two fastest strategies and the entropy coders of `lib/compress`, and the reference decoder in `doc/educational_decoder` | Zstandard in both directions, for Zstandard-supercompressed `.ktx2` files. Compresses at levels 1 to 3 and the negative levels; decompresses frames of any level |
 | `stb_image` | Sean Barrett's [stb](https://github.com/nothings/stb), `stb_image.h`: every reader and the zlib decoder | Decodes `.png`, `.bmp`, `.jpg`, `.tga`, `.psd`, `.gif` (every frame), `.pgm`, `.ppm` and Radiance `.hdr`, at 8 or 16 bits per channel or as floats |
 | `stb_image_write` | stb, `stb_image_write.h`: the PNG, BMP and JPEG writers | Encodes 8-bit pixels to `.png`, `.bmp` and `.jpg` |
-| `tinyexr` | Syoyo Fujita's [tinyexr](https://github.com/syoyo/tinyexr), `tinyexr.h`: the single-part reader and writer | Reads and writes `.exr` as half, float or integer channels: scanlines or tiles, mip and rip levels, uncompressed or RLE, ZIP, PIZ, PXR24 or B44 |
+| `tinyexr` | Syoyo Fujita's [tinyexr](https://github.com/syoyo/tinyexr), `tinyexr.h`: the reader and writer | Reads and writes `.exr` as half, float or integer channels: scanlines or tiles, mip and rip levels, uncompressed or RLE, ZIP, PIZ, PXR24 or B44; single-part and multi-part files; reads deep images |
 
 ### Original code
 

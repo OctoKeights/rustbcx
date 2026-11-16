@@ -3552,3 +3552,356 @@ pub fn tinyexr_write(name: &str, seed: u64, count: u32) -> String {
     }
     out + &format!("{name} bytes of files: {file_total}; saved: {saved}, not saved: {not_saved}, saved the short way: {short_way}\n")
 }
+
+/// A number into a hash, as `AddNumber` in `compare/dump_tinyexr.cc` puts it.
+fn exr_add_number(hash: &mut Hash, value: i32) {
+    hash.add(&value.to_le_bytes());
+}
+
+/// A name with its end, or a mark in its place where it was not UTF-8 (`AddName`).
+fn exr_add_name(hash: &mut Hash, text: &str) {
+    if text.contains('\u{fffd}') {
+        hash.add(&0xfffffffdu32.to_le_bytes());
+    } else {
+        hash.add(text.as_bytes());
+        hash.add(&[0]);
+    }
+}
+
+/// An error's number and message, or a mark where it has none (`AddMessage2`).
+fn exr_add_error(hash: &mut Hash, code: i32, message: &str) {
+    exr_add_number(hash, code);
+    if message.is_empty() {
+        hash.add(&0xfffffffeu32.to_le_bytes());
+    } else {
+        hash.add(message.as_bytes());
+        hash.add(&[0]);
+    }
+}
+
+/// A header, as `AddHeader` puts it.
+fn exr_add_header(hash: &mut Hash, header: &rustbcx::tinyexr::ExrHeader) {
+    hash.add(&header.pixel_aspect_ratio.to_bits().to_le_bytes());
+    exr_add_number(hash, header.line_order);
+    for window in [header.data_window, header.display_window] {
+        exr_add_number(hash, window.min_x);
+        exr_add_number(hash, window.min_y);
+        exr_add_number(hash, window.max_x);
+        exr_add_number(hash, window.max_y);
+    }
+    hash.add(&header.screen_window_center[0].to_bits().to_le_bytes());
+    hash.add(&header.screen_window_center[1].to_bits().to_le_bytes());
+    hash.add(&header.screen_window_width.to_bits().to_le_bytes());
+    exr_add_number(hash, header.chunk_count);
+    exr_add_number(hash, header.tiled);
+    exr_add_number(hash, header.tile_size_x);
+    exr_add_number(hash, header.tile_size_y);
+    exr_add_number(hash, header.tile_level_mode);
+    exr_add_number(hash, header.tile_rounding_mode);
+    exr_add_number(hash, header.long_name);
+    exr_add_number(hash, header.non_image);
+    exr_add_number(hash, header.multipart);
+    exr_add_number(hash, header.header_len as i32);
+    exr_add_number(hash, header.custom_attributes.len() as i32);
+    for attribute in &header.custom_attributes {
+        exr_add_name(hash, &attribute.name);
+        exr_add_name(hash, &attribute.type_name);
+        exr_add_number(hash, attribute.value.len() as i32);
+        hash.add(&attribute.value);
+    }
+    exr_add_number(hash, header.channels.len() as i32);
+    for (c, channel) in header.channels.iter().enumerate() {
+        exr_add_name(hash, &channel.name);
+        exr_add_number(hash, channel.pixel_type);
+        exr_add_number(hash, channel.x_sampling);
+        exr_add_number(hash, channel.y_sampling);
+        exr_add_number(hash, i32::from(channel.p_linear));
+        exr_add_number(hash, header.pixel_types[c]);
+        exr_add_number(hash, header.requested_pixel_types[c]);
+    }
+    exr_add_number(hash, header.compression_type);
+    exr_add_name(hash, &header.name);
+}
+
+/// An image and its levels, as `AddImage` puts them.
+fn exr_add_image(hash: &mut Hash, image: &rustbcx::tinyexr::ExrImage, header: &rustbcx::tinyexr::ExrHeader) {
+    use rustbcx::tinyexr::ChannelData;
+    fn add_values(hash: &mut Hash, values: &ChannelData) {
+        match values {
+            ChannelData::Uint(values) => values.iter().for_each(|value| hash.add(&value.to_le_bytes())),
+            ChannelData::Half(values) => values.iter().for_each(|value| hash.add(&value.to_le_bytes())),
+            ChannelData::Float(values) => values.iter().for_each(|value| hash.add(&value.to_bits().to_le_bytes())),
+        }
+    }
+    for &pixel_type in &header.pixel_types {
+        exr_add_number(hash, pixel_type);
+    }
+    let mut next = Some(image);
+    while let Some(level) = next {
+        exr_add_number(hash, level.level_x);
+        exr_add_number(hash, level.level_y);
+        exr_add_number(hash, level.width);
+        exr_add_number(hash, level.height);
+        exr_add_number(hash, level.num_channels);
+        exr_add_number(hash, level.tiles.len() as i32);
+        if !level.tiles.is_empty() {
+            for tile in &level.tiles {
+                exr_add_number(hash, tile.offset_x);
+                exr_add_number(hash, tile.offset_y);
+                exr_add_number(hash, tile.level_x);
+                exr_add_number(hash, tile.level_y);
+                exr_add_number(hash, tile.width);
+                exr_add_number(hash, tile.height);
+                for values in &tile.images {
+                    add_values(hash, values);
+                }
+            }
+        } else {
+            for values in &level.images {
+                add_values(hash, values);
+            }
+        }
+        next = level.next_level.as_deref();
+    }
+}
+
+/// Into the hash, what came of a reading, as `AddOutcome` puts it: the flags (1 where the
+/// original's answer depends on what is outside the file, which the port refuses with
+/// `PAST_THE_END`; 2 where it stops, which the port refuses, with that or another error), or
+/// 0 and the hash of what was read. `theirs` is what the other program found; the flags.
+fn exr_add_outcome(hash: &mut Hash, end: ExrEnd, read: &Hash, theirs: u32) -> u32 {
+    let refused = end == ExrEnd::PastTheEnd || (theirs == 2 && end == ExrEnd::Error);
+    let flags = if refused { if theirs != 0 { theirs } else { 1 } } else { 0 };
+    hash.add(&flags.to_le_bytes());
+    if flags == 0 {
+        hash.add(&read.value.to_le_bytes());
+    }
+    flags
+}
+
+/// How a reading ended.
+#[derive(Clone, Copy, PartialEq)]
+enum ExrEnd {
+    /// With what was read, or with the file left.
+    Read,
+    /// With an error.
+    Error,
+    /// Refused with `PAST_THE_END`.
+    PastTheEnd,
+}
+
+/// The reading of a file of many parts, as `ReadParts` does it.
+fn exr_read_parts(hash: &mut Hash, bytes: &[u8], wish: u32) -> ExrEnd {
+    use rustbcx::tinyexr::{self, PAST_THE_END};
+    let version = match tinyexr::parse_exr_version_from_memory(bytes) {
+        Err(code) => {
+            exr_add_number(hash, code);
+            return ExrEnd::Error;
+        }
+        Ok(version) => version,
+    };
+    exr_add_number(hash, 0);
+    exr_add_number(hash, version.version);
+    exr_add_number(hash, i32::from(version.tiled));
+    exr_add_number(hash, i32::from(version.long_name));
+    exr_add_number(hash, i32::from(version.non_image));
+    exr_add_number(hash, i32::from(version.multipart));
+    let mut headers = match tinyexr::parse_exr_multipart_header_from_memory(&version, bytes) {
+        Err(error) if error.message == PAST_THE_END => return ExrEnd::PastTheEnd,
+        Err(error) => {
+            exr_add_error(hash, error.code, &error.message);
+            return ExrEnd::Error;
+        }
+        Ok(headers) => headers,
+    };
+    exr_add_error(hash, 0, "");
+    exr_add_number(hash, headers.len() as i32);
+    let mut left = headers.len() > 64;
+    let mut chunks = 0i64;
+    for header in &headers {
+        exr_add_header(hash, header);
+        left |= tinyexr_left(header);
+        chunks += i64::from(header.chunk_count.max(0));
+    }
+    if left || chunks > 1 << 16 {
+        hash.add(&0xfffffffbu32.to_le_bytes());
+        return ExrEnd::Read;
+    }
+    for (i, header) in headers.iter_mut().enumerate() {
+        if i < 32 && (wish >> i) & 1 != 0 {
+            for c in 0..header.channels.len() {
+                if header.pixel_types[c] == tinyexr::PIXELTYPE_HALF {
+                    header.requested_pixel_types[c] = tinyexr::PIXELTYPE_FLOAT;
+                }
+            }
+        }
+    }
+    match tinyexr::load_exr_multipart_image_from_memory_as_tinyexr(&mut headers, bytes) {
+        Err(error) if error.message == PAST_THE_END => ExrEnd::PastTheEnd,
+        Err(error) => {
+            exr_add_error(hash, error.code, &error.message);
+            ExrEnd::Error
+        }
+        Ok(images) => {
+            exr_add_error(hash, 0, "");
+            for (image, header) in images.iter().zip(&headers) {
+                exr_add_image(hash, image, header);
+            }
+            ExrEnd::Read
+        }
+    }
+}
+
+/// The `tinyexr_parts` dump: files of many parts made from the seed and saved, as
+/// `compare/dump_tinyexr.cc` saves them with tinyexr (the bytes, or the message); and the
+/// files that program wrote to the file of files (each with what is to be read of it as
+/// floats, and what came of it there), read as it reads them.
+pub fn tinyexr_parts(name: &str, seed: u64, count: u32, file: &[u8]) -> String {
+    use rustbcx::tinyexr;
+    let mut r = Random { state: seed };
+    let mut hash = Hash::new();
+    let mut file_total = 0u64;
+    let (mut saved, mut not_saved, mut past_end, mut stopped) = (0u32, 0u32, 0u32, 0u32);
+    let mut out = String::new();
+    let mut at = 0;
+    let number = |at: &mut usize| {
+        let value = u32::from_le_bytes(file[*at..*at + 4].try_into().unwrap());
+        *at += 4;
+        value
+    };
+    for i in 0..count {
+        let num_parts = if r.next().is_multiple_of(10) { 1 } else { 2 + r.next() % 3 };
+        let mut parts = Vec::new();
+        let mut names: Vec<String> = Vec::new();
+        for p in 0..num_parts {
+            parts.push(exr_image(&mut r, true));
+            let kind = r.next() % 40;
+            let part_name = if kind == 0 {
+                String::new()
+            } else if kind == 1 && p > 0 {
+                names[names.len() - 1].clone()
+            } else {
+                format!("part{p}")
+            };
+            names.push(part_name);
+        }
+        for (made, part_name) in parts.iter_mut().zip(&names) {
+            made.header.name = part_name.clone();
+        }
+        let list: Vec<_> = parts.iter().map(|made| (&made.image, &made.header)).collect();
+        match tinyexr::save_exr_multipart_image_to_memory_as_tinyexr(&list) {
+            Err(error) => {
+                not_saved += 1;
+                let refusal = if error.code == tinyexr::ERROR_SERIALIZATION_FAILED { 0 } else { error.code };
+                hash.add(&refusal.to_le_bytes());
+                hash.add(error.message.as_bytes());
+                hash.add(&[0]);
+            }
+            Ok(saved_file) => {
+                saved += 1;
+                file_total += saved_file.len() as u64;
+                hash.add(&(saved_file.len() as u32).to_le_bytes());
+                hash.add(&saved_file);
+            }
+        }
+
+        let wish = number(&mut at);
+        let theirs = number(&mut at);
+        let size = number(&mut at) as usize;
+        let bytes = &file[at..at + size];
+        at += size;
+        let mut read = Hash::new();
+        let end = exr_read_parts(&mut read, bytes, wish);
+        let flags = exr_add_outcome(&mut hash, end, &read, theirs);
+        past_end += u32::from(flags == 1);
+        stopped += u32::from(flags == 2);
+
+        if std::env::var_os("SHOW_EACH").is_some() {
+            eprintln!("file {i} {:016x}", hash.value);
+        }
+        if (i + 1) % 200 == 0 || i + 1 == count {
+            out += &format!("{name} {} {:016x}\n", i + 1, hash.value);
+        }
+    }
+    out + &format!("{name} bytes of files: {file_total}; saved: {saved}, not saved: {not_saved}; read where it depends on what is past the end: {past_end}, where tinyexr stops: {stopped}\n")
+}
+
+/// The `tinyexr_deep` dump: the deep files `compare/dump_tinyexr.cc` made and wrote to the
+/// file of files (each with what came of it there), read as it reads them.
+pub fn tinyexr_deep(name: &str, count: u32, file: &[u8]) -> String {
+    use rustbcx::tinyexr::{self, PAST_THE_END};
+    let mut hash = Hash::new();
+    let mut file_total = 0u64;
+    let (mut past_end, mut stopped, mut left) = (0u32, 0u32, 0u32);
+    let mut out = String::new();
+    let mut at = 0;
+    let number = |at: &mut usize| {
+        let value = u32::from_le_bytes(file[*at..*at + 4].try_into().unwrap());
+        *at += 4;
+        value
+    };
+    for i in 0..count {
+        let theirs = number(&mut at);
+        let size = number(&mut at) as usize;
+        let bytes = &file[at..at + size];
+        at += size;
+        file_total += size as u64;
+        exr_add_number(&mut hash, size as i32);
+        hash.add(bytes);
+
+        if theirs == 4 {
+            // (Left unread there: more pixels than there is time and memory for.)
+            left += 1;
+            hash.add(&4u32.to_le_bytes());
+        } else {
+            let mut read = Hash::new();
+            let end = match tinyexr::load_deep_exr_from_memory(bytes) {
+                Err(error) if error.message == PAST_THE_END => ExrEnd::PastTheEnd,
+                Err(error) => {
+                    exr_add_error(&mut read, error.code, &error.message);
+                    ExrEnd::Error
+                }
+                Ok(deep) => {
+                    exr_add_error(&mut read, 0, "");
+                    exr_add_number(&mut read, deep.width);
+                    exr_add_number(&mut read, deep.height);
+                    exr_add_number(&mut read, deep.num_channels);
+                    for channel_name in &deep.channel_names {
+                        exr_add_name(&mut read, channel_name);
+                    }
+                    if deep.width > 0 && deep.height > 0 {
+                        for row in &deep.offset_table {
+                            for &offset in row {
+                                exr_add_number(&mut read, offset);
+                            }
+                        }
+                        for rows in &deep.image {
+                            for (y, row) in rows.iter().enumerate() {
+                                exr_add_number(&mut read, y as i32);
+                                let n = deep.offset_table[y][deep.width as usize - 1];
+                                if n as usize != row.len() {
+                                    read.add(b"a line of other than its count of samples");
+                                }
+                                for value in row {
+                                    read.add(&value.to_bits().to_le_bytes());
+                                }
+                            }
+                        }
+                    }
+                    ExrEnd::Read
+                }
+            };
+            let flags = exr_add_outcome(&mut hash, end, &read, theirs);
+            past_end += u32::from(flags == 1);
+            stopped += u32::from(flags == 2);
+        }
+
+        if std::env::var_os("SHOW_EACH").is_some() {
+            eprintln!("file {i} {:016x}", hash.value);
+        }
+        if (i + 1) % 200 == 0 || i + 1 == count {
+            out += &format!("{name} {} {:016x}\n", i + 1, hash.value);
+        }
+    }
+    out + &format!("{name} bytes of files: {file_total}; read where it depends on what is outside the file: {past_end}, where tinyexr stops: {stopped}, left: {left}\n")
+}
