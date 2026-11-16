@@ -84,13 +84,40 @@ impl std::fmt::Display for ReduceEntropyParams {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "lambda: {:.6}", self.lambda)?;
         writeln!(f, "Lookback window size: {}", self.lookback_window_size)?;
-        writeln!(f, "Max allowed RMS increase ratio: {:.6}", self.max_allowed_rms_increase_ratio)?;
-        writeln!(f, "Max smooth block std dev: {:.6}", self.max_smooth_block_std_dev)?;
-        writeln!(f, "Smooth block max MSE scale: {:.6}", self.smooth_block_max_mse_scale)?;
-        writeln!(f, "Color weights: {} {} {} {}", self.color_weights[0], self.color_weights[1], self.color_weights[2], self.color_weights[3])?;
+        writeln!(
+            f,
+            "Max allowed RMS increase ratio: {:.6}",
+            self.max_allowed_rms_increase_ratio
+        )?;
+        writeln!(
+            f,
+            "Max smooth block std dev: {:.6}",
+            self.max_smooth_block_std_dev
+        )?;
+        writeln!(
+            f,
+            "Smooth block max MSE scale: {:.6}",
+            self.smooth_block_max_mse_scale
+        )?;
+        writeln!(
+            f,
+            "Color weights: {} {} {} {}",
+            self.color_weights[0],
+            self.color_weights[1],
+            self.color_weights[2],
+            self.color_weights[3]
+        )?;
         writeln!(f, "Try two matches: {}", u32::from(self.try_two_matches))?;
-        writeln!(f, "Allow relative movement: {}", u32::from(self.allow_relative_movement))?;
-        writeln!(f, "Skip zero MSE blocks: {}", u32::from(self.skip_zero_mse_blocks))
+        writeln!(
+            f,
+            "Allow relative movement: {}",
+            u32::from(self.allow_relative_movement)
+        )?;
+        writeln!(
+            f,
+            "Skip zero MSE blocks: {}",
+            u32::from(self.skip_zero_mse_blocks)
+        )
     }
 }
 
@@ -170,7 +197,11 @@ impl TrackedStat {
     fn std_dev(&self) -> f32 {
         if self.num != 0 {
             // (Unsigned 64-bit arithmetic, as in the C++.)
-            ((u64::from(self.num).wrapping_mul(self.total2).wrapping_sub(self.total.wrapping_mul(self.total))) as f32).sqrt() / self.num as f32
+            ((u64::from(self.num)
+                .wrapping_mul(self.total2)
+                .wrapping_sub(self.total.wrapping_mul(self.total))) as f32)
+                .sqrt()
+                / self.num as f32
         } else {
             0.0
         }
@@ -178,7 +209,12 @@ impl TrackedStat {
 }
 
 /// The largest standard deviation among a block's channels: how far from smooth the block is.
-pub(crate) fn compute_block_max_std_dev(pixels: &[ColorRgba], block_width: u32, block_height: u32, num_comps: u32) -> f32 {
+pub(crate) fn compute_block_max_std_dev(
+    pixels: &[ColorRgba],
+    block_width: u32,
+    block_height: u32,
+    num_comps: u32,
+) -> f32 {
     let mut comp_stats = [TrackedStat::default(); 4];
 
     for y in 0..block_height {
@@ -202,7 +238,16 @@ pub(crate) fn compute_block_max_std_dev(pixels: &[ColorRgba], block_width: u32, 
 }
 
 /// The mean squared error between two blocks of pixels, over the channels in use.
-fn compute_block_mse(pixels_a: &[ColorRgba], pixels_b: &[ColorRgba], block_width: u32, block_height: u32, total_block_pixels: u32, num_comps: u32, weights: &[u32; 4], one_over_total_color_weight: f32) -> f32 {
+fn compute_block_mse(
+    pixels_a: &[ColorRgba],
+    pixels_b: &[ColorRgba],
+    block_width: u32,
+    block_height: u32,
+    total_block_pixels: u32,
+    num_comps: u32,
+    weights: &[u32; 4],
+    one_over_total_color_weight: f32,
+) -> f32 {
     let mut total_err = 0u64;
 
     // (The C++ multiplies an unsigned weight by a signed difference, so the products are worked
@@ -223,18 +268,28 @@ fn compute_block_mse(pixels_a: &[ColorRgba], pixels_b: &[ColorRgba], block_width
         } else {
             for i in 0..16 {
                 let (a, b) = (&pixels_a[i], &pixels_b[i]);
-                total_err += u64::from(wdd(weights[0], d(a, b, 0)).wrapping_add(wdd(weights[1], d(a, b, 1))).wrapping_add(wdd(weights[2], d(a, b, 2))).wrapping_add(wdd(weights[3], d(a, b, 3))));
+                total_err += u64::from(
+                    wdd(weights[0], d(a, b, 0))
+                        .wrapping_add(wdd(weights[1], d(a, b, 1)))
+                        .wrapping_add(wdd(weights[2], d(a, b, 2)))
+                        .wrapping_add(wdd(weights[3], d(a, b, 3))),
+                );
             }
         }
     } else if block_width == 4 && block_height == 4 && num_comps == 3 {
         for i in 0..16 {
             let (a, b) = (&pixels_a[i], &pixels_b[i]);
-            total_err += u64::from(wdd(weights[0], d(a, b, 0)).wrapping_add(wdd(weights[1], d(a, b, 1))).wrapping_add(wdd(weights[2], d(a, b, 2))));
+            total_err += u64::from(
+                wdd(weights[0], d(a, b, 0))
+                    .wrapping_add(wdd(weights[1], d(a, b, 1)))
+                    .wrapping_add(wdd(weights[2], d(a, b, 2))),
+            );
         }
     } else if block_width == 4 && block_height == 4 && num_comps == 2 {
         for i in 0..16 {
             let (a, b) = (&pixels_a[i], &pixels_b[i]);
-            total_err += u64::from(wdd(weights[0], d(a, b, 0)).wrapping_add(wdd(weights[1], d(a, b, 1))));
+            total_err +=
+                u64::from(wdd(weights[0], d(a, b, 0)).wrapping_add(wdd(weights[1], d(a, b, 1))));
         }
     } else if block_width == 4 && block_height == 4 && num_comps == 1 {
         for i in 0..16 {
@@ -245,7 +300,10 @@ fn compute_block_mse(pixels_a: &[ColorRgba], pixels_b: &[ColorRgba], block_width
         for y in 0..block_height {
             let y_ofs = y * block_width;
             for x in 0..block_width {
-                let (a, b) = (&pixels_a[(x + y_ofs) as usize], &pixels_b[(x + y_ofs) as usize]);
+                let (a, b) = (
+                    &pixels_a[(x + y_ofs) as usize],
+                    &pixels_b[(x + y_ofs) as usize],
+                );
                 for c in 0..num_comps as usize {
                     total_err += u64::from(wdd(weights[c], d(a, b, c)));
                 }
@@ -351,7 +409,10 @@ where
     F: FnMut(&[u8], &mut [ColorRgba], u32) -> bool,
 {
     // (Where the C++ only asserts, this says no as well.)
-    if total_block_stride_in_bytes == 0 || block_size_to_optimize_in_bytes == 0 || total_block_stride_in_bytes < block_size_to_optimize_in_bytes {
+    if total_block_stride_in_bytes == 0
+        || block_size_to_optimize_in_bytes == 0
+        || total_block_stride_in_bytes < block_size_to_optimize_in_bytes
+    {
         return false;
     }
     if !(1..=4).contains(&num_comps) {
@@ -363,13 +424,18 @@ where
         }
     }
 
-    let total_color_weight = params.color_weights[0].wrapping_add(params.color_weights[1]).wrapping_add(params.color_weights[2]).wrapping_add(params.color_weights[3]);
+    let total_color_weight = params.color_weights[0]
+        .wrapping_add(params.color_weights[1])
+        .wrapping_add(params.color_weights[2])
+        .wrapping_add(params.color_weights[3]);
     if total_color_weight == 0 {
         return false;
     }
     let one_over_total_color_weight = 1.0f32 / total_color_weight as f32;
 
-    if block_size_to_optimize_in_bytes < MIN_MATCH_LEN || block_size_to_optimize_in_bytes as usize > MAX_BLOCK_SIZE_IN_BYTES {
+    if block_size_to_optimize_in_bytes < MIN_MATCH_LEN
+        || block_size_to_optimize_in_bytes as usize > MAX_BLOCK_SIZE_IN_BYTES
+    {
         return false;
     }
 
@@ -382,7 +448,8 @@ where
     let size = block_size_to_optimize_in_bytes as usize;
     let block_pixel_count = total_block_pixels as usize;
 
-    let total_blocks_to_check = (params.lookback_window_size / total_block_stride_in_bytes).max(1) as i32;
+    let total_blocks_to_check =
+        (params.lookback_window_size / total_block_stride_in_bytes).max(1) as i32;
 
     let mut len_hist = vec![0u32; MAX_BLOCK_SIZE_IN_BYTES + 1];
     let mut second_len_hist = vec![0u32; MAX_BLOCK_SIZE_IN_BYTES + 1];
@@ -405,13 +472,27 @@ where
         }
 
         let orig_at = block_index as usize * stride;
-        let pixels = &block_pixels[block_index as usize * block_pixel_count..(block_index as usize + 1) * block_pixel_count];
+        let pixels = &block_pixels[block_index as usize * block_pixel_count
+            ..(block_index as usize + 1) * block_pixel_count];
 
-        if !unpack_block(&blocks[orig_at..orig_at + size], &mut decoded_block[..block_pixel_count], block_index) {
+        if !unpack_block(
+            &blocks[orig_at..orig_at + size],
+            &mut decoded_block[..block_pixel_count],
+            block_index,
+        ) {
             return false;
         }
 
-        let cur_mse = compute_block_mse(pixels, &decoded_block, block_width, block_height, total_block_pixels, num_comps, &params.color_weights, one_over_total_color_weight);
+        let cur_mse = compute_block_mse(
+            pixels,
+            &decoded_block,
+            block_width,
+            block_height,
+            total_block_pixels,
+            num_comps,
+            &params.color_weights,
+            one_over_total_color_weight,
+        );
 
         if params.skip_zero_mse_blocks && cur_mse == 0.0 {
             continue;
@@ -436,7 +517,8 @@ where
         let cur_bits = LITERAL_BITS * block_size_to_optimize_in_bytes as f32;
         let cur_t = cur_mse * smooth_block_mse_scale + cur_bits * params.lambda;
 
-        let first_block_to_check = (block_index.wrapping_sub(total_blocks_to_check as u32) as i32).max(0);
+        let first_block_to_check =
+            (block_index.wrapping_sub(total_blocks_to_check as u32) as i32).max(0);
         let last_block_to_check = block_index as i32 - 1;
 
         let mut best_block = [0u8; MAX_BLOCK_SIZE_IN_BYTES];
@@ -445,11 +527,18 @@ where
         orig_block[..size].copy_from_slice(&blocks[orig_at..orig_at + size]);
 
         let mut best_t = cur_t;
-        let (mut best_match_len, mut best_match_src_window_ofs, mut best_match_dst_window_ofs, mut best_match_dst_block_ofs) = (0u32, 0u32, 0u32, 0u32);
+        let (
+            mut best_match_len,
+            mut best_match_src_window_ofs,
+            mut best_match_dst_window_ofs,
+            mut best_match_dst_block_ofs,
+        ) = (0u32, 0u32, 0u32, 0u32);
         let mut best_match_bits = 0.0f32;
 
         // Don't let thresh_ms_err be 0 to let zero error blocks have slightly increased distortion
-        let thresh_ms_err = params.max_allowed_rms_increase_ratio * params.max_allowed_rms_increase_ratio * if cur_mse < 1.0 { 1.0 } else { cur_mse };
+        let thresh_ms_err = params.max_allowed_rms_increase_ratio
+            * params.max_allowed_rms_increase_ratio
+            * if cur_mse < 1.0 { 1.0 } else { cur_mse };
 
         let mut prev_block_index = last_block_to_check;
         while prev_block_index >= first_block_to_check {
@@ -459,52 +548,95 @@ where
             while len >= MIN_MATCH_LEN {
                 if params.allow_relative_movement {
                     for src_ofs in 0..=(block_size_to_optimize_in_bytes - len) {
-                        let src_match_window_ofs = (prev_block_index as u32).wrapping_mul(total_block_stride_in_bytes).wrapping_add(src_ofs);
+                        let src_match_window_ofs = (prev_block_index as u32)
+                            .wrapping_mul(total_block_stride_in_bytes)
+                            .wrapping_add(src_ofs);
 
                         for dst_ofs in 0..=(block_size_to_optimize_in_bytes - len) {
-                            let dst_match_window_ofs = block_index.wrapping_mul(total_block_stride_in_bytes).wrapping_add(dst_ofs);
+                            let dst_match_window_ofs = block_index
+                                .wrapping_mul(total_block_stride_in_bytes)
+                                .wrapping_add(dst_ofs);
 
-                            let match_dist = dst_match_window_ofs.wrapping_sub(src_match_window_ofs);
+                            let match_dist =
+                                dst_match_window_ofs.wrapping_sub(src_match_window_ofs);
 
                             let trial_match_bits;
                             let trial_total_bits;
 
-                            let hs = hash_hsieh(&blocks[prev_at + src_ofs as usize..prev_at + (src_ofs + len) as usize], dst_ofs);
+                            let hs = hash_hsieh(
+                                &blocks[prev_at + src_ofs as usize
+                                    ..prev_at + (src_ofs + len) as usize],
+                                dst_ofs,
+                            );
 
                             // Continue a previous match (which would cross block boundaries)
-                            if src_match_window_ofs as i32 == prev_match_window_ofs_to_favor_cont && dst_ofs == 0 {
+                            if src_match_window_ofs as i32 == prev_match_window_ofs_to_favor_cont
+                                && dst_ofs == 0
+                            {
                                 trial_match_bits = MATCH_CONTINUE_BITS;
-                                trial_total_bits = (block_size_to_optimize_in_bytes - len) as f32 * LITERAL_BITS + MATCH_CONTINUE_BITS;
+                                trial_total_bits = (block_size_to_optimize_in_bytes - len) as f32
+                                    * LITERAL_BITS
+                                    + MATCH_CONTINUE_BITS;
                             }
                             // Exploit REP0 matches
-                            else if prev_match_dist_to_favor != -1 && src_match_window_ofs == dst_match_window_ofs.wrapping_sub(prev_match_dist_to_favor as u32) {
+                            else if prev_match_dist_to_favor != -1
+                                && src_match_window_ofs
+                                    == dst_match_window_ofs
+                                        .wrapping_sub(prev_match_dist_to_favor as u32)
+                            {
                                 trial_match_bits = MATCH_REP0_BITS;
-                                trial_total_bits = (block_size_to_optimize_in_bytes - len) as f32 * LITERAL_BITS + MATCH_REP0_BITS;
+                                trial_total_bits = (block_size_to_optimize_in_bytes - len) as f32
+                                    * LITERAL_BITS
+                                    + MATCH_REP0_BITS;
                             } else {
-                                trial_match_bits = compute_match_cost_estimate(match_dist, len) as f32;
-                                trial_total_bits = (block_size_to_optimize_in_bytes - len) as f32 * LITERAL_BITS + trial_match_bits;
+                                trial_match_bits =
+                                    compute_match_cost_estimate(match_dist, len) as f32;
+                                trial_total_bits = (block_size_to_optimize_in_bytes - len) as f32
+                                    * LITERAL_BITS
+                                    + trial_match_bits;
 
                                 let hash_check = hash[hs as usize & (HASH_SIZE - 1)];
-                                if hash_check & 0xFF == block_index & 0xFF && hash_check >> 8 == hs >> 8 {
+                                if hash_check & 0xFF == block_index & 0xFF
+                                    && hash_check >> 8 == hs >> 8
+                                {
                                     continue;
                                 }
                             }
 
-                            hash[hs as usize & (HASH_SIZE - 1)] = (hs & 0xFFFF_FF00) | (block_index & 0xFF);
+                            hash[hs as usize & (HASH_SIZE - 1)] =
+                                (hs & 0xFFFF_FF00) | (block_index & 0xFF);
 
                             let trial_total_bits_times_lambda = trial_total_bits * params.lambda;
 
                             let mut trial_block = orig_block;
-                            trial_block[dst_ofs as usize..(dst_ofs + len) as usize].copy_from_slice(&blocks[prev_at + src_ofs as usize..prev_at + (src_ofs + len) as usize]);
+                            trial_block[dst_ofs as usize..(dst_ofs + len) as usize]
+                                .copy_from_slice(
+                                    &blocks[prev_at + src_ofs as usize
+                                        ..prev_at + (src_ofs + len) as usize],
+                                );
 
-                            if !unpack_block(&trial_block[..size], &mut decoded_trial_block[..block_pixel_count], block_index) {
+                            if !unpack_block(
+                                &trial_block[..size],
+                                &mut decoded_trial_block[..block_pixel_count],
+                                block_index,
+                            ) {
                                 continue;
                             }
 
-                            let trial_mse = compute_block_mse(pixels, &decoded_trial_block, block_width, block_height, total_block_pixels, num_comps, &params.color_weights, one_over_total_color_weight);
+                            let trial_mse = compute_block_mse(
+                                pixels,
+                                &decoded_trial_block,
+                                block_width,
+                                block_height,
+                                total_block_pixels,
+                                num_comps,
+                                &params.color_weights,
+                                one_over_total_color_weight,
+                            );
 
                             if trial_mse < thresh_ms_err {
-                                let t = trial_mse * smooth_block_mse_scale + trial_total_bits_times_lambda;
+                                let t = trial_mse * smooth_block_mse_scale
+                                    + trial_total_bits_times_lambda;
 
                                 if t < best_t {
                                     best_t = t;
@@ -519,53 +651,95 @@ where
                         } // dst_ofs
                     } // src_ofs
                 } else {
-                    let match_dist = block_index.wrapping_sub(prev_block_index as u32).wrapping_mul(total_block_stride_in_bytes);
+                    let match_dist = block_index
+                        .wrapping_sub(prev_block_index as u32)
+                        .wrapping_mul(total_block_stride_in_bytes);
 
                     // Assume the block has 1 match and block_size_to_optimize_in_bytes-match_len literals.
                     let trial_match_bits = compute_match_cost_estimate(match_dist, len) as f32;
-                    let trial_total_bits = (block_size_to_optimize_in_bytes - len) as f32 * LITERAL_BITS + trial_match_bits;
+                    let trial_total_bits = (block_size_to_optimize_in_bytes - len) as f32
+                        * LITERAL_BITS
+                        + trial_match_bits;
                     let trial_total_bits_times_lambda = trial_total_bits * params.lambda;
 
                     for ofs in 0..=(block_size_to_optimize_in_bytes - len) {
-                        let dst_match_window_ofs = block_index.wrapping_mul(total_block_stride_in_bytes).wrapping_add(ofs);
-                        let src_match_window_ofs = (prev_block_index as u32).wrapping_mul(total_block_stride_in_bytes).wrapping_add(ofs);
+                        let dst_match_window_ofs = block_index
+                            .wrapping_mul(total_block_stride_in_bytes)
+                            .wrapping_add(ofs);
+                        let src_match_window_ofs = (prev_block_index as u32)
+                            .wrapping_mul(total_block_stride_in_bytes)
+                            .wrapping_add(ofs);
 
                         let mut trial_match_bits_to_use = trial_match_bits;
-                        let mut trial_total_bits_times_lambda_to_use = trial_total_bits_times_lambda;
+                        let mut trial_total_bits_times_lambda_to_use =
+                            trial_total_bits_times_lambda;
 
-                        let hs = hash_hsieh(&blocks[prev_at + ofs as usize..prev_at + (ofs + len) as usize], ofs);
+                        let hs = hash_hsieh(
+                            &blocks[prev_at + ofs as usize..prev_at + (ofs + len) as usize],
+                            ofs,
+                        );
 
                         // Continue a previous match (which would cross block boundaries)
-                        if src_match_window_ofs as i32 == prev_match_window_ofs_to_favor_cont && ofs == 0 {
-                            let continue_match_trial_bits = (block_size_to_optimize_in_bytes - len) as f32 * LITERAL_BITS + MATCH_CONTINUE_BITS;
+                        if src_match_window_ofs as i32 == prev_match_window_ofs_to_favor_cont
+                            && ofs == 0
+                        {
+                            let continue_match_trial_bits =
+                                (block_size_to_optimize_in_bytes - len) as f32 * LITERAL_BITS
+                                    + MATCH_CONTINUE_BITS;
                             trial_match_bits_to_use = MATCH_CONTINUE_BITS;
-                            trial_total_bits_times_lambda_to_use = continue_match_trial_bits * params.lambda;
+                            trial_total_bits_times_lambda_to_use =
+                                continue_match_trial_bits * params.lambda;
                         }
                         // Exploit REP0 matches
-                        else if prev_match_dist_to_favor != -1 && src_match_window_ofs == dst_match_window_ofs.wrapping_sub(prev_match_dist_to_favor as u32) {
-                            let continue_match_trial_bits = (block_size_to_optimize_in_bytes - len) as f32 * LITERAL_BITS + MATCH_REP0_BITS;
+                        else if prev_match_dist_to_favor != -1
+                            && src_match_window_ofs
+                                == dst_match_window_ofs
+                                    .wrapping_sub(prev_match_dist_to_favor as u32)
+                        {
+                            let continue_match_trial_bits =
+                                (block_size_to_optimize_in_bytes - len) as f32 * LITERAL_BITS
+                                    + MATCH_REP0_BITS;
                             trial_match_bits_to_use = MATCH_REP0_BITS;
-                            trial_total_bits_times_lambda_to_use = continue_match_trial_bits * params.lambda;
+                            trial_total_bits_times_lambda_to_use =
+                                continue_match_trial_bits * params.lambda;
                         } else {
                             let hash_check = hash[hs as usize & (HASH_SIZE - 1)];
-                            if hash_check & 0xFF == block_index & 0xFF && hash_check >> 8 == hs >> 8 {
+                            if hash_check & 0xFF == block_index & 0xFF && hash_check >> 8 == hs >> 8
+                            {
                                 continue;
                             }
                         }
 
-                        hash[hs as usize & (HASH_SIZE - 1)] = (hs & 0xFFFF_FF00) | (block_index & 0xFF);
+                        hash[hs as usize & (HASH_SIZE - 1)] =
+                            (hs & 0xFFFF_FF00) | (block_index & 0xFF);
 
                         let mut trial_block = orig_block;
-                        trial_block[ofs as usize..(ofs + len) as usize].copy_from_slice(&blocks[prev_at + ofs as usize..prev_at + (ofs + len) as usize]);
+                        trial_block[ofs as usize..(ofs + len) as usize].copy_from_slice(
+                            &blocks[prev_at + ofs as usize..prev_at + (ofs + len) as usize],
+                        );
 
-                        if !unpack_block(&trial_block[..size], &mut decoded_trial_block[..block_pixel_count], block_index) {
+                        if !unpack_block(
+                            &trial_block[..size],
+                            &mut decoded_trial_block[..block_pixel_count],
+                            block_index,
+                        ) {
                             continue;
                         }
 
-                        let trial_mse = compute_block_mse(pixels, &decoded_trial_block, block_width, block_height, total_block_pixels, num_comps, &params.color_weights, one_over_total_color_weight);
+                        let trial_mse = compute_block_mse(
+                            pixels,
+                            &decoded_trial_block,
+                            block_width,
+                            block_height,
+                            total_block_pixels,
+                            num_comps,
+                            &params.color_weights,
+                            one_over_total_color_weight,
+                        );
 
                         if trial_mse < thresh_ms_err {
-                            let t = trial_mse * smooth_block_mse_scale + trial_total_bits_times_lambda_to_use;
+                            let t = trial_mse * smooth_block_mse_scale
+                                + trial_total_bits_times_lambda_to_use;
 
                             if t < best_t {
                                 best_t = t;
@@ -587,12 +761,19 @@ where
         } // prev_block_index
 
         if best_t < cur_t {
-            let (mut best_second_match_len, mut best_second_match_src_window_ofs, mut best_second_match_dst_window_ofs, mut best_second_match_dst_block_ofs) = (0u32, 0u32, 0u32, 0u32);
+            let (
+                mut best_second_match_len,
+                mut best_second_match_src_window_ofs,
+                mut best_second_match_dst_window_ofs,
+                mut best_second_match_dst_block_ofs,
+            ) = (0u32, 0u32, 0u32, 0u32);
 
             // Try injecting a second match, being sure it does't overlap with the first.
             if params.try_two_matches && best_match_len <= block_size_to_optimize_in_bytes - 3 {
                 let mut matched_flags = [0u8; MAX_BLOCK_SIZE_IN_BYTES];
-                matched_flags[best_match_dst_block_ofs as usize..(best_match_dst_block_ofs + best_match_len) as usize].fill(1);
+                matched_flags[best_match_dst_block_ofs as usize
+                    ..(best_match_dst_block_ofs + best_match_len) as usize]
+                    .fill(1);
 
                 let orig_best_block = best_block;
 
@@ -600,32 +781,61 @@ where
                 while prev_block_index >= first_block_to_check {
                     let prev_at = prev_block_index as usize * stride;
 
-                    let match_dist = block_index.wrapping_sub(prev_block_index as u32).wrapping_mul(total_block_stride_in_bytes);
+                    let match_dist = block_index
+                        .wrapping_sub(prev_block_index as u32)
+                        .wrapping_mul(total_block_stride_in_bytes);
 
                     for len in 3..=(block_size_to_optimize_in_bytes - best_match_len) {
-                        let trial_total_bits = (block_size_to_optimize_in_bytes - len - best_match_len) as f32 * LITERAL_BITS + compute_match_cost_estimate(match_dist, len) as f32 + best_match_bits;
+                        let trial_total_bits =
+                            (block_size_to_optimize_in_bytes - len - best_match_len) as f32
+                                * LITERAL_BITS
+                                + compute_match_cost_estimate(match_dist, len) as f32
+                                + best_match_bits;
 
                         let trial_total_bits_times_lambda = trial_total_bits * params.lambda;
 
                         for ofs in 0..=(block_size_to_optimize_in_bytes - len) {
-                            if matched_flags[ofs as usize..(ofs + len) as usize].iter().any(|&flag| flag != 0) {
+                            if matched_flags[ofs as usize..(ofs + len) as usize]
+                                .iter()
+                                .any(|&flag| flag != 0)
+                            {
                                 continue;
                             }
 
-                            let dst_match_window_ofs = block_index.wrapping_mul(total_block_stride_in_bytes).wrapping_add(ofs);
-                            let src_match_window_ofs = (prev_block_index as u32).wrapping_mul(total_block_stride_in_bytes).wrapping_add(ofs);
+                            let dst_match_window_ofs = block_index
+                                .wrapping_mul(total_block_stride_in_bytes)
+                                .wrapping_add(ofs);
+                            let src_match_window_ofs = (prev_block_index as u32)
+                                .wrapping_mul(total_block_stride_in_bytes)
+                                .wrapping_add(ofs);
 
                             let mut trial_block = orig_best_block;
-                            trial_block[ofs as usize..(ofs + len) as usize].copy_from_slice(&blocks[prev_at + ofs as usize..prev_at + (ofs + len) as usize]);
+                            trial_block[ofs as usize..(ofs + len) as usize].copy_from_slice(
+                                &blocks[prev_at + ofs as usize..prev_at + (ofs + len) as usize],
+                            );
 
-                            if !unpack_block(&trial_block[..size], &mut decoded_trial_block[..block_pixel_count], block_index) {
+                            if !unpack_block(
+                                &trial_block[..size],
+                                &mut decoded_trial_block[..block_pixel_count],
+                                block_index,
+                            ) {
                                 continue;
                             }
 
-                            let trial_mse = compute_block_mse(pixels, &decoded_trial_block, block_width, block_height, total_block_pixels, num_comps, &params.color_weights, one_over_total_color_weight);
+                            let trial_mse = compute_block_mse(
+                                pixels,
+                                &decoded_trial_block,
+                                block_width,
+                                block_height,
+                                total_block_pixels,
+                                num_comps,
+                                &params.color_weights,
+                                one_over_total_color_weight,
+                            );
 
                             if trial_mse < thresh_ms_err {
-                                let t = trial_mse * smooth_block_mse_scale + trial_total_bits_times_lambda;
+                                let t = trial_mse * smooth_block_mse_scale
+                                    + trial_total_bits_times_lambda;
 
                                 if t < best_t {
                                     best_t = t;
@@ -646,19 +856,25 @@ where
             blocks[orig_at..orig_at + size].copy_from_slice(&best_block[..size]);
             *total_modified += 1;
 
-            if best_second_match_len == 0 || best_match_dst_window_ofs > best_second_match_dst_window_ofs {
+            if best_second_match_len == 0
+                || best_match_dst_window_ofs > best_second_match_dst_window_ofs
+            {
                 if block_size_to_optimize_in_bytes == total_block_stride_in_bytes {
                     // If the match goes all the way to the end of a block, we can try to continue it on the next encoded block.
                     if best_match_dst_block_ofs + best_match_len == total_block_stride_in_bytes {
-                        prev_match_window_ofs_to_favor_cont = best_match_src_window_ofs.wrapping_add(best_match_len) as i32;
+                        prev_match_window_ofs_to_favor_cont =
+                            best_match_src_window_ofs.wrapping_add(best_match_len) as i32;
                     } else {
                         prev_match_window_ofs_to_favor_cont = -1;
                     }
                 }
             } else if block_size_to_optimize_in_bytes == total_block_stride_in_bytes {
                 // If the match goes all the way to the end of a block, we can try to continue it on the next encoded block.
-                if best_second_match_dst_block_ofs + best_second_match_len == total_block_stride_in_bytes {
-                    prev_match_window_ofs_to_favor_cont = best_second_match_src_window_ofs.wrapping_add(best_second_match_len) as i32;
+                if best_second_match_dst_block_ofs + best_second_match_len
+                    == total_block_stride_in_bytes
+                {
+                    prev_match_window_ofs_to_favor_cont =
+                        best_second_match_src_window_ofs.wrapping_add(best_second_match_len) as i32;
                 } else {
                     prev_match_window_ofs_to_favor_cont = -1;
                 }
@@ -676,17 +892,40 @@ where
     } // block_index
 
     if params.debug_output {
-        println!("Total smooth blocks: {:3.2}%", total_smooth_blocks as f32 * 100.0 / num_blocks as f32);
+        println!(
+            "Total smooth blocks: {:3.2}%",
+            total_smooth_blocks as f32 * 100.0 / num_blocks as f32
+        );
 
         println!("Match length histogram:");
         for i in MIN_MATCH_LEN..=block_size_to_optimize_in_bytes {
-            print!("{}{}", len_hist[i as usize], if i < block_size_to_optimize_in_bytes { ',' } else { '\n' });
+            print!(
+                "{}{}",
+                len_hist[i as usize],
+                if i < block_size_to_optimize_in_bytes {
+                    ','
+                } else {
+                    '\n'
+                }
+            );
         }
 
-        println!("Total second matches: {} {:3.2}%", total_second_matches, total_second_matches as f32 * 100.0 / num_blocks as f32);
+        println!(
+            "Total second matches: {} {:3.2}%",
+            total_second_matches,
+            total_second_matches as f32 * 100.0 / num_blocks as f32
+        );
         println!("Secod match length histogram:");
         for i in MIN_MATCH_LEN..=block_size_to_optimize_in_bytes {
-            print!("{}{}", second_len_hist[i as usize], if i < block_size_to_optimize_in_bytes { ',' } else { '\n' });
+            print!(
+                "{}{}",
+                second_len_hist[i as usize],
+                if i < block_size_to_optimize_in_bytes {
+                    ','
+                } else {
+                    '\n'
+                }
+            );
         }
     }
 
@@ -718,7 +957,11 @@ mod tests {
         let params = CompressBlockParams::new();
         let mut packed = vec![0u8; 32];
         for (block, pixels) in packed.chunks_exact_mut(16).zip(pixels.chunks_exact(16)) {
-            encoder.compress_block(block.try_into().unwrap(), pixels.try_into().unwrap(), &params);
+            encoder.compress_block(
+                block.try_into().unwrap(),
+                pixels.try_into().unwrap(),
+                &params,
+            );
         }
         (pixels, packed)
     }
@@ -729,7 +972,20 @@ mod tests {
         let mut params = ReduceEntropyParams::new();
         params.lambda = 50.0;
         let mut modified = 0;
-        assert!(reduce_entropy(&mut packed, 2, 16, 16, 4, 4, 4, &pixels, &params, &mut modified, unpack, None));
+        assert!(reduce_entropy(
+            &mut packed,
+            2,
+            16,
+            16,
+            4,
+            4,
+            4,
+            &pixels,
+            &params,
+            &mut modified,
+            unpack,
+            None
+        ));
         assert_eq!(modified, 1);
         let (first, second) = packed.split_at(16);
         assert_eq!(first, second);
@@ -742,7 +998,20 @@ mod tests {
         let mut params = ReduceEntropyParams::new();
         params.lambda = 0.0;
         let mut modified = 0;
-        assert!(reduce_entropy(&mut packed, 2, 16, 16, 4, 4, 4, &pixels, &params, &mut modified, unpack, None));
+        assert!(reduce_entropy(
+            &mut packed,
+            2,
+            16,
+            16,
+            4,
+            4,
+            4,
+            &pixels,
+            &params,
+            &mut modified,
+            unpack,
+            None
+        ));
         // (With no weight on the bits a trial has to lower the error to be kept, and a block
         // cannot be nearer its own pixels than the encoder left it by taking another's bytes
         // here.)
@@ -759,7 +1028,20 @@ mod tests {
         params.try_two_matches = true;
         params.allow_relative_movement = true;
         let mut modified = 0;
-        assert!(reduce_entropy(&mut packed, 2, 16, 16, 4, 4, 4, &pixels, &params, &mut modified, unpack, None));
+        assert!(reduce_entropy(
+            &mut packed,
+            2,
+            16,
+            16,
+            4,
+            4,
+            4,
+            &pixels,
+            &params,
+            &mut modified,
+            unpack,
+            None
+        ));
         assert_eq!(&packed[..16], &first[..]);
         // What is left still unpacks.
         let mut unpacked = [[0u8; 4]; 16];
@@ -772,22 +1054,90 @@ mod tests {
         let params = ReduceEntropyParams::new();
         let mut modified = 0;
         // A weight on a channel that is not in use.
-        assert!(!reduce_entropy(&mut packed, 2, 16, 16, 4, 4, 3, &pixels, &params, &mut modified, unpack, None));
+        assert!(!reduce_entropy(
+            &mut packed,
+            2,
+            16,
+            16,
+            4,
+            4,
+            3,
+            &pixels,
+            &params,
+            &mut modified,
+            unpack,
+            None
+        ));
         // Fewer than three bytes to go over, and more bytes to go over than the stride.
-        assert!(!reduce_entropy(&mut packed, 2, 16, 2, 4, 4, 4, &pixels, &params, &mut modified, unpack, None));
-        assert!(!reduce_entropy(&mut packed, 2, 8, 16, 4, 4, 4, &pixels, &params, &mut modified, unpack, None));
+        assert!(!reduce_entropy(
+            &mut packed,
+            2,
+            16,
+            2,
+            4,
+            4,
+            4,
+            &pixels,
+            &params,
+            &mut modified,
+            unpack,
+            None
+        ));
+        assert!(!reduce_entropy(
+            &mut packed,
+            2,
+            8,
+            16,
+            4,
+            4,
+            4,
+            &pixels,
+            &params,
+            &mut modified,
+            unpack,
+            None
+        ));
         // No channels, and no weight at all.
-        assert!(!reduce_entropy(&mut packed, 2, 16, 16, 4, 4, 0, &pixels, &params, &mut modified, unpack, None));
+        assert!(!reduce_entropy(
+            &mut packed,
+            2,
+            16,
+            16,
+            4,
+            4,
+            0,
+            &pixels,
+            &params,
+            &mut modified,
+            unpack,
+            None
+        ));
         let mut weightless = params;
         weightless.color_weights = [0; 4];
-        assert!(!reduce_entropy(&mut packed, 2, 16, 16, 4, 4, 4, &pixels, &weightless, &mut modified, unpack, None));
+        assert!(!reduce_entropy(
+            &mut packed,
+            2,
+            16,
+            16,
+            4,
+            4,
+            4,
+            &pixels,
+            &weightless,
+            &mut modified,
+            unpack,
+            None
+        ));
         assert_eq!(modified, 0);
     }
 
     #[test]
     fn the_settings_print_as_the_cpp_prints_them() {
         let printed = ReduceEntropyParams::new().to_string();
-        assert!(printed.starts_with("lambda: 1.000000\nLookback window size: 256\n"), "{printed}");
+        assert!(
+            printed.starts_with("lambda: 1.000000\nLookback window size: 256\n"),
+            "{printed}"
+        );
         assert!(printed.ends_with("Skip zero MSE blocks: 0\n"), "{printed}");
     }
 }

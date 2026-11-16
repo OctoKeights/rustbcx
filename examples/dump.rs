@@ -140,7 +140,11 @@ fn dump_bc7decomp(seed: u64, blocks: u32) {
         // Every third block is of a mode chosen in turn (8: of none); the rest are as they fell.
         if i % 3 == 0 {
             let mode = (i / 3) % 9;
-            block[0] = if mode == 8 { 0 } else { ((u32::from(block[0]) & !((2u32 << mode) - 1)) | (1 << mode)) as u8 };
+            block[0] = if mode == 8 {
+                0
+            } else {
+                ((u32::from(block[0]) & !((2u32 << mode) - 1)) | (1 << mode)) as u8
+            };
         }
         let mut pixels = [[0xEEu8; 4]; 16];
         let ok = bc7decomp::unpack_bc7(&block, &mut pixels);
@@ -159,7 +163,12 @@ fn dump_bc7decomp(seed: u64, blocks: u32) {
     println!();
 }
 
-const MODES: [Bc1ApproxMode; 4] = [Bc1ApproxMode::Ideal, Bc1ApproxMode::NVidia, Bc1ApproxMode::Amd, Bc1ApproxMode::IdealRound4];
+const MODES: [Bc1ApproxMode; 4] = [
+    Bc1ApproxMode::Ideal,
+    Bc1ApproxMode::NVidia,
+    Bc1ApproxMode::Amd,
+    Bc1ApproxMode::IdealRound4,
+];
 
 fn halves(block: &[u8; 16]) -> (&[u8; 8], &[u8; 8]) {
     let (first, second) = block.split_at(8);
@@ -213,7 +222,11 @@ fn dump_unpack(seed: u64, blocks: u32) {
         // A solid block of a made-up colour, and of one whose channels are close together.
         let encoder = &encoders[((i / 4) % 4) as usize];
         let mut solid = [0u8; 8];
-        let (r, g, b) = (random.next() % 256, random.next() % 256, random.next() % 256);
+        let (r, g, b) = (
+            random.next() % 256,
+            random.next() % 256,
+            random.next() % 256,
+        );
         encoder.encode_bc1_solid_block(&mut solid, r, g, b, i % 2 == 0);
         hash.add(&solid);
         let (g, b) = ((r + random.next() % 3) % 256, (r + random.next() % 3) % 256);
@@ -244,7 +257,11 @@ fn dump_bc1(seed: u64, blocks: u32) {
             *value = (random.next() % 4) as u8;
         }
         let options = random.next();
-        let force = if options & 15 == 0 { Some(&forced) } else { None };
+        let force = if options & 15 == 0 {
+            Some(&forced)
+        } else {
+            None
+        };
 
         let mut block = [0xEEu8; 8];
         if i % 3 != 2 {
@@ -253,7 +270,14 @@ fn dump_bc1(seed: u64, blocks: u32) {
             if level == 19 && (i / 20) % 64 != 0 {
                 level = 5 + (i / 20) % 3;
             }
-            encoder.encode_bc1(level, &mut block, &pixels, options & 16 != 0, options & 32 != 0, force);
+            encoder.encode_bc1(
+                level,
+                &mut block,
+                &pixels,
+                options & 16 != 0,
+                options & 32 != 0,
+                force,
+            );
         } else {
             // By flags: any of them, with made-up numbers of orderings and rounds.
             const FLAGS: [u32; 13] = [
@@ -279,7 +303,11 @@ fn dump_bc1(seed: u64, blocks: u32) {
                 }
             }
             // (Without a need for the block's error the encoder takes one first guess only.)
-            let needs_error = flags & (rgbcx::ENCODE_BC1_USE_LIKELY_TOTAL_ORDERINGS | rgbcx::ENCODE_BC1_USE_3COLOR_BLOCKS | rgbcx::ENCODE_BC1_USE_FULL_MSE_EVAL) != 0;
+            let needs_error = flags
+                & (rgbcx::ENCODE_BC1_USE_LIKELY_TOTAL_ORDERINGS
+                    | rgbcx::ENCODE_BC1_USE_3COLOR_BLOCKS
+                    | rgbcx::ENCODE_BC1_USE_FULL_MSE_EVAL)
+                != 0;
             if bits & (1 << 13) != 0 && needs_error {
                 flags |= (random.next() % 40) << rgbcx::ENCODE_BC1_ENDPOINT_SEARCH_ROUNDS_SHIFT;
             }
@@ -287,7 +315,8 @@ fn dump_bc1(seed: u64, blocks: u32) {
                 flags &= !rgbcx::ENCODE_BC1_TRY_ALL_INITIAL_ENDPOINTS;
             }
             let (orderings4, orderings3) = (random.next() % 140, random.next() % 40);
-            encoder.encode_bc1_with_flags(&mut block, &pixels, flags, orderings4, orderings3, force);
+            encoder
+                .encode_bc1_with_flags(&mut block, &pixels, flags, orderings4, orderings3, force);
         }
         hash.add(&block);
 
@@ -334,7 +363,10 @@ fn dump_bc345(seed: u64, blocks: u32) {
 
         // (Without a need for the block's error the encoder takes one first guess only.)
         let mut flags = options >> 16;
-        if flags & (rgbcx::ENCODE_BC1_USE_LIKELY_TOTAL_ORDERINGS | rgbcx::ENCODE_BC1_USE_FULL_MSE_EVAL) == 0 {
+        if flags
+            & (rgbcx::ENCODE_BC1_USE_LIKELY_TOTAL_ORDERINGS | rgbcx::ENCODE_BC1_USE_FULL_MSE_EVAL)
+            == 0
+        {
             flags &= !rgbcx::ENCODE_BC1_TRY_ALL_INITIAL_ENDPOINTS;
         }
         let mut block = [0xEEu8; 16];
@@ -350,7 +382,18 @@ fn dump_bc345(seed: u64, blocks: u32) {
         {
             let (first, second) = block.split_at_mut(8);
             rgbcx::encode_bc4(first.try_into().unwrap(), &flat[channel..], 4);
-            error += u64::from(rgbcx::encode_bc4_hq(second.try_into().unwrap(), &flat[channel..], 4, radius, modes, if options & 0x80 != 0 { Some(&forced) } else { None }));
+            error += u64::from(rgbcx::encode_bc4_hq(
+                second.try_into().unwrap(),
+                &flat[channel..],
+                4,
+                radius,
+                modes,
+                if options & 0x80 != 0 {
+                    Some(&forced)
+                } else {
+                    None
+                },
+            ));
         }
         hash.add(&block);
         let mut bytes = [0u8; 32];
@@ -383,7 +426,16 @@ fn bc7_mode(block: &[u8; 16]) -> usize {
 
 fn dump_bc7enc(seed: u64, blocks: u32) {
     const PARTITIONS: [u32; 8] = [64, 64, 64, 32, 16, 1, 0, 100];
-    const MASKS: [u32; 8] = [u32::MAX, u32::MAX, u32::MAX, u32::MAX, 1 << 6, (1 << 1) | (1 << 5), (1 << 1) | (1 << 7), (1 << 1) | (1 << 5) | (1 << 7)];
+    const MASKS: [u32; 8] = [
+        u32::MAX,
+        u32::MAX,
+        u32::MAX,
+        u32::MAX,
+        1 << 6,
+        (1 << 1) | (1 << 5),
+        (1 << 1) | (1 << 7),
+        (1 << 1) | (1 << 5) | (1 << 7),
+    ];
     const PBIT_WEIGHTS: [f32; 4] = [1.0, 1.0, 1.3, 0.75];
     const ERROR_WEIGHTS: [f32; 4] = [1.0, 1.0, 1.5, 0.5];
     const PARTITION_WEIGHTS: [f32; 4] = [1.0, 1.0, 0.8, 1.25];
@@ -441,7 +493,14 @@ fn dump_bc7enc(seed: u64, blocks: u32) {
                 opaque = true;
             }
             for k in 0..16 {
-                params.selectors[k] = selectors[k] % (if how == 0 { 4 } else if how == 1 { 16 } else { 8 });
+                params.selectors[k] = selectors[k]
+                    % (if how == 0 {
+                        4
+                    } else if how == 1 {
+                        16
+                    } else {
+                        8
+                    });
             }
         }
         // (Mode 1 alone needs a partition to try.)
@@ -492,17 +551,29 @@ fn dump_bc7block(seed: u64, blocks: u32) {
         let mode = (i % 8) as usize;
         results.mode = mode as u32;
         results.partition = random.next() % (1 << PARTITION_BITS[mode]);
-        results.rotation = if mode == 4 || mode == 5 { random.next() % 4 } else { 0 };
+        results.rotation = if mode == 4 || mode == 5 {
+            random.next() % 4
+        } else {
+            0
+        };
         results.index_selector = if mode == 4 { random.next() % 2 } else { 0 };
         let color_index_bits = COLOR_INDEX_BITS[mode] + results.index_selector;
         let alpha_index_bits = ALPHA_INDEX_BITS[mode] - results.index_selector;
         for k in 0..16 {
             results.selectors[k] = (random.next() % (1 << color_index_bits)) as u8;
-            results.alpha_selectors[k] = if mode == 4 || mode == 5 { (random.next() % (1 << alpha_index_bits)) as u8 } else { 0 };
+            results.alpha_selectors[k] = if mode == 4 || mode == 5 {
+                (random.next() % (1 << alpha_index_bits)) as u8
+            } else {
+                0
+            };
         }
         for k in 0..3 {
             for c in 0..4 {
-                let bits = if c == 3 { ALPHA_BITS[mode] } else { COLOR_BITS[mode] };
+                let bits = if c == 3 {
+                    ALPHA_BITS[mode]
+                } else {
+                    COLOR_BITS[mode]
+                };
                 results.low[k][c] = (random.next() % (1 << bits)) as u8;
                 results.high[k][c] = (random.next() % (1 << bits)) as u8;
             }
@@ -542,9 +613,14 @@ fn dump_bc7e(presets: bool, seed: u64, blocks: u32, path: Option<&String>) {
         for (name, profile) in PROFILES {
             for perceptual in [false, true] {
                 encoder.compress_blocks(&mut packed, &pixels, &profile(perceptual));
-                println!("{name} {} {:016x}", if perceptual { "perceptual" } else { "linear" }, hash(&packed, &mut modes));
+                println!(
+                    "{name} {} {:016x}",
+                    if perceptual { "perceptual" } else { "linear" },
+                    hash(&packed, &mut modes)
+                );
                 if let Some(file) = &mut file {
-                    file.write_all(packed.as_flattened()).expect("writing the blocks");
+                    file.write_all(packed.as_flattened())
+                        .expect("writing the blocks");
                 }
             }
         }
@@ -553,12 +629,17 @@ fn dump_bc7e(presets: bool, seed: u64, blocks: u32, path: Option<&String>) {
         while first < blocks as usize {
             let count = (blocks as usize - first).min(32);
             let params = make_settings(&mut random);
-            encoder.compress_blocks(&mut packed[first..first + count], &pixels[first..first + count], &params);
+            encoder.compress_blocks(
+                &mut packed[first..first + count],
+                &pixels[first..first + count],
+                &params,
+            );
             first += count;
         }
         println!("settings {:016x}", hash(&packed, &mut modes));
         if let Some(file) = &mut file {
-            file.write_all(packed.as_flattened()).expect("writing the blocks");
+            file.write_all(packed.as_flattened())
+                .expect("writing the blocks");
         }
     }
     print!("blocks by mode:");
@@ -570,7 +651,11 @@ fn dump_bc7e(presets: bool, seed: u64, blocks: u32, path: Option<&String>) {
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let (Some(what), Some(seed), Some(blocks)) = (args.get(1), args.get(2).and_then(|s| s.parse::<u64>().ok()), args.get(3).and_then(|s| s.parse::<u32>().ok())) else {
+    let (Some(what), Some(seed), Some(blocks)) = (
+        args.get(1),
+        args.get(2).and_then(|s| s.parse::<u64>().ok()),
+        args.get(3).and_then(|s| s.parse::<u32>().ok()),
+    ) else {
         eprintln!("usage: dump <what> <seed> <blocks>   (see the top of dump.rs)");
         std::process::exit(2);
     };
@@ -594,12 +679,16 @@ fn main() {
         "stb_image_more" => print!("{}", made_up::stb_image_more(seed, blocks)),
         "zstd_decode" | "zstd_decode_small" => {
             let Some(file) = args.get(4).and_then(|path| std::fs::read(path).ok()) else {
-                eprintln!("usage: dump {what} <seed> <count> <file of frames from compare/dump_zstd.c>");
+                eprintln!(
+                    "usage: dump {what} <seed> <count> <file of frames from compare/dump_zstd.c>"
+                );
                 std::process::exit(2);
             };
             print!("{}", made_up::zstd_decode(what, blocks, &file));
         }
-        "tinyexr_write" | "tinyexr_write_small" | "tinyexr_zfp_write" => print!("{}", made_up::tinyexr_write(what, seed, blocks)),
+        "tinyexr_write" | "tinyexr_write_small" | "tinyexr_zfp_write" => {
+            print!("{}", made_up::tinyexr_write(what, seed, blocks))
+        }
         "tinyexr_read" | "tinyexr_read_small" | "tinyexr_zfp_read" => {
             let Some(file) = args.get(4).and_then(|path| std::fs::read(path).ok()) else {
                 eprintln!("usage: dump {what} <seed> <count> <file of files from compare/dump_tinyexr.cc>");
@@ -618,11 +707,20 @@ fn main() {
                 print!("{}", made_up::tinyexr_deep(what, blocks, &file));
             }
         }
-        "zstd_compress" | "zstd_compress_small" => print!("{}", made_up::zstd_compress(what, seed, blocks, false)),
-        "zstd_compress_long" => print!("{}", made_up::zstd_compress_long(what, seed, blocks, false)),
+        "zstd_compress" | "zstd_compress_small" => {
+            print!("{}", made_up::zstd_compress(what, seed, blocks, false))
+        }
+        "zstd_compress_long" => {
+            print!("{}", made_up::zstd_compress_long(what, seed, blocks, false))
+        }
         "zstd_compress_more" | "zstd_compress_more_small" => {
-            let highest = args.get(4).map_or(9, |arg| arg.parse().expect("a strategy"));
-            print!("{}", made_up::zstd_compress_up_to(what, seed, blocks, false, highest));
+            let highest = args
+                .get(4)
+                .map_or(9, |arg| arg.parse().expect("a strategy"));
+            print!(
+                "{}",
+                made_up::zstd_compress_up_to(what, seed, blocks, false, highest)
+            );
         }
         "zstd_entropy" => print!("{}", made_up::zstd_entropy(seed, blocks)),
         "bc6h_unpack" => print!("{}", made_up::bc6h_unpack(seed, blocks)),

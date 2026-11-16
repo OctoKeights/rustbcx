@@ -29,7 +29,10 @@ pub struct Random {
 
 impl Random {
     pub fn next(&mut self) -> u32 {
-        self.state = self.state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        self.state = self
+            .state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         (self.state >> 32) as u32
     }
 }
@@ -59,7 +62,11 @@ pub fn make_pixels(random: &mut Random) -> [[u8; 4]; 16] {
             for pixel in &mut pixels {
                 let t = (random.next() % 256) as i32;
                 for c in 0..4 {
-                    let n = if noise != 0 { (random.next() % (noise + 1)) as i32 - (noise / 2) as i32 } else { 0 };
+                    let n = if noise != 0 {
+                        (random.next() % (noise + 1)) as i32 - (noise / 2) as i32
+                    } else {
+                        0
+                    };
                     pixel[c] = clamp((a[c] as i32 * (255 - t) + b[c] as i32 * t) / 255 + n);
                 }
             }
@@ -98,7 +105,11 @@ pub fn make_pixels(random: &mut Random) -> [[u8; 4]; 16] {
             for pixel in &mut pixels {
                 let bright = random.next() % 4 == 0;
                 for value in pixel {
-                    *value = if bright { random.next() } else { random.next() % 8 } as u8;
+                    *value = if bright {
+                        random.next()
+                    } else {
+                        random.next() % 8
+                    } as u8;
                 }
             }
         }
@@ -179,10 +190,20 @@ pub fn make_settings(random: &mut Random) -> CompressBlockParams {
     p.alpha_settings.use_mode5_rotation = random.next() % 2 != 0;
 
     let use_mode = p.opaque_settings.use_mode;
-    if !(use_mode[0] || use_mode[1] || use_mode[2] || use_mode[3] || use_mode[6] || (!p.perceptual && (use_mode[4] || use_mode[5]))) {
+    if !(use_mode[0]
+        || use_mode[1]
+        || use_mode[2]
+        || use_mode[3]
+        || use_mode[6]
+        || (!p.perceptual && (use_mode[4] || use_mode[5])))
+    {
         p.opaque_settings.use_mode[6] = true;
     }
-    if !(p.alpha_settings.use_mode6 || p.alpha_settings.use_mode7 || (p.alpha_settings.use_mode5 && p.mode5_rotation_mask & 1 != 0) || (p.alpha_settings.use_mode4 && p.mode4_rotation_mask & 1 != 0)) {
+    if !(p.alpha_settings.use_mode6
+        || p.alpha_settings.use_mode7
+        || (p.alpha_settings.use_mode5 && p.mode5_rotation_mask & 1 != 0)
+        || (p.alpha_settings.use_mode4 && p.mode4_rotation_mask & 1 != 0))
+    {
         p.alpha_settings.use_mode6 = true;
     }
     p

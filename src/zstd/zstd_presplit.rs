@@ -32,7 +32,10 @@ struct Fingerprint {
 
 impl Fingerprint {
     fn new() -> Fingerprint {
-        Fingerprint { events: [0; HASHTABLESIZE], nb_events: 0 }
+        Fingerprint {
+            events: [0; HASHTABLESIZE],
+            nb_events: 0,
+        }
     }
 }
 
@@ -62,16 +65,26 @@ fn abs64(s64: i64) -> u64 {
 fn fp_distance(fp1: &Fingerprint, fp2: &Fingerprint, hash_log: u32) -> u64 {
     let mut distance = 0u64;
     for n in 0..1usize << hash_log {
-        distance = distance.wrapping_add(abs64((fp1.events[n] as i64).wrapping_mul(fp2.nb_events as i64).wrapping_sub((fp2.events[n] as i64).wrapping_mul(fp1.nb_events as i64))));
+        distance = distance.wrapping_add(abs64(
+            (fp1.events[n] as i64)
+                .wrapping_mul(fp2.nb_events as i64)
+                .wrapping_sub((fp2.events[n] as i64).wrapping_mul(fp1.nb_events as i64)),
+        ));
     }
     distance
 }
 
 /// `compareFingerprints`: whether the two are sufficiently different.
-fn compare_fingerprints(reference: &Fingerprint, newfp: &Fingerprint, penalty: i32, hash_log: u32) -> bool {
+fn compare_fingerprints(
+    reference: &Fingerprint,
+    newfp: &Fingerprint,
+    penalty: i32,
+    hash_log: u32,
+) -> bool {
     let p50 = (reference.nb_events as u64).wrapping_mul(newfp.nb_events as u64);
     let deviation = fp_distance(reference, newfp, hash_log);
-    let threshold = p50.wrapping_mul(THRESHOLD_BASE.wrapping_add(penalty as u64)) / THRESHOLD_PENALTY_RATE;
+    let threshold =
+        p50.wrapping_mul(THRESHOLD_BASE.wrapping_add(penalty as u64)) / THRESHOLD_PENALTY_RATE;
     deviation >= threshold
 }
 
@@ -99,7 +112,12 @@ fn split_block_by_chunks(block: &[u8], level: usize) -> usize {
     record_fingerprint(&mut past_events, &block[..CHUNKSIZE], rate, hash_log);
     let mut pos = CHUNKSIZE;
     while pos <= block_size - CHUNKSIZE {
-        record_fingerprint(&mut new_events, &block[pos..pos + CHUNKSIZE], rate, hash_log);
+        record_fingerprint(
+            &mut new_events,
+            &block[pos..pos + CHUNKSIZE],
+            rate,
+            hash_log,
+        );
         if compare_fingerprints(&past_events, &new_events, penalty, hash_log) {
             return pos;
         } else {
@@ -133,7 +151,10 @@ fn split_block_from_borders(block: &[u8]) -> usize {
     }
 
     let middle = block_size / 2 - SEGMENT_SIZE / 2;
-    hist::add(&mut middle_events.events, &block[middle..middle + SEGMENT_SIZE]);
+    hist::add(
+        &mut middle_events.events,
+        &block[middle..middle + SEGMENT_SIZE],
+    );
     middle_events.nb_events = SEGMENT_SIZE;
     {
         let dist_from_begin = fp_distance(&past_events, &middle_events, 8);

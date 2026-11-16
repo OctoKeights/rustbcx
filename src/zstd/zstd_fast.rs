@@ -6,7 +6,10 @@
 //! whole input, and the labels are the arms of a loop.
 
 use super::common::read32;
-use super::zstd_compress::{count, get_lowest_prefix_index, hash_ptr, offset_to_offbase, MatchState, SeqStore, HASH_READ_SIZE, K_SEARCH_STRENGTH, REPCODE1_TO_OFFBASE, ZSTD_WINDOW_START_INDEX};
+use super::zstd_compress::{
+    count, get_lowest_prefix_index, hash_ptr, offset_to_offbase, MatchState, SeqStore,
+    HASH_READ_SIZE, K_SEARCH_STRENGTH, REPCODE1_TO_OFFBASE, ZSTD_WINDOW_START_INDEX,
+};
 
 /// What ends the search for a match from one place.
 enum Found {
@@ -21,7 +24,14 @@ enum Found {
 /// `ZSTD_compressBlock_fast`: the sequences of the block `src[istart..istart + src_size]`
 /// go to `seq_store`. The answer is how many bytes at the end of the block no sequence
 /// covers.
-pub(crate) fn compress_block_fast(ms: &mut MatchState, seq_store: &mut SeqStore, rep: &mut [u32; 3], src: &[u8], istart: usize, src_size: usize) -> usize {
+pub(crate) fn compress_block_fast(
+    ms: &mut MatchState,
+    seq_store: &mut SeqStore,
+    rep: &mut [u32; 3],
+    src: &[u8],
+    istart: usize,
+    src_size: usize,
+) -> usize {
     // (The original has one copy of the function per minimum match, and two ways to read a
     // candidate, with a branch or without; they give the same matches.)
     let mls = match ms.cparams.min_match {
@@ -31,7 +41,8 @@ pub(crate) fn compress_block_fast(ms: &mut MatchState, seq_store: &mut SeqStore,
     let hlog = ms.cparams.hash_log;
     let window_log = ms.cparams.window_log;
     // min 2
-    let step_size = (ms.cparams.target_length + u32::from(ms.cparams.target_length == 0) + 1) as usize;
+    let step_size =
+        (ms.cparams.target_length + u32::from(ms.cparams.target_length == 0) + 1) as usize;
     // `base + index` is `index - BASE` here, and `ptr - base` is `ptr + BASE`.
     const BASE: usize = ZSTD_WINDOW_START_INDEX as usize;
     let end_index = (istart + BASE + src_size) as u32;
@@ -68,7 +79,10 @@ pub(crate) fn compress_block_fast(ms: &mut MatchState, seq_store: &mut SeqStore,
 
     let hash_table = &mut ms.hash_table;
     // `ZSTD_match4Found_branch`.
-    let match_found = |current_ptr: usize, match_idx: u32| -> bool { match_idx >= prefix_start_index && read32(src, current_ptr) == read32(src, match_idx as usize - BASE) };
+    let match_found = |current_ptr: usize, match_idx: u32| -> bool {
+        match_idx >= prefix_start_index
+            && read32(src, current_ptr) == read32(src, match_idx as usize - BASE)
+    };
 
     // start. Outer search loop.
     loop {
@@ -190,7 +204,9 @@ pub(crate) fn compress_block_fast(ms: &mut MatchState, seq_store: &mut SeqStore,
                 m_length = 4;
 
                 // Count the backwards match length.
-                while ((ip0 > anchor) & (match0 > prefix_start)) && (src[ip0 - 1] == src[match0 - 1]) {
+                while ((ip0 > anchor) & (match0 > prefix_start))
+                    && (src[ip0 - 1] == src[match0 - 1])
+                {
                     ip0 -= 1;
                     match0 -= 1;
                     m_length += 1;
@@ -216,7 +232,9 @@ pub(crate) fn compress_block_fast(ms: &mut MatchState, seq_store: &mut SeqStore,
             hash_table[hash_ptr(src, ip0 - 2, hlog, mls)] = (ip0 - 2 + BASE) as u32;
 
             if rep_offset2 > 0 {
-                while (ip0 + HASH_READ_SIZE <= iend) && (read32(src, ip0) == read32(src, ip0 - rep_offset2 as usize)) {
+                while (ip0 + HASH_READ_SIZE <= iend)
+                    && (read32(src, ip0) == read32(src, ip0 - rep_offset2 as usize))
+                {
                     // Store the sequence.
                     let r_length = count(src, ip0 + 4, ip0 + 4 - rep_offset2 as usize, iend) + 4;
                     std::mem::swap(&mut rep_offset1, &mut rep_offset2); // swap rep_offset2 <=> rep_offset1
@@ -238,11 +256,23 @@ pub(crate) fn compress_block_fast(ms: &mut MatchState, seq_store: &mut SeqStore,
     // When the repeat offsets overflow, they are saved as 0 at the start, and restored here:
     // if offset_1 started invalid (offsetSaved1 != 0) and became valid (rep_offset1 != 0),
     // rotate saved offsets.
-    offset_saved2 = if offset_saved1 != 0 && rep_offset1 != 0 { offset_saved1 } else { offset_saved2 };
+    offset_saved2 = if offset_saved1 != 0 && rep_offset1 != 0 {
+        offset_saved1
+    } else {
+        offset_saved2
+    };
 
     // Save the repeat offsets for the next block.
-    rep[0] = if rep_offset1 != 0 { rep_offset1 } else { offset_saved1 };
-    rep[1] = if rep_offset2 != 0 { rep_offset2 } else { offset_saved2 };
+    rep[0] = if rep_offset1 != 0 {
+        rep_offset1
+    } else {
+        offset_saved1
+    };
+    rep[1] = if rep_offset2 != 0 {
+        rep_offset2
+    } else {
+        offset_saved2
+    };
 
     // Return the last literals size.
     iend - anchor

@@ -24,16 +24,25 @@ fn same(printed: &str, expected: &str) {
 /// back.
 #[test]
 fn compresses_as_zstd_does() {
-    same(&made_up::zstd_compress("zstd_compress_small", 7, 200, true), include_str!("data/zstd_compress_expected.txt"));
+    same(
+        &made_up::zstd_compress("zstd_compress_small", 7, 200, true),
+        include_str!("data/zstd_compress_expected.txt"),
+    );
 }
 
 /// The same at every level from 4 up.
 #[test]
 fn compresses_at_the_higher_levels_as_zstd_does() {
-    same(&made_up::zstd_compress_up_to("zstd_compress_more_small", 7, 160, true, 9), include_str!("data/zstd_compress_more_expected.txt"));
+    same(
+        &made_up::zstd_compress_up_to("zstd_compress_more_small", 7, 160, true, 9),
+        include_str!("data/zstd_compress_more_expected.txt"),
+    );
 }
 
 #[test]
 fn the_entropy_coders_answer_as_the_originals_do() {
-    same(&made_up::zstd_entropy(9, 4000), include_str!("data/zstd_entropy_expected.txt"));
+    same(
+        &made_up::zstd_entropy(9, 4000),
+        include_str!("data/zstd_entropy_expected.txt"),
+    );
 }

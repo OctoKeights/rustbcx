@@ -15,8 +15,8 @@ mod compress;
 mod decompress;
 
 pub use compress::{compress_bound, compress_buffer, MAX_LEVEL};
-pub use decompress::uncompress_buffer;
 pub(crate) use decompress::adler32;
+pub use decompress::uncompress_buffer;
 
 /// Why a stream was not decompressed, as OpenEXR tells it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

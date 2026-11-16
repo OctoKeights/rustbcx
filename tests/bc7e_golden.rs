@@ -25,10 +25,17 @@ fn packs_as_the_ispc_encoder_does() {
     for (name, profile) in PROFILES {
         for perceptual in [false, true] {
             encoder.compress_blocks(&mut packed, &pixels, &profile(perceptual));
-            printed += &format!("{name} {} {:016x}\n", if perceptual { "perceptual" } else { "linear" }, hash(&packed, &mut modes));
+            printed += &format!(
+                "{name} {} {:016x}\n",
+                if perceptual { "perceptual" } else { "linear" },
+                hash(&packed, &mut modes)
+            );
         }
     }
-    printed += &format!("blocks by mode:{}\n", modes.map(|count| format!(" {count}")).concat());
+    printed += &format!(
+        "blocks by mode:{}\n",
+        modes.map(|count| format!(" {count}")).concat()
+    );
 
     // bc7e_settings 1 3000
     let mut random = Random { state: 1 };
@@ -39,7 +46,10 @@ fn packs_as_the_ispc_encoder_does() {
         encoder.compress_blocks(packed, pixels, &make_settings(&mut random));
     }
     printed += &format!("settings {:016x}\n", hash(&packed, &mut modes));
-    printed += &format!("blocks by mode:{}\n", modes.map(|count| format!(" {count}")).concat());
+    printed += &format!(
+        "blocks by mode:{}\n",
+        modes.map(|count| format!(" {count}")).concat()
+    );
 
     let expected = include_str!("data/bc7e_expected.txt");
     for (line, (ours, theirs)) in printed.lines().zip(expected.lines()).enumerate() {

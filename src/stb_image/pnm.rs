@@ -4,7 +4,9 @@
 //! PGM: <http://netpbm.sourceforge.net/doc/pgm.html>
 //! PPM: <http://netpbm.sourceforge.net/doc/ppm.html>
 
-use super::{convert_format, mad4sizes_valid, Context, ImageType, Info, Pixels, STBI_MAX_DIMENSIONS};
+use super::{
+    convert_format, mad4sizes_valid, Context, ImageType, Info, Pixels, STBI_MAX_DIMENSIONS,
+};
 
 /// `stbi__pnm_test`
 pub(crate) fn pnm_test(s: &mut Context) -> bool {
@@ -68,7 +70,13 @@ struct PnmHeader {
 /// `stbi__pnm_info_internal`: the bits a channel (0 when the header is refused) and the
 /// header, as far as it got.
 fn pnm_info_internal(s: &mut Context) -> (i32, PnmHeader) {
-    let mut header = PnmHeader { x: 0, y: 0, comp: 0, maxv: 0, isascii: false };
+    let mut header = PnmHeader {
+        x: 0,
+        y: 0,
+        comp: 0,
+        maxv: 0,
+        isascii: false,
+    };
 
     s.rewind();
 
@@ -209,7 +217,15 @@ pub(crate) fn pnm_info(s: &mut Context) -> Option<Info> {
     if bits == 0 {
         return None;
     }
-    Some(Info { kind: ImageType::Pnm, x: header.x, y: header.y, comp: header.comp, is_16_bit: bits == 16, is_hdr: false, is_iphone_png: false })
+    Some(Info {
+        kind: ImageType::Pnm,
+        x: header.x,
+        y: header.y,
+        comp: header.comp,
+        is_16_bit: bits == 16,
+        is_hdr: false,
+        is_iphone_png: false,
+    })
 }
 
 #[cfg(test)]
@@ -218,17 +234,27 @@ mod tests {
 
     #[test]
     fn binary_and_text_files() {
-        let image = load_from_memory(b"P5 2 1\n# a comment\n255\n\x07\x09", 0, &LoadOptions::default()).unwrap();
-        assert_eq!((image.x, image.y, image.channels_in_file, image.data.clone()), (2, 1, 1, vec![7, 9]));
+        let image = load_from_memory(
+            b"P5 2 1\n# a comment\n255\n\x07\x09",
+            0,
+            &LoadOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(
+            (image.x, image.y, image.channels_in_file, image.data.clone()),
+            (2, 1, 1, vec![7, 9])
+        );
         let image = load_from_memory(b"P3\n1 1 15 15 0 5\n", 0, &LoadOptions::default()).unwrap();
         assert_eq!(image.data, [238, 0, 85]);
-        let image = load_16_from_memory(b"P5 1 1 65535 \x12\x34", 0, &LoadOptions::default()).unwrap();
+        let image =
+            load_16_from_memory(b"P5 1 1 65535 \x12\x34", 0, &LoadOptions::default()).unwrap();
         assert_eq!(image.data, [0x1234]);
     }
 
     #[test]
     fn a_header_that_is_too_large_is_refused() {
-        let error = load_from_memory(b"P5 2147483648 1 255 ", 0, &LoadOptions::default()).unwrap_err();
+        let error =
+            load_from_memory(b"P5 2147483648 1 255 ", 0, &LoadOptions::default()).unwrap_err();
         assert_eq!(error.0, "invalid width");
     }
 }

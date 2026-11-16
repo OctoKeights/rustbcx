@@ -10,7 +10,9 @@ mod made_up;
 
 #[test]
 fn reduces_entropy_as_the_cpp_does() {
-    let printed = [(3, 1200), (7, 600), (12, 900)].map(|(seed, blocks)| made_up::ert(seed, blocks)).concat();
+    let printed = [(3, 1200), (7, 600), (12, 900)]
+        .map(|(seed, blocks)| made_up::ert(seed, blocks))
+        .concat();
     let expected = include_str!("data/ert_expected.txt");
     for (line, (ours, theirs)) in printed.lines().zip(expected.lines()).enumerate() {
         assert_eq!(ours, theirs, "line {}", line + 1);

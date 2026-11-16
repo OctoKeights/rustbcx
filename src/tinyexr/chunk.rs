@@ -2,11 +2,15 @@
 //! image. A port of `DecodeEXRImage`, `DecodeChunk`, `DecodeTiledLevel` and the functions
 //! around them in tinyexr v3.4.0 (`tinyexr.h`).
 
-use super::decode::{allocate_image, compute_channel_layout, decode_pixel_data, decode_tiled_pixel_data};
+use super::decode::{
+    allocate_image, compute_channel_layout, decode_pixel_data, decode_tiled_pixel_data,
+};
 use super::zfp::{find_zfp_compression_param, ZfpParam};
 use super::{
-    ExrHeader, ExrImage, ExrTile, COMPRESSIONTYPE_B44, COMPRESSIONTYPE_B44A, COMPRESSIONTYPE_DWAA, COMPRESSIONTYPE_DWAB, COMPRESSIONTYPE_PIZ, COMPRESSIONTYPE_PXR24, COMPRESSIONTYPE_ZFP, COMPRESSIONTYPE_ZIP, ERROR_INVALID_ARGUMENT,
-    ERROR_INVALID_DATA, ERROR_INVALID_HEADER, TILE_MIPMAP_LEVELS, TILE_ONE_LEVEL, TILE_RIPMAP_LEVELS, TILE_ROUND_DOWN, TILE_ROUND_UP,
+    ExrHeader, ExrImage, ExrTile, COMPRESSIONTYPE_B44, COMPRESSIONTYPE_B44A, COMPRESSIONTYPE_DWAA,
+    COMPRESSIONTYPE_DWAB, COMPRESSIONTYPE_PIZ, COMPRESSIONTYPE_PXR24, COMPRESSIONTYPE_ZFP,
+    COMPRESSIONTYPE_ZIP, ERROR_INVALID_ARGUMENT, ERROR_INVALID_DATA, ERROR_INVALID_HEADER,
+    TILE_MIPMAP_LEVELS, TILE_ONE_LEVEL, TILE_RIPMAP_LEVELS, TILE_ROUND_DOWN, TILE_ROUND_UP,
 };
 
 const EXR_VERSION_SIZE: usize = 8;
@@ -77,11 +81,26 @@ fn level_size(toplevel_size: i32, level: i32, tile_rounding_mode: i32) -> i32 {
 
 /// `DecodeTiledLevel`: the tiles of one level of a tiled image.
 #[allow(clippy::too_many_arguments)]
-fn decode_tiled_level(exr_image: &mut ExrImage, exr_header: &ExrHeader, offset_data: &OffsetData, channel_offset_list: &[usize], pixel_data_size: i32, head: &[u8], err: &mut String, zfp: Option<&ZfpParam>, as_tinyexr: bool) -> i32 {
+fn decode_tiled_level(
+    exr_image: &mut ExrImage,
+    exr_header: &ExrHeader,
+    offset_data: &OffsetData,
+    channel_offset_list: &[usize],
+    pixel_data_size: i32,
+    head: &[u8],
+    err: &mut String,
+    zfp: Option<&ZfpParam>,
+    as_tinyexr: bool,
+) -> i32 {
     let size = head.len();
     let num_channels = exr_header.channels.len() as i32;
 
-    let level_index = level_index(exr_image.level_x, exr_image.level_y, exr_header.tile_level_mode, offset_data.num_x_levels);
+    let level_index = level_index(
+        exr_image.level_x,
+        exr_image.level_y,
+        exr_header.tile_level_mode,
+        offset_data.num_x_levels,
+    );
     let Some(level_offsets) = offset_data.offsets.get(level_index as usize) else {
         return ERROR_INVALID_DATA;
     };
@@ -109,7 +128,13 @@ fn decode_tiled_level(exr_image: &mut ExrImage, exr_header: &ExrHeader, offset_d
     // (The original gives every tile its memory before it looks at the tile, including the
     // tiles it then finds wrong; a tile here is given its memory when it is found right.
     // What comes back is the same: an image with a wrong tile is refused whole.)
-    let types_are_valid = allocate_image(&exr_header.channels, &exr_header.requested_pixel_types, 0, 0).is_some();
+    let types_are_valid = allocate_image(
+        &exr_header.channels,
+        &exr_header.requested_pixel_types,
+        0,
+        0,
+    )
+    .is_some();
     exr_image.tiles = Vec::new();
 
     for tile_idx in 0..num_tiles.max(0) {
@@ -126,7 +151,10 @@ fn decode_tiled_level(exr_image: &mut ExrImage, exr_header: &ExrHeader, offset_d
             let x_tile = tile_idx % num_x_tiles;
             let y_tile = tile_idx / num_x_tiles;
             // Seek to offset value in file.
-            let Some(&offset) = level_offsets.get(y_tile as usize).and_then(|row| row.get(x_tile as usize)) else {
+            let Some(&offset) = level_offsets
+                .get(y_tile as usize)
+                .and_then(|row| row.get(x_tile as usize))
+            else {
                 error_flag |= EF_INVALID_DATA;
                 break 'tile;
             };
@@ -139,8 +167,15 @@ fn decode_tiled_level(exr_image: &mut ExrImage, exr_header: &ExrHeader, offset_d
             let data_size = size - (offset as usize + 4 * 5);
             let mut data_ptr = offset as usize;
 
-            let int_at = |at: usize| i32::from_le_bytes([head[at], head[at + 1], head[at + 2], head[at + 3]]);
-            let tile_coordinates = [int_at(data_ptr), int_at(data_ptr + 4), int_at(data_ptr + 8), int_at(data_ptr + 12)];
+            let int_at = |at: usize| {
+                i32::from_le_bytes([head[at], head[at + 1], head[at + 2], head[at + 3]])
+            };
+            let tile_coordinates = [
+                int_at(data_ptr),
+                int_at(data_ptr + 4),
+                int_at(data_ptr + 8),
+                int_at(data_ptr + 12),
+            ];
 
             if tile_coordinates[2] != exr_image.level_x {
                 // Invalid data.
@@ -163,7 +198,12 @@ fn decode_tiled_level(exr_image: &mut ExrImage, exr_header: &ExrHeader, offset_d
 
             // Move to data addr: 20 = 16 + 4;
             data_ptr += 20;
-            let Some(mut images) = allocate_image(&exr_header.channels, &exr_header.requested_pixel_types, exr_header.tile_size_x, exr_header.tile_size_y) else {
+            let Some(mut images) = allocate_image(
+                &exr_header.channels,
+                &exr_header.requested_pixel_types,
+                exr_header.tile_size_x,
+                exr_header.tile_size_y,
+            ) else {
                 error_flag |= EF_INVALID_DATA;
                 break 'tile;
             };
@@ -217,7 +257,14 @@ fn decode_tiled_level(exr_image: &mut ExrImage, exr_header: &ExrHeader, offset_d
 }
 
 /// `DecodeChunk`: every block of the file `head` into `exr_image`.
-pub(super) fn decode_chunk(exr_image: &mut ExrImage, exr_header: &mut ExrHeader, offset_data: &OffsetData, head: &[u8], err: &mut String, as_tinyexr: bool) -> i32 {
+pub(super) fn decode_chunk(
+    exr_image: &mut ExrImage,
+    exr_header: &mut ExrHeader,
+    offset_data: &OffsetData,
+    head: &[u8],
+    err: &mut String,
+    as_tinyexr: bool,
+) -> i32 {
     let size = head.len();
     let num_channels = exr_header.channels.len() as i32;
 
@@ -231,7 +278,9 @@ pub(super) fn decode_chunk(exr_image: &mut ExrImage, exr_header: &mut ExrHeader,
         }
     }
 
-    if exr_header.data_window.max_x < exr_header.data_window.min_x || exr_header.data_window.max_y < exr_header.data_window.min_y {
+    if exr_header.data_window.max_x < exr_header.data_window.min_x
+        || exr_header.data_window.max_y < exr_header.data_window.min_y
+    {
         err.push_str("Invalid data window.\n");
         return ERROR_INVALID_DATA;
     }
@@ -255,8 +304,14 @@ pub(super) fn decode_chunk(exr_image: &mut ExrImage, exr_header: &mut ExrHeader,
             err.push_str(&format!("data_with or data_height too large. data_width: {data_width}, data_height = {data_height}\n"));
             return ERROR_INVALID_DATA;
         }
-        if exr_header.tiled != 0 && (exr_header.tile_size_x as i64 > DIMENSION_THRESHOLD || exr_header.tile_size_y as i64 > DIMENSION_THRESHOLD) {
-            err.push_str(&format!("tile with or tile height too large. tile width: {}, tile height = {}\n", exr_header.tile_size_x, exr_header.tile_size_y));
+        if exr_header.tiled != 0
+            && (exr_header.tile_size_x as i64 > DIMENSION_THRESHOLD
+                || exr_header.tile_size_y as i64 > DIMENSION_THRESHOLD)
+        {
+            err.push_str(&format!(
+                "tile with or tile height too large. tile width: {}, tile height = {}\n",
+                exr_header.tile_size_x, exr_header.tile_size_y
+            ));
             return ERROR_INVALID_DATA;
         }
     }
@@ -264,10 +319,15 @@ pub(super) fn decode_chunk(exr_image: &mut ExrImage, exr_header: &mut ExrHeader,
     // (For a tiled file whose table has no level, the original reads a table that is not
     // there; it is not used for a tiled file.)
     let no_offsets = Vec::new();
-    let offsets = offset_data.offsets.first().and_then(|level| level.first()).unwrap_or(&no_offsets);
+    let offsets = offset_data
+        .offsets
+        .first()
+        .and_then(|level| level.first())
+        .unwrap_or(&no_offsets);
     let num_blocks = offsets.len();
 
-    let Some((channel_offset_list, pixel_data_size)) = compute_channel_layout(&exr_header.channels) else {
+    let Some((channel_offset_list, pixel_data_size)) = compute_channel_layout(&exr_header.channels)
+    else {
         err.push_str("Failed to compute channel layout.\n");
         return ERROR_INVALID_DATA;
     };
@@ -277,16 +337,30 @@ pub(super) fn decode_chunk(exr_image: &mut ExrImage, exr_header: &mut ExrHeader,
     if exr_header.tiled != 0 {
         // value check
         if exr_header.tile_size_x < 0 {
-            err.push_str(&format!("Invalid tile size x : {}\n", exr_header.tile_size_x));
+            err.push_str(&format!(
+                "Invalid tile size x : {}\n",
+                exr_header.tile_size_x
+            ));
             return ERROR_INVALID_HEADER;
         }
 
         if exr_header.tile_size_y < 0 {
-            err.push_str(&format!("Invalid tile size y : {}\n", exr_header.tile_size_y));
+            err.push_str(&format!(
+                "Invalid tile size y : {}\n",
+                exr_header.tile_size_y
+            ));
             return ERROR_INVALID_HEADER;
         }
-        let top_width = exr_header.data_window.max_x.wrapping_sub(exr_header.data_window.min_x).wrapping_add(1);
-        let top_height = exr_header.data_window.max_y.wrapping_sub(exr_header.data_window.min_y).wrapping_add(1);
+        let top_width = exr_header
+            .data_window
+            .max_x
+            .wrapping_sub(exr_header.data_window.min_x)
+            .wrapping_add(1);
+        let top_height = exr_header
+            .data_window
+            .max_y
+            .wrapping_sub(exr_header.data_window.min_y)
+            .wrapping_add(1);
         // The levels, in the order of the file: (level x, level y) of each.
         let mut levels = Vec::new();
         if exr_header.tile_level_mode != TILE_RIPMAP_LEVELS {
@@ -304,7 +378,11 @@ pub(super) fn decode_chunk(exr_image: &mut ExrImage, exr_header: &mut ExrHeader,
         let mut decoded: Vec<ExrImage> = Vec::new();
         let mut result = 0;
         for (i, &(level_x, level_y)) in levels.iter().enumerate() {
-            let mut level_image = if i == 0 { std::mem::take(exr_image) } else { ExrImage::default() };
+            let mut level_image = if i == 0 {
+                std::mem::take(exr_image)
+            } else {
+                ExrImage::default()
+            };
             level_image.width = level_size(top_width, level_x, exr_header.tile_rounding_mode);
             if level_image.width < 1 {
                 result = ERROR_INVALID_DATA;
@@ -320,7 +398,17 @@ pub(super) fn decode_chunk(exr_image: &mut ExrImage, exr_header: &mut ExrHeader,
             level_image.level_x = level_x;
             level_image.level_y = level_y;
 
-            let ret = decode_tiled_level(&mut level_image, exr_header, offset_data, &channel_offset_list, pixel_data_size, head, err, zfp.as_ref(), as_tinyexr);
+            let ret = decode_tiled_level(
+                &mut level_image,
+                exr_header,
+                offset_data,
+                &channel_offset_list,
+                pixel_data_size,
+                head,
+                err,
+                zfp.as_ref(),
+                as_tinyexr,
+            );
             decoded.push(level_image);
             if ret != 0 {
                 result = ret;
@@ -343,14 +431,21 @@ pub(super) fn decode_chunk(exr_image: &mut ExrImage, exr_header: &mut ExrHeader,
     } else {
         // scanline format
         // Don't allow too large image(256GB * pixel_data_size or more). Workaround for #104.
-        let total_data_len = (data_width as u64).wrapping_mul(data_height as u64).wrapping_mul(num_channels as u64);
+        let total_data_len = (data_width as u64)
+            .wrapping_mul(data_height as u64)
+            .wrapping_mul(num_channels as u64);
         let total_data_len_overflown = total_data_len >= 0x4000000000;
         if total_data_len == 0 || total_data_len_overflown {
             err.push_str(&format!("Image data size is zero or too large: width = {data_width}, height = {data_height}, channels = {num_channels}\n"));
             return ERROR_INVALID_DATA;
         }
 
-        let Some(images) = allocate_image(&exr_header.channels, &exr_header.requested_pixel_types, data_width as i32, data_height as i32) else {
+        let Some(images) = allocate_image(
+            &exr_header.channels,
+            &exr_header.requested_pixel_types,
+            data_width as i32,
+            data_height as i32,
+        ) else {
             err.push_str(&format!("Failed to allocate memory for Images. Maybe EXR header is corrupted or Image data size is too large: width = {data_width}, height = {data_height}, channels = {num_channels}\n"));
             return ERROR_INVALID_DATA;
         };
@@ -368,7 +463,9 @@ pub(super) fn decode_chunk(exr_image: &mut ExrImage, exr_header: &mut ExrHeader,
                 let data_size = size - (offsets[y_idx] as usize + 4 * 2);
                 let mut data_ptr = offsets[y_idx] as usize;
 
-                let int_at = |at: usize| i32::from_le_bytes([head[at], head[at + 1], head[at + 2], head[at + 3]]);
+                let int_at = |at: usize| {
+                    i32::from_le_bytes([head[at], head[at + 1], head[at + 2], head[at + 3]])
+                };
                 let mut line_no = int_at(data_ptr);
                 let data_len = int_at(data_ptr + 4);
 
@@ -382,7 +479,9 @@ pub(super) fn decode_chunk(exr_image: &mut ExrImage, exr_header: &mut ExrHeader,
                     invalid_data = true;
                 } else {
                     // line_no may be negative.
-                    let end_line_no = line_no.wrapping_add(num_scanline_blocks).min(exr_header.data_window.max_y.wrapping_add(1));
+                    let end_line_no = line_no
+                        .wrapping_add(num_scanline_blocks)
+                        .min(exr_header.data_window.max_y.wrapping_add(1));
 
                     let num_lines = end_line_no.wrapping_sub(line_no);
 
@@ -440,7 +539,9 @@ pub(super) fn decode_chunk(exr_image: &mut ExrImage, exr_header: &mut ExrHeader,
     }
 
     // Overwrite `pixel_type` with `requested_pixel_type`.
-    exr_header.pixel_types.clone_from(&exr_header.requested_pixel_types);
+    exr_header
+        .pixel_types
+        .clone_from(&exr_header.requested_pixel_types);
 
     {
         exr_image.num_channels = num_channels;
@@ -467,7 +568,12 @@ fn reconstruct_line_offsets(offsets: &mut [u64], head: &[u8], mut marker: usize)
             return false;
         }
 
-        let data_len = u32::from_le_bytes([head[marker + 4], head[marker + 5], head[marker + 6], head[marker + 7]]) as usize;
+        let data_len = u32::from_le_bytes([
+            head[marker + 4],
+            head[marker + 5],
+            head[marker + 6],
+            head[marker + 7],
+        ]) as usize;
 
         if data_len >= size {
             return false;
@@ -516,8 +622,16 @@ fn round_log2(x: i32, tile_rounding_mode: i32) -> i32 {
 
 /// `CalculateNumXLevels`.
 fn calculate_num_x_levels(exr_header: &ExrHeader) -> i32 {
-    let w = exr_header.data_window.max_x.wrapping_sub(exr_header.data_window.min_x).wrapping_add(1);
-    let h = exr_header.data_window.max_y.wrapping_sub(exr_header.data_window.min_y).wrapping_add(1);
+    let w = exr_header
+        .data_window
+        .max_x
+        .wrapping_sub(exr_header.data_window.min_x)
+        .wrapping_add(1);
+    let h = exr_header
+        .data_window
+        .max_y
+        .wrapping_sub(exr_header.data_window.min_y)
+        .wrapping_add(1);
 
     match exr_header.tile_level_mode {
         TILE_ONE_LEVEL => 1,
@@ -529,8 +643,16 @@ fn calculate_num_x_levels(exr_header: &ExrHeader) -> i32 {
 
 /// `CalculateNumYLevels`.
 fn calculate_num_y_levels(exr_header: &ExrHeader) -> i32 {
-    let w = exr_header.data_window.max_x.wrapping_sub(exr_header.data_window.min_x).wrapping_add(1);
-    let h = exr_header.data_window.max_y.wrapping_sub(exr_header.data_window.min_y).wrapping_add(1);
+    let w = exr_header
+        .data_window
+        .max_x
+        .wrapping_sub(exr_header.data_window.min_x)
+        .wrapping_add(1);
+    let h = exr_header
+        .data_window
+        .max_y
+        .wrapping_sub(exr_header.data_window.min_y)
+        .wrapping_add(1);
 
     match exr_header.tile_level_mode {
         TILE_ONE_LEVEL => 1,
@@ -541,7 +663,12 @@ fn calculate_num_y_levels(exr_header: &ExrHeader) -> i32 {
 }
 
 /// `CalculateNumTiles`: how many tiles each level has along one side.
-fn calculate_num_tiles(num_tiles: &mut [i32], toplevel_size: i32, size: i32, tile_rounding_mode: i32) -> bool {
+fn calculate_num_tiles(
+    num_tiles: &mut [i32],
+    toplevel_size: i32,
+    size: i32,
+    tile_rounding_mode: i32,
+) -> bool {
     for (i, slot) in num_tiles.iter_mut().enumerate() {
         let l = level_size(toplevel_size, i as i32, tile_rounding_mode);
         if l < 0 {
@@ -575,13 +702,31 @@ pub(super) fn precalculate_tile_info(exr_header: &ExrHeader) -> Option<(Vec<i32>
     let mut num_x_tiles = vec![0; num_x_levels as usize];
     let mut num_y_tiles = vec![0; num_y_levels as usize];
 
-    let w = exr_header.data_window.max_x.wrapping_sub(exr_header.data_window.min_x).wrapping_add(1);
-    let h = exr_header.data_window.max_y.wrapping_sub(exr_header.data_window.min_y).wrapping_add(1);
-    if !calculate_num_tiles(&mut num_x_tiles, w, exr_header.tile_size_x, exr_header.tile_rounding_mode) {
+    let w = exr_header
+        .data_window
+        .max_x
+        .wrapping_sub(exr_header.data_window.min_x)
+        .wrapping_add(1);
+    let h = exr_header
+        .data_window
+        .max_y
+        .wrapping_sub(exr_header.data_window.min_y)
+        .wrapping_add(1);
+    if !calculate_num_tiles(
+        &mut num_x_tiles,
+        w,
+        exr_header.tile_size_x,
+        exr_header.tile_rounding_mode,
+    ) {
         return None;
     }
 
-    if !calculate_num_tiles(&mut num_y_tiles, h, exr_header.tile_size_y, exr_header.tile_rounding_mode) {
+    if !calculate_num_tiles(
+        &mut num_y_tiles,
+        h,
+        exr_header.tile_size_y,
+        exr_header.tile_rounding_mode,
+    ) {
         return None;
     }
 
@@ -591,7 +736,12 @@ pub(super) fn precalculate_tile_info(exr_header: &ExrHeader) -> Option<(Vec<i32>
 /// The shape of the offset table of a tiled file (`InitTileOffsets`): for each level, how
 /// many rows of tiles it has and how many tiles a row. The second answer is the number of
 /// tiles in all, as the original counts it.
-pub(super) fn tile_offsets_shape(offset_data: &mut OffsetData, exr_header: &ExrHeader, num_x_tiles: &[i32], num_y_tiles: &[i32]) -> (Vec<(usize, usize)>, i32) {
+pub(super) fn tile_offsets_shape(
+    offset_data: &mut OffsetData,
+    exr_header: &ExrHeader,
+    num_x_tiles: &[i32],
+    num_y_tiles: &[i32],
+) -> (Vec<(usize, usize)>, i32) {
     let mut num_tile_blocks = 0i32;
     let mut shape = Vec::new();
     offset_data.num_x_levels = num_x_tiles.len() as i32;
@@ -603,14 +753,16 @@ pub(super) fn tile_offsets_shape(offset_data: &mut OffsetData, exr_header: &ExrH
             }
             for l in 0..offset_data.num_x_levels as usize {
                 shape.push((num_y_tiles[l] as usize, num_x_tiles[l] as usize));
-                num_tile_blocks = num_tile_blocks.wrapping_add(num_x_tiles[l].wrapping_mul(num_y_tiles[l]));
+                num_tile_blocks =
+                    num_tile_blocks.wrapping_add(num_x_tiles[l].wrapping_mul(num_y_tiles[l]));
             }
         }
         TILE_RIPMAP_LEVELS => {
             for ly in 0..offset_data.num_y_levels as usize {
                 for lx in 0..offset_data.num_x_levels as usize {
                     shape.push((num_y_tiles[ly] as usize, num_x_tiles[lx] as usize));
-                    num_tile_blocks = num_tile_blocks.wrapping_add(num_x_tiles[lx].wrapping_mul(num_y_tiles[ly]));
+                    num_tile_blocks =
+                        num_tile_blocks.wrapping_add(num_x_tiles[lx].wrapping_mul(num_y_tiles[ly]));
                 }
             }
         }
@@ -641,8 +793,16 @@ pub struct TileLevel {
 /// and as much high, and its values are `tile_size_x` apart from line to line.
 pub fn tile_levels(exr_header: &ExrHeader) -> Option<Vec<TileLevel>> {
     let (num_x_tiles, num_y_tiles) = precalculate_tile_info(exr_header)?;
-    let width = exr_header.data_window.max_x.wrapping_sub(exr_header.data_window.min_x).wrapping_add(1);
-    let height = exr_header.data_window.max_y.wrapping_sub(exr_header.data_window.min_y).wrapping_add(1);
+    let width = exr_header
+        .data_window
+        .max_x
+        .wrapping_sub(exr_header.data_window.min_x)
+        .wrapping_add(1);
+    let height = exr_header
+        .data_window
+        .max_y
+        .wrapping_sub(exr_header.data_window.min_y)
+        .wrapping_add(1);
     let level = |lx: usize, ly: usize| TileLevel {
         level_x: lx as i32,
         level_y: ly as i32,
@@ -652,25 +812,50 @@ pub fn tile_levels(exr_header: &ExrHeader) -> Option<Vec<TileLevel>> {
         num_y_tiles: num_y_tiles[ly],
     };
     match exr_header.tile_level_mode {
-        TILE_ONE_LEVEL | TILE_MIPMAP_LEVELS if num_x_tiles.len() == num_y_tiles.len() => Some((0..num_x_tiles.len()).map(|l| level(l, l)).collect()),
-        TILE_RIPMAP_LEVELS => Some((0..num_y_tiles.len()).flat_map(|ly| (0..num_x_tiles.len()).map(move |lx| (lx, ly))).map(|(lx, ly)| level(lx, ly)).collect()),
+        TILE_ONE_LEVEL | TILE_MIPMAP_LEVELS if num_x_tiles.len() == num_y_tiles.len() => {
+            Some((0..num_x_tiles.len()).map(|l| level(l, l)).collect())
+        }
+        TILE_RIPMAP_LEVELS => Some(
+            (0..num_y_tiles.len())
+                .flat_map(|ly| (0..num_x_tiles.len()).map(move |lx| (lx, ly)))
+                .map(|(lx, ly)| level(lx, ly))
+                .collect(),
+        ),
         _ => None,
     }
 }
 
 /// `IsAnyOffsetsAreInvalid`.
 fn is_any_offsets_are_invalid(offset_data: &OffsetData) -> bool {
-    offset_data.offsets.iter().flatten().flatten().any(|&offset| offset as i64 <= 0)
+    offset_data
+        .offsets
+        .iter()
+        .flatten()
+        .flatten()
+        .any(|&offset| offset as i64 <= 0)
 }
 
 /// `isValidTile`.
-fn is_valid_tile(exr_header: &ExrHeader, offset_data: &OffsetData, dx: i32, dy: i32, lx: i32, ly: i32) -> bool {
+fn is_valid_tile(
+    exr_header: &ExrHeader,
+    offset_data: &OffsetData,
+    dx: i32,
+    dy: i32,
+    lx: i32,
+    ly: i32,
+) -> bool {
     if lx < 0 || ly < 0 || dx < 0 || dy < 0 {
         return false;
     }
     let num_x_levels = offset_data.num_x_levels;
     let num_y_levels = offset_data.num_y_levels;
-    let has = |level: usize| offset_data.offsets.get(level).and_then(|rows| rows.get(dy as usize)).is_some_and(|row| row.len() > dx as usize);
+    let has = |level: usize| {
+        offset_data
+            .offsets
+            .get(level)
+            .and_then(|rows| rows.get(dy as usize))
+            .is_some_and(|row| row.len() > dx as usize)
+    };
     match exr_header.tile_level_mode {
         TILE_ONE_LEVEL => lx == 0 && ly == 0 && has(0),
         TILE_MIPMAP_LEVELS => lx < num_x_levels && ly < num_y_levels && has(lx as usize),
@@ -684,10 +869,22 @@ fn is_valid_tile(exr_header: &ExrHeader, offset_data: &OffsetData, dx: i32, dy: 
 
 /// `ReconstructTileOffsets`: the table of a tiled file whose own is not filled in, by
 /// walking the tiles from `marker`.
-fn reconstruct_tile_offsets(offset_data: &mut OffsetData, exr_header: &ExrHeader, head: &[u8], mut marker: usize, is_multi_part_file: bool, is_deep: bool) -> bool {
+fn reconstruct_tile_offsets(
+    offset_data: &mut OffsetData,
+    exr_header: &ExrHeader,
+    head: &[u8],
+    mut marker: usize,
+    is_multi_part_file: bool,
+    is_deep: bool,
+) -> bool {
     let size = head.len();
     let num_x_levels = offset_data.num_x_levels;
-    let count: usize = offset_data.offsets.iter().flatten().map(|row| row.len()).sum();
+    let count: usize = offset_data
+        .offsets
+        .iter()
+        .flatten()
+        .map(|row| row.len())
+        .sum();
     for _ in 0..count {
         let tile_offset = marker as u64;
 
@@ -704,7 +901,8 @@ fn reconstruct_tile_offsets(offset_data: &mut OffsetData, exr_header: &ExrHeader
             return false;
         }
 
-        let int_at = |at: usize| i32::from_le_bytes([head[at], head[at + 1], head[at + 2], head[at + 3]]);
+        let int_at =
+            |at: usize| i32::from_le_bytes([head[at], head[at + 1], head[at + 2], head[at + 3]]);
         let tile_x = int_at(marker);
         marker += 4;
 
@@ -735,7 +933,10 @@ fn reconstruct_tile_offsets(offset_data: &mut OffsetData, exr_header: &ExrHeader
             // next Int64 is unpacked sample size - skip that too
             // (Sizes that take the place before the file, where the original then reads,
             // are refused.)
-            let next = (marker as i64).wrapping_add(packed_offset_table_size).wrapping_add(packed_sample_size).wrapping_add(8);
+            let next = (marker as i64)
+                .wrapping_add(packed_offset_table_size)
+                .wrapping_add(packed_sample_size)
+                .wrapping_add(8);
             if next < 0 || next as u64 >= size as u64 {
                 return false;
             }
@@ -764,7 +965,12 @@ fn reconstruct_tile_offsets(offset_data: &mut OffsetData, exr_header: &ExrHeader
             return false;
         }
 
-        let Some(slot) = offset_data.offsets.get_mut(level_idx as usize).and_then(|rows| rows.get_mut(tile_y as usize)).and_then(|row| row.get_mut(tile_x as usize)) else {
+        let Some(slot) = offset_data
+            .offsets
+            .get_mut(level_idx as usize)
+            .and_then(|rows| rows.get_mut(tile_y as usize))
+            .and_then(|row| row.get_mut(tile_x as usize))
+        else {
             return false;
         };
 
@@ -778,14 +984,20 @@ fn reconstruct_tile_offsets(offset_data: &mut OffsetData, exr_header: &ExrHeader
 fn read_offset(head: &[u8], marker: &mut usize) -> Result<u64, (i32, &'static str)> {
     let size = head.len();
     if *marker + 8 >= size {
-        return Err((ERROR_INVALID_DATA, "Insufficient data size in offset table."));
+        return Err((
+            ERROR_INVALID_DATA,
+            "Insufficient data size in offset table.",
+        ));
     }
 
     let mut bytes = [0u8; 8];
     bytes.copy_from_slice(&head[*marker..*marker + 8]);
     let offset = u64::from_le_bytes(bytes);
     if offset >= size as u64 {
-        return Err((ERROR_INVALID_DATA, "Invalid offset value in DecodeEXRImage."));
+        return Err((
+            ERROR_INVALID_DATA,
+            "Invalid offset value in DecodeEXRImage.",
+        ));
     }
     *marker += 8;
     Ok(offset)
@@ -793,7 +1005,14 @@ fn read_offset(head: &[u8], marker: &mut usize) -> Result<u64, (i32, &'static st
 
 /// `DecodeEXRImage`: the pixels of the file `head`, whose offset table starts at `marker`,
 /// into `exr_image`.
-pub(crate) fn decode_exr_image(exr_image: &mut ExrImage, exr_header: &mut ExrHeader, head: &[u8], mut marker: usize, err: &mut String, as_tinyexr: bool) -> i32 {
+pub(crate) fn decode_exr_image(
+    exr_image: &mut ExrImage,
+    exr_header: &mut ExrHeader,
+    head: &[u8],
+    mut marker: usize,
+    err: &mut String,
+    as_tinyexr: bool,
+) -> i32 {
     let size = head.len();
     let fail = |err: &mut String, message: &str| {
         *err = message.to_string();
@@ -806,7 +1025,13 @@ pub(crate) fn decode_exr_image(exr_image: &mut ExrImage, exr_header: &mut ExrHea
 
     let num_scanline_blocks = num_scanline_blocks(exr_header.compression_type, as_tinyexr);
 
-    if exr_header.data_window.max_x < exr_header.data_window.min_x || exr_header.data_window.max_x.wrapping_sub(exr_header.data_window.min_x) == i32::MAX {
+    if exr_header.data_window.max_x < exr_header.data_window.min_x
+        || exr_header
+            .data_window
+            .max_x
+            .wrapping_sub(exr_header.data_window.min_x)
+            == i32::MAX
+    {
         // Issue 63
         return fail(err, "Invalid data width value");
     }
@@ -815,7 +1040,13 @@ pub(crate) fn decode_exr_image(exr_image: &mut ExrImage, exr_header: &mut ExrHea
         return fail(err, "Invalid data window width value");
     }
 
-    if exr_header.data_window.max_y < exr_header.data_window.min_y || exr_header.data_window.max_y.wrapping_sub(exr_header.data_window.min_y) == i32::MAX {
+    if exr_header.data_window.max_y < exr_header.data_window.min_y
+        || exr_header
+            .data_window
+            .max_y
+            .wrapping_sub(exr_header.data_window.min_y)
+            == i32::MAX
+    {
         return fail(err, "Invalid data height value");
     }
 
@@ -850,7 +1081,8 @@ pub(crate) fn decode_exr_image(exr_image: &mut ExrImage, exr_header: &mut ExrHea
         let Some((num_x_tiles, num_y_tiles)) = precalculate_tile_info(exr_header) else {
             return fail(err, "Failed to precalculate tile info.");
         };
-        let (shape, num_blocks) = tile_offsets_shape(&mut offset_data, exr_header, &num_x_tiles, &num_y_tiles);
+        let (shape, num_blocks) =
+            tile_offsets_shape(&mut offset_data, exr_header, &num_x_tiles, &num_y_tiles);
         if exr_header.chunk_count > 0 && exr_header.chunk_count != num_blocks {
             return fail(err, "Invalid offset table size.");
         }
@@ -874,7 +1106,16 @@ pub(crate) fn decode_exr_image(exr_image: &mut ExrImage, exr_header: &mut ExrHea
             }
             offset_data.offsets.push(level);
         }
-        if is_any_offsets_are_invalid(&offset_data) && !reconstruct_tile_offsets(&mut offset_data, exr_header, head, marker, exr_header.multipart != 0, exr_header.non_image != 0) {
+        if is_any_offsets_are_invalid(&offset_data)
+            && !reconstruct_tile_offsets(
+                &mut offset_data,
+                exr_header,
+                head,
+                marker,
+                exr_header.multipart != 0,
+                exr_header.non_image != 0,
+            )
+        {
             return fail(err, "Invalid Tile Offsets data.");
         }
     } else {
@@ -909,7 +1150,10 @@ pub(crate) fn decode_exr_image(exr_image: &mut ExrImage, exr_header: &mut ExrHea
         if offsets.iter().any(|&offset| offset as i64 <= 0) {
             // TODO(syoyo) Report as warning?
             if !reconstruct_line_offsets(&mut offsets, head, marker) {
-                return fail(err, "Cannot reconstruct lineOffset table in DecodeEXRImage.");
+                return fail(
+                    err,
+                    "Cannot reconstruct lineOffset table in DecodeEXRImage.",
+                );
             }
         }
         offset_data.offsets = vec![vec![offsets]];
@@ -917,7 +1161,14 @@ pub(crate) fn decode_exr_image(exr_image: &mut ExrImage, exr_header: &mut ExrHea
 
     {
         let mut e = String::new();
-        let ret = decode_chunk(exr_image, exr_header, &offset_data, head, &mut e, as_tinyexr);
+        let ret = decode_chunk(
+            exr_image,
+            exr_header,
+            &offset_data,
+            head,
+            &mut e,
+            as_tinyexr,
+        );
 
         if ret != 0 {
             if !e.is_empty() {

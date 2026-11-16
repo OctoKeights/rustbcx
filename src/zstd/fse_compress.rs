@@ -56,7 +56,12 @@ impl FseCTable {
 }
 
 /// `FSE_buildCTable_wksp`.
-pub(crate) fn build_ctable(ct: &mut FseCTable, normalized_counter: &[i16], max_symbol_value: u32, table_log: u32) {
+pub(crate) fn build_ctable(
+    ct: &mut FseCTable,
+    normalized_counter: &[i16],
+    max_symbol_value: u32,
+    table_log: u32,
+) {
     let table_size = 1u32 << table_log;
     let table_mask = table_size - 1;
     let step = fse_tablestep(table_size);
@@ -137,7 +142,8 @@ pub(crate) fn build_ctable(ct: &mut FseCTable, normalized_counter: &[i16], max_s
         match normalized_counter[s] {
             0 => {
                 // Filled all the same, for the sake of FSE_getMaxNbBits().
-                ct.symbol_tt[s].delta_nb_bits = ((table_log + 1) << 16).wrapping_sub(1 << table_log);
+                ct.symbol_tt[s].delta_nb_bits =
+                    ((table_log + 1) << 16).wrapping_sub(1 << table_log);
             }
             -1 | 1 => {
                 ct.symbol_tt[s].delta_nb_bits = (table_log << 16).wrapping_sub(1 << table_log);
@@ -158,7 +164,8 @@ pub(crate) fn build_ctable(ct: &mut FseCTable, normalized_counter: &[i16], max_s
 
 /// `FSE_NCountWriteBound`.
 fn ncount_write_bound(max_symbol_value: u32, table_log: u32) -> usize {
-    let max_header_size = (((max_symbol_value as usize + 1) * table_log as usize + 4 + 2) / 8) + 1 + 2;
+    let max_header_size =
+        (((max_symbol_value as usize + 1) * table_log as usize + 4 + 2) / 8) + 1 + 2;
     if max_symbol_value != 0 {
         max_header_size
     } else {
@@ -167,7 +174,13 @@ fn ncount_write_bound(max_symbol_value: u32, table_log: u32) -> usize {
 }
 
 /// `FSE_writeNCount_generic`. `header` is the whole of the room there is.
-fn write_ncount_generic(header: &mut [u8], normalized_counter: &[i16], max_symbol_value: u32, table_log: u32, write_is_safe: bool) -> CResult<usize> {
+fn write_ncount_generic(
+    header: &mut [u8],
+    normalized_counter: &[i16],
+    max_symbol_value: u32,
+    table_log: u32,
+    write_is_safe: bool,
+) -> CResult<usize> {
     let oend = header.len();
     let mut out = 0usize;
     let table_size = 1i32 << table_log;
@@ -274,7 +287,12 @@ fn write_ncount_generic(header: &mut [u8], normalized_counter: &[i16], max_symbo
 }
 
 /// `FSE_writeNCount`: the normalized counts, written the compact way the format has them.
-pub(crate) fn write_ncount(buffer: &mut [u8], normalized_counter: &[i16], max_symbol_value: u32, table_log: u32) -> CResult<usize> {
+pub(crate) fn write_ncount(
+    buffer: &mut [u8],
+    normalized_counter: &[i16],
+    max_symbol_value: u32,
+    table_log: u32,
+) -> CResult<usize> {
     if table_log > FSE_MAX_TABLELOG {
         return Err(CError::TableLogTooLarge);
     }
@@ -282,9 +300,21 @@ pub(crate) fn write_ncount(buffer: &mut [u8], normalized_counter: &[i16], max_sy
         return Err(CError::Generic);
     }
     if buffer.len() < ncount_write_bound(max_symbol_value, table_log) {
-        return write_ncount_generic(buffer, normalized_counter, max_symbol_value, table_log, false);
+        return write_ncount_generic(
+            buffer,
+            normalized_counter,
+            max_symbol_value,
+            table_log,
+            false,
+        );
     }
-    write_ncount_generic(buffer, normalized_counter, max_symbol_value, table_log, true)
+    write_ncount_generic(
+        buffer,
+        normalized_counter,
+        max_symbol_value,
+        table_log,
+        true,
+    )
 }
 
 /// `FSE_minTableLog`.
@@ -295,7 +325,12 @@ fn min_table_log(src_size: usize, max_symbol_value: u32) -> u32 {
 }
 
 /// `FSE_optimalTableLog_internal`.
-pub(crate) fn optimal_table_log_internal(max_table_log: u32, src_size: usize, max_symbol_value: u32, minus: u32) -> u32 {
+pub(crate) fn optimal_table_log_internal(
+    max_table_log: u32,
+    src_size: usize,
+    max_symbol_value: u32,
+    minus: u32,
+) -> u32 {
     let max_bits_src = highbit32((src_size - 1) as u32).wrapping_sub(minus);
     let mut table_log = max_table_log;
     let min_bits = min_table_log(src_size, max_symbol_value);
@@ -317,7 +352,14 @@ pub(crate) fn optimal_table_log(max_table_log: u32, src_size: usize, max_symbol_
 }
 
 /// `FSE_normalizeM2`: the second way to normalize, used when the first is too far off.
-fn normalize_m2(norm: &mut [i16], table_log: u32, count: &[u32], mut total: usize, max_symbol_value: u32, low_prob_count: i16) -> CResult<()> {
+fn normalize_m2(
+    norm: &mut [i16],
+    table_log: u32,
+    count: &[u32],
+    mut total: usize,
+    max_symbol_value: u32,
+    low_prob_count: i16,
+) -> CResult<()> {
     const NOT_YET_ASSIGNED: i16 = -2;
     let mut distributed = 0u32;
 
@@ -393,7 +435,10 @@ fn normalize_m2(norm: &mut [i16], table_log: u32, count: &[u32], mut total: usiz
     {
         let v_step_log = 62 - table_log as u64;
         let mid = (1u64 << (v_step_log - 1)) - 1;
-        let r_step = ((1u64 << v_step_log).wrapping_mul(to_distribute as u64).wrapping_add(mid)) / (total as u32 as u64); // scale on remaining
+        let r_step = ((1u64 << v_step_log)
+            .wrapping_mul(to_distribute as u64)
+            .wrapping_add(mid))
+            / (total as u32 as u64); // scale on remaining
         let mut tmp_total = mid;
         for s in 0..=max_symbol_value as usize {
             if norm[s] == NOT_YET_ASSIGNED {
@@ -415,7 +460,14 @@ fn normalize_m2(norm: &mut [i16], table_log: u32, count: &[u32], mut total: usiz
 
 /// `FSE_normalizeCount`: counts brought to a total of `1 << table_log`. The answer is the
 /// table log, or 0 when one symbol is all there is (which calls for RLE instead).
-pub(crate) fn normalize_count(normalized_counter: &mut [i16], mut table_log: u32, count: &[u32], total: usize, max_symbol_value: u32, use_low_prob_count: bool) -> CResult<u32> {
+pub(crate) fn normalize_count(
+    normalized_counter: &mut [i16],
+    mut table_log: u32,
+    count: &[u32],
+    total: usize,
+    max_symbol_value: u32,
+    use_low_prob_count: bool,
+) -> CResult<u32> {
     // Sanity checks.
     if table_log == 0 {
         table_log = FSE_DEFAULT_TABLELOG;
@@ -469,9 +521,17 @@ pub(crate) fn normalize_count(normalized_counter: &mut [i16], mut table_log: u32
         }
         if -still_to_distribute >= (normalized_counter[largest] as i32 >> 1) {
             // The corner case: another normalization method is needed.
-            normalize_m2(normalized_counter, table_log, count, total, max_symbol_value, low_prob_count)?;
+            normalize_m2(
+                normalized_counter,
+                table_log,
+                count,
+                total,
+                max_symbol_value,
+                low_prob_count,
+            )?;
         } else {
-            normalized_counter[largest] = normalized_counter[largest].wrapping_add(still_to_distribute as i16);
+            normalized_counter[largest] =
+                normalized_counter[largest].wrapping_add(still_to_distribute as i16);
         }
     }
 
@@ -498,7 +558,11 @@ pub(crate) struct FseCState<'a> {
 impl<'a> FseCState<'a> {
     /// `FSE_initCState`.
     pub(crate) fn init(ct: &'a FseCTable) -> FseCState<'a> {
-        FseCState { value: 1i64 << ct.table_log, ct, state_log: ct.table_log }
+        FseCState {
+            value: 1i64 << ct.table_log,
+            ct,
+            state_log: ct.table_log,
+        }
     }
 
     /// `FSE_initCState2`: the state that costs the least to start from, for a first symbol.
@@ -507,7 +571,9 @@ impl<'a> FseCState<'a> {
         let symbol_tt = ct.symbol_tt[symbol as usize];
         let nb_bits_out = symbol_tt.delta_nb_bits.wrapping_add(1 << 15) >> 16;
         state.value = (nb_bits_out << 16).wrapping_sub(symbol_tt.delta_nb_bits) as i64;
-        state.value = ct.state_table[((state.value >> nb_bits_out) + symbol_tt.delta_find_state as i64) as usize] as i64;
+        state.value = ct.state_table
+            [((state.value >> nb_bits_out) + symbol_tt.delta_find_state as i64) as usize]
+            as i64;
         state
     }
 
@@ -517,7 +583,9 @@ impl<'a> FseCState<'a> {
         let symbol_tt = self.ct.symbol_tt[symbol as usize];
         let nb_bits_out = ((self.value + symbol_tt.delta_nb_bits as i64) >> 16) as u32;
         bit_c.add_bits(self.value as u64, nb_bits_out);
-        self.value = self.ct.state_table[((self.value >> nb_bits_out) + symbol_tt.delta_find_state as i64) as usize] as i64;
+        self.value = self.ct.state_table
+            [((self.value >> nb_bits_out) + symbol_tt.delta_find_state as i64) as usize]
+            as i64;
     }
 
     /// `FSE_flushCState`.

@@ -42,11 +42,24 @@ pub enum TinflError {
     HasMoreOutput,
 }
 
-static S_LENGTH_BASE: [u16; 31] = [3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258, 0, 0];
-static S_LENGTH_EXTRA: [u8; 31] = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0, 0, 0];
-static S_DIST_BASE: [u16; 32] = [1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577, 0, 0];
-static S_DIST_EXTRA: [u8; 32] = [0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13, 0, 0];
-static S_LENGTH_DEZIGZAG: [u8; 19] = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15];
+static S_LENGTH_BASE: [u16; 31] = [
+    3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131,
+    163, 195, 227, 258, 0, 0,
+];
+static S_LENGTH_EXTRA: [u8; 31] = [
+    0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0, 0, 0,
+];
+static S_DIST_BASE: [u16; 32] = [
+    1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537,
+    2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577, 0, 0,
+];
+static S_DIST_EXTRA: [u8; 32] = [
+    0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13,
+    13, 0, 0,
+];
+static S_LENGTH_DEZIGZAG: [u8; 19] = [
+    16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15,
+];
 static S_MIN_TABLE_SIZES: [u32; 3] = [257, 1, 4];
 
 /// What the original keeps in `tinfl_decompressor` and in the locals of `tinfl_decompress`.
@@ -74,7 +87,10 @@ impl Decompressor<'_> {
     /// `TINFL_GET_BYTE`
     #[inline]
     fn get_byte(&mut self) -> Result<u32, TinflError> {
-        let byte = *self.input.get(self.in_cur).ok_or(TinflError::CannotMakeProgress)?;
+        let byte = *self
+            .input
+            .get(self.in_cur)
+            .ok_or(TinflError::CannotMakeProgress)?;
         self.in_cur += 1;
         Ok(u32::from(byte))
     }
@@ -142,7 +158,10 @@ impl Decompressor<'_> {
                 // it reads another byte, and tries again until it succeeds or until the bit
                 // buffer contains >=15 bits (deflate's max. Huffman code size).
                 loop {
-                    temp = i32::from(self.m_look_up[table][(self.bit_buf & (TINFL_FAST_LOOKUP_SIZE as u64 - 1)) as usize]);
+                    temp = i32::from(
+                        self.m_look_up[table]
+                            [(self.bit_buf & (TINFL_FAST_LOOKUP_SIZE as u64 - 1)) as usize],
+                    );
                     if temp >= 0 {
                         code_len = (temp >> 9) as u32;
                         if code_len != 0 && self.num_bits >= code_len {
@@ -151,7 +170,10 @@ impl Decompressor<'_> {
                     } else if self.num_bits > TINFL_FAST_LOOKUP_BITS {
                         code_len = TINFL_FAST_LOOKUP_BITS;
                         loop {
-                            temp = i32::from(self.tree(table)[(!temp + ((self.bit_buf >> code_len) & 1) as i32) as usize]);
+                            temp = i32::from(
+                                self.tree(table)
+                                    [(!temp + ((self.bit_buf >> code_len) & 1) as i32) as usize],
+                            );
                             code_len += 1;
                             if !(temp < 0 && self.num_bits >= code_len + 1) {
                                 break;
@@ -169,19 +191,24 @@ impl Decompressor<'_> {
                     }
                 }
             } else {
-                self.bit_buf |= (u64::from(self.input[self.in_cur]) << self.num_bits) | (u64::from(self.input[self.in_cur + 1]) << (self.num_bits + 8));
+                self.bit_buf |= (u64::from(self.input[self.in_cur]) << self.num_bits)
+                    | (u64::from(self.input[self.in_cur + 1]) << (self.num_bits + 8));
                 self.in_cur += 2;
                 self.num_bits += 16;
             }
         }
-        temp = i32::from(self.m_look_up[table][(self.bit_buf & (TINFL_FAST_LOOKUP_SIZE as u64 - 1)) as usize]);
+        temp = i32::from(
+            self.m_look_up[table][(self.bit_buf & (TINFL_FAST_LOOKUP_SIZE as u64 - 1)) as usize],
+        );
         if temp >= 0 {
             code_len = (temp >> 9) as u32;
             temp &= 511;
         } else {
             code_len = TINFL_FAST_LOOKUP_BITS;
             loop {
-                temp = i32::from(self.tree(table)[(!temp + ((self.bit_buf >> code_len) & 1) as i32) as usize]);
+                temp = i32::from(
+                    self.tree(table)[(!temp + ((self.bit_buf >> code_len) & 1) as i32) as usize],
+                );
                 code_len += 1;
                 if temp >= 0 {
                     break;
@@ -311,7 +338,11 @@ impl Decompressor<'_> {
                 self.skip_bits(self.num_bits & 7)?;
                 let mut m_raw_header = [0u32; 4];
                 for header in &mut m_raw_header {
-                    *header = if self.num_bits != 0 { self.get_bits(8)? } else { self.get_byte()? };
+                    *header = if self.num_bits != 0 {
+                        self.get_bits(8)?
+                    } else {
+                        self.get_byte()?
+                    };
                 }
                 let mut counter = m_raw_header[0] | (m_raw_header[1] << 8);
                 if counter != (0xFFFF ^ (m_raw_header[2] | (m_raw_header[3] << 8))) {
@@ -329,8 +360,11 @@ impl Decompressor<'_> {
                     if self.in_cur >= self.input.len() {
                         return Err(TinflError::CannotMakeProgress);
                     }
-                    let n = (self.out_end - self.out.len()).min(self.input.len() - self.in_cur).min(counter as usize);
-                    self.out.extend_from_slice(&self.input[self.in_cur..self.in_cur + n]);
+                    let n = (self.out_end - self.out.len())
+                        .min(self.input.len() - self.in_cur)
+                        .min(counter as usize);
+                    self.out
+                        .extend_from_slice(&self.input[self.in_cur..self.in_cur + n]);
                     self.in_cur += n;
                     counter -= n as u32;
                 }
@@ -377,7 +411,11 @@ impl Decompressor<'_> {
                             let num_extra = [2, 3, 7][dist as usize - 16];
                             let mut s = self.get_bits(num_extra)? as usize;
                             s += [3, 3, 11][dist as usize - 16];
-                            let value = if dist == 16 { self.m_len_codes[counter - 1] } else { 0 };
+                            let value = if dist == 16 {
+                                self.m_len_codes[counter - 1]
+                            } else {
+                                0
+                            };
                             self.m_len_codes[counter..counter + s].fill(value);
                             counter += s;
                         }
@@ -387,7 +425,8 @@ impl Decompressor<'_> {
                         let sizes0 = self.m_table_sizes[0] as usize;
                         let sizes1 = self.m_table_sizes[1] as usize;
                         self.m_code_size_0[..sizes0].copy_from_slice(&self.m_len_codes[..sizes0]);
-                        self.m_code_size_1[..sizes1].copy_from_slice(&self.m_len_codes[sizes0..sizes0 + sizes1]);
+                        self.m_code_size_1[..sizes1]
+                            .copy_from_slice(&self.m_len_codes[sizes0..sizes0 + sizes1]);
                     }
                     table -= 1;
                 }
@@ -404,18 +443,30 @@ impl Decompressor<'_> {
                             let mut sym2: i32;
                             let mut code_len: u32;
                             if self.num_bits < 30 {
-                                let word = u32::from_le_bytes([self.input[self.in_cur], self.input[self.in_cur + 1], self.input[self.in_cur + 2], self.input[self.in_cur + 3]]);
+                                let word = u32::from_le_bytes([
+                                    self.input[self.in_cur],
+                                    self.input[self.in_cur + 1],
+                                    self.input[self.in_cur + 2],
+                                    self.input[self.in_cur + 3],
+                                ]);
                                 self.bit_buf |= u64::from(word) << self.num_bits;
                                 self.in_cur += 4;
                                 self.num_bits += 32;
                             }
-                            sym2 = i32::from(self.m_look_up[0][(self.bit_buf & (TINFL_FAST_LOOKUP_SIZE as u64 - 1)) as usize]);
+                            sym2 = i32::from(
+                                self.m_look_up[0]
+                                    [(self.bit_buf & (TINFL_FAST_LOOKUP_SIZE as u64 - 1)) as usize],
+                            );
                             if sym2 >= 0 {
                                 code_len = (sym2 >> 9) as u32;
                             } else {
                                 code_len = TINFL_FAST_LOOKUP_BITS;
                                 loop {
-                                    sym2 = i32::from(self.m_tree_0[(!sym2 + ((self.bit_buf >> code_len) & 1) as i32) as usize]);
+                                    sym2 = i32::from(
+                                        self.m_tree_0[(!sym2
+                                            + ((self.bit_buf >> code_len) & 1) as i32)
+                                            as usize],
+                                    );
                                     code_len += 1;
                                     if sym2 >= 0 {
                                         break;
@@ -432,13 +483,20 @@ impl Decompressor<'_> {
                                 break;
                             }
 
-                            sym2 = i32::from(self.m_look_up[0][(self.bit_buf & (TINFL_FAST_LOOKUP_SIZE as u64 - 1)) as usize]);
+                            sym2 = i32::from(
+                                self.m_look_up[0]
+                                    [(self.bit_buf & (TINFL_FAST_LOOKUP_SIZE as u64 - 1)) as usize],
+                            );
                             if sym2 >= 0 {
                                 code_len = (sym2 >> 9) as u32;
                             } else {
                                 code_len = TINFL_FAST_LOOKUP_BITS;
                                 loop {
-                                    sym2 = i32::from(self.m_tree_0[(!sym2 + ((self.bit_buf >> code_len) & 1) as i32) as usize]);
+                                    sym2 = i32::from(
+                                        self.m_tree_0[(!sym2
+                                            + ((self.bit_buf >> code_len) & 1) as i32)
+                                            as usize],
+                                    );
                                     code_len += 1;
                                     if sym2 >= 0 {
                                         break;
@@ -480,7 +538,10 @@ impl Decompressor<'_> {
                     }
 
                     let dist_from_out_buf_start = self.out.len();
-                    if dist == 0 || dist as usize > dist_from_out_buf_start || dist_from_out_buf_start == 0 {
+                    if dist == 0
+                        || dist as usize > dist_from_out_buf_start
+                        || dist_from_out_buf_start == 0
+                    {
                         return Err(TinflError::Failed);
                     }
 
@@ -512,7 +573,11 @@ impl Decompressor<'_> {
 
         if decomp_flags & TINFL_FLAG_PARSE_ZLIB_HEADER != 0 {
             for _ in 0..4 {
-                let s = if self.num_bits != 0 { self.get_bits(8)? } else { self.get_byte()? };
+                let s = if self.num_bits != 0 {
+                    self.get_bits(8)?
+                } else {
+                    self.get_byte()?
+                };
                 m_z_adler32 = (m_z_adler32 << 8) | s;
             }
         }
@@ -526,7 +591,11 @@ impl Decompressor<'_> {
 /// is checked; without, raw deflate. Whatever follows the stream is left alone.
 ///
 /// Gives back the bytes and how much of the block the stream took.
-pub fn tinfl_decompress(src_buf: &[u8], out_buf_len: usize, flags: u32) -> Result<(Vec<u8>, usize), TinflError> {
+pub fn tinfl_decompress(
+    src_buf: &[u8],
+    out_buf_len: usize,
+    flags: u32,
+) -> Result<(Vec<u8>, usize), TinflError> {
     let mut r = Decompressor {
         input: src_buf,
         in_cur: 0,
@@ -555,6 +624,12 @@ pub fn tinfl_decompress(src_buf: &[u8], out_buf_len: usize, flags: u32) -> Resul
 
 /// Decompresses a block in memory to no more than `out_buf_len` bytes:
 /// `tinfl_decompress_mem_to_mem`. None on failure.
-pub fn tinfl_decompress_mem_to_mem(src_buf: &[u8], out_buf_len: usize, flags: u32) -> Option<Vec<u8>> {
-    tinfl_decompress(src_buf, out_buf_len, flags).ok().map(|(out, _)| out)
+pub fn tinfl_decompress_mem_to_mem(
+    src_buf: &[u8],
+    out_buf_len: usize,
+    flags: u32,
+) -> Option<Vec<u8>> {
+    tinfl_decompress(src_buf, out_buf_len, flags)
+        .ok()
+        .map(|(out, _)| out)
 }

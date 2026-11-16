@@ -54,7 +54,11 @@
 #![forbid(unsafe_code)]
 #![cfg_attr(feature = "nightly-simd", feature(portable_simd))]
 // The code follows the originals' line for line, and these are its shapes.
-#![allow(clippy::needless_range_loop, clippy::too_many_arguments, clippy::manual_range_contains)]
+#![allow(
+    clippy::needless_range_loop,
+    clippy::too_many_arguments,
+    clippy::manual_range_contains
+)]
 
 pub mod bc2;
 pub mod bc6h;
@@ -69,8 +73,8 @@ pub mod ert;
 mod fmath;
 pub mod image;
 pub mod ktx;
-pub mod libdeflate;
 mod lanes;
+pub mod libdeflate;
 pub mod miniz;
 mod parallel;
 pub mod rdo_bc_encoder;

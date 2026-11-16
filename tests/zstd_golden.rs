@@ -11,7 +11,11 @@ mod made_up;
 
 #[test]
 fn decodes_as_the_reference_decoder_does() {
-    let printed = made_up::zstd_decode("zstd_decode_small", 120, include_bytes!("data/zstd_frames.bin"));
+    let printed = made_up::zstd_decode(
+        "zstd_decode_small",
+        120,
+        include_bytes!("data/zstd_frames.bin"),
+    );
     let expected = include_str!("data/zstd_decode_expected.txt");
     for (line, (ours, theirs)) in printed.lines().zip(expected.lines()).enumerate() {
         assert_eq!(ours, theirs, "line {}", line + 1);
@@ -61,7 +65,11 @@ fn badly_damaged_frames_are_decoded_or_refused() {
                 }
             }
             let _ = get_decompressed_size(&frame);
-            let parsed = if dict.is_empty() { Ok(Dictionary::default()) } else { Dictionary::parse(&dict) };
+            let parsed = if dict.is_empty() {
+                Ok(Dictionary::default())
+            } else {
+                Dictionary::parse(&dict)
+            };
             match parsed.and_then(|parsed| decompress_with_dict(&frame, dst_len + 100, &parsed)) {
                 Ok(bytes) => {
                     assert!(bytes.len() <= dst_len + 100);
@@ -71,5 +79,8 @@ fn badly_damaged_frames_are_decoded_or_refused() {
             }
         }
     }
-    assert!(decoded > 100 && refused > 1000, "{decoded} decoded, {refused} refused");
+    assert!(
+        decoded > 100 && refused > 1000,
+        "{decoded} decoded, {refused} refused"
+    );
 }

@@ -11,7 +11,12 @@ mod made_up;
 
 #[test]
 fn packs_images_as_the_cpp_does() {
-    let printed = [made_up::rdo(9, 800, false), made_up::rdo(2, 800, true), made_up::rdo(14, 800, true)].concat();
+    let printed = [
+        made_up::rdo(9, 800, false),
+        made_up::rdo(2, 800, true),
+        made_up::rdo(14, 800, true),
+    ]
+    .concat();
     let expected = include_str!("data/rdo_expected.txt");
     for (line, (ours, theirs)) in printed.lines().zip(expected.lines()).enumerate() {
         assert_eq!(ours, theirs, "line {}", line + 1);

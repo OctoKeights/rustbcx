@@ -7,8 +7,8 @@
 //! Its data format descriptor is the one the Khronos tools write for each format.
 
 use crate::miniz;
-use crate::zstd;
 use crate::texture::{texture_from_header, Reader, Texture, TextureError, TextureFormat};
+use crate::zstd;
 
 /// How the levels of a `.ktx2` file are compressed again, each by itself.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -35,8 +35,12 @@ impl Supercompression {
     }
 }
 
-const KTX1_IDENTIFIER: [u8; 12] = [0xAB, b'K', b'T', b'X', b' ', b'1', b'1', 0xBB, b'\r', b'\n', 0x1A, b'\n'];
-const KTX2_IDENTIFIER: [u8; 12] = [0xAB, b'K', b'T', b'X', b' ', b'2', b'0', 0xBB, b'\r', b'\n', 0x1A, b'\n'];
+const KTX1_IDENTIFIER: [u8; 12] = [
+    0xAB, b'K', b'T', b'X', b' ', b'1', b'1', 0xBB, b'\r', b'\n', 0x1A, b'\n',
+];
+const KTX2_IDENTIFIER: [u8; 12] = [
+    0xAB, b'K', b'T', b'X', b' ', b'2', b'0', 0xBB, b'\r', b'\n', 0x1A, b'\n',
+];
 const KTX1_ENDIANNESS: u32 = 0x0403_0201;
 
 const GL_RED: u32 = 0x1903;
@@ -108,13 +112,34 @@ pub fn write_ktx1(texture: &Texture) -> Option<Vec<u8>> {
     if !texture.is_valid() {
         return None;
     }
-    let (internal_format, base_internal_format) = gl_formats(texture.format, texture.srgb && texture.format.can_be_srgb());
-    let mut file = Vec::with_capacity(64 + texture.levels.iter().map(|level| level.len() + 4).sum::<usize>());
+    let (internal_format, base_internal_format) =
+        gl_formats(texture.format, texture.srgb && texture.format.can_be_srgb());
+    let mut file = Vec::with_capacity(
+        64 + texture
+            .levels
+            .iter()
+            .map(|level| level.len() + 4)
+            .sum::<usize>(),
+    );
     file.extend_from_slice(&KTX1_IDENTIFIER);
     // Endianness; no type, a type size of 1 and no format, as for all compressed textures; the
     // two internal formats; the size, with the depth of a volume; the layers of an array; the
     // faces; the levels; no key and value data.
-    for value in [KTX1_ENDIANNESS, 0, 1, 0, internal_format, base_internal_format, texture.width, texture.height, texture.depth, texture.layers, if texture.cube { 6 } else { 1 }, texture.levels.len() as u32, 0] {
+    for value in [
+        KTX1_ENDIANNESS,
+        0,
+        1,
+        0,
+        internal_format,
+        base_internal_format,
+        texture.width,
+        texture.height,
+        texture.depth,
+        texture.layers,
+        if texture.cube { 6 } else { 1 },
+        texture.levels.len() as u32,
+        0,
+    ] {
         put_u32(&mut file, value);
     }
     for (i, level) in texture.levels.iter().enumerate() {
@@ -144,21 +169,33 @@ pub fn read_ktx1(file: &[u8]) -> Result<Texture, TextureError> {
     if file.len() < 12 || file[..12] != KTX1_IDENTIFIER {
         return Err(TextureError::Invalid("no KTX identifier"));
     }
-    let mut reader = Reader { bytes: file, at: 12 };
+    let mut reader = Reader {
+        bytes: file,
+        at: 12,
+    };
     let mut header = [0u32; 13];
     for value in &mut header {
         *value = reader.u32()?;
     }
-    let [endianness, gl_type, _type_size, gl_format, internal_format, _base, width, height, depth, array_elements, faces, level_count, key_value_bytes] = header;
+    let [endianness, gl_type, _type_size, gl_format, internal_format, _base, width, height, depth, array_elements, faces, level_count, key_value_bytes] =
+        header;
     if endianness != KTX1_ENDIANNESS {
-        return Err(if endianness == KTX1_ENDIANNESS.swap_bytes() { TextureError::Unsupported("a big-endian file") } else { TextureError::Invalid("the endianness mark is wrong") });
+        return Err(if endianness == KTX1_ENDIANNESS.swap_bytes() {
+            TextureError::Unsupported("a big-endian file")
+        } else {
+            TextureError::Invalid("the endianness mark is wrong")
+        });
     }
     if gl_type != 0 || gl_format != 0 {
         return Err(TextureError::Unsupported("pixels that are not in blocks"));
     }
     let (format, srgb) = match internal_format {
-        GL_COMPRESSED_RGB_S3TC_DXT1_EXT | GL_COMPRESSED_RGBA_S3TC_DXT1_EXT => (TextureFormat::Bc1, false),
-        GL_COMPRESSED_SRGB_S3TC_DXT1_EXT | GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT1_EXT => (TextureFormat::Bc1, true),
+        GL_COMPRESSED_RGB_S3TC_DXT1_EXT | GL_COMPRESSED_RGBA_S3TC_DXT1_EXT => {
+            (TextureFormat::Bc1, false)
+        }
+        GL_COMPRESSED_SRGB_S3TC_DXT1_EXT | GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT1_EXT => {
+            (TextureFormat::Bc1, true)
+        }
         GL_COMPRESSED_RGBA_S3TC_DXT3_EXT => (TextureFormat::Bc2, false),
         GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT3_EXT => (TextureFormat::Bc2, true),
         GL_COMPRESSED_RGBA_S3TC_DXT5_EXT => (TextureFormat::Bc3, false),
@@ -169,21 +206,43 @@ pub fn read_ktx1(file: &[u8]) -> Result<Texture, TextureError> {
         GL_COMPRESSED_RGB_BPTC_SIGNED_FLOAT => (TextureFormat::Bc6hSigned, false),
         GL_COMPRESSED_RGBA_BPTC_UNORM => (TextureFormat::Bc7, false),
         GL_COMPRESSED_SRGB_ALPHA_BPTC_UNORM => (TextureFormat::Bc7, true),
-        _ => return Err(TextureError::Unsupported("an OpenGL format other than BC1 to BC7")),
+        _ => {
+            return Err(TextureError::Unsupported(
+                "an OpenGL format other than BC1 to BC7",
+            ))
+        }
     };
     if faces != 1 && faces != 6 {
         return Err(TextureError::Invalid("faces that are neither one nor six"));
     }
-    let mut texture = texture_from_header(format, srgb, width, height, depth, array_elements, faces == 6, level_count)?;
+    let mut texture = texture_from_header(
+        format,
+        srgb,
+        width,
+        height,
+        depth,
+        array_elements,
+        faces == 6,
+        level_count,
+    )?;
 
-    let mut at = reader.at.checked_add(key_value_bytes as usize).ok_or(TextureError::Invalid("the file is cut short"))?;
+    let mut at = reader
+        .at
+        .checked_add(key_value_bytes as usize)
+        .ok_or(TextureError::Invalid("the file is cut short"))?;
     for level in 0..texture.levels.len() {
         reader.at = at;
         if reader.u32()? as usize != ktx1_image_size(&texture, level) {
-            return Err(TextureError::Invalid("a level is not the size its pixels need"));
+            return Err(TextureError::Invalid(
+                "a level is not the size its pixels need",
+            ));
         }
         let size = texture.level_bytes(level);
-        let blocks = reader.at.checked_add(size).and_then(|end| file.get(reader.at..end)).ok_or(TextureError::Invalid("the file is cut short"))?;
+        let blocks = reader
+            .at
+            .checked_add(size)
+            .and_then(|end| file.get(reader.at..end))
+            .ok_or(TextureError::Invalid("the file is cut short"))?;
         texture.levels[level] = blocks.to_vec();
         at = reader.at + size.next_multiple_of(4);
     }
@@ -208,7 +267,11 @@ fn data_format_descriptor(format: TextureFormat, srgb: bool) -> Vec<u8> {
         TextureFormat::Bc6hUnsigned | TextureFormat::Bc6hSigned => (133, &[(0, 0)]),
         TextureFormat::Bc7 => (134, &[(0, 0)]),
     };
-    let sample_bits: u32 = if samples.len() == 2 || format.bytes_per_block() == 8 { 64 } else { 128 };
+    let sample_bits: u32 = if samples.len() == 2 || format.bytes_per_block() == 8 {
+        64
+    } else {
+        128
+    };
     let (flags, lower, upper) = match format {
         TextureFormat::Bc6hUnsigned => (FLOAT, 0.0f32.to_bits(), 1.0f32.to_bits()),
         TextureFormat::Bc6hSigned => (FLOAT | SIGNED, (-1.0f32).to_bits(), 1.0f32.to_bits()),
@@ -233,7 +296,12 @@ fn data_format_descriptor(format: TextureFormat, srgb: bool) -> Vec<u8> {
     for &(channel, bit_offset) in samples {
         // (The alpha of an sRGB texture is not sRGB, and its sample has to say so.)
         let linear = if srgb && channel == ALPHA { LINEAR } else { 0 };
-        words.extend_from_slice(&[bit_offset | ((sample_bits - 1) << 16) | ((channel | flags | linear) << 24), 0, lower, upper]);
+        words.extend_from_slice(&[
+            bit_offset | ((sample_bits - 1) << 16) | ((channel | flags | linear) << 24),
+            0,
+            lower,
+            upper,
+        ]);
     }
     words.iter().flat_map(|word| word.to_le_bytes()).collect()
 }
@@ -259,13 +327,21 @@ pub fn write_ktx2_with(texture: &Texture, supercompression: Supercompression) ->
         .iter()
         .map(|level| match supercompression {
             Supercompression::None => Some(std::borrow::Cow::Borrowed(&level[..])),
-            Supercompression::Zlib(zlib_level) => Some(std::borrow::Cow::Owned(miniz::compress(level, zlib_level))),
-            Supercompression::Zstd(zstd_level) => zstd::compress(level, zstd_level).ok().map(std::borrow::Cow::Owned),
+            Supercompression::Zlib(zlib_level) => {
+                Some(std::borrow::Cow::Owned(miniz::compress(level, zlib_level)))
+            }
+            Supercompression::Zstd(zstd_level) => zstd::compress(level, zstd_level)
+                .ok()
+                .map(std::borrow::Cow::Owned),
         })
         .collect::<Option<_>>()?;
     // A level starts at a multiple of the block's bytes (and of four); a supercompressed one
     // anywhere.
-    let alignment = if supercompression == Supercompression::None { texture.format.bytes_per_block() } else { 1 };
+    let alignment = if supercompression == Supercompression::None {
+        texture.format.bytes_per_block()
+    } else {
+        1
+    };
 
     // Where each level goes: the smallest first, the largest last.
     let descriptor_at = 80 + 24 * level_count;
@@ -281,7 +357,17 @@ pub fn write_ktx2_with(texture: &Texture, supercompression: Supercompression) ->
     file.extend_from_slice(&KTX2_IDENTIFIER);
     // The format; a type size of 1, as for all block formats; the size, with the depth of a
     // volume; the layers of an array; the faces; the levels; the supercompression.
-    for value in [vk_format(texture.format, srgb), 1, texture.width, texture.height, texture.depth, texture.layers, if texture.cube { 6 } else { 1 }, level_count as u32, supercompression.scheme()] {
+    for value in [
+        vk_format(texture.format, srgb),
+        1,
+        texture.width,
+        texture.height,
+        texture.depth,
+        texture.layers,
+        if texture.cube { 6 } else { 1 },
+        level_count as u32,
+        supercompression.scheme(),
+    ] {
         put_u32(&mut file, value);
     }
     // The descriptor's place and size; no key and value data; no supercompression data.
@@ -313,12 +399,16 @@ pub fn read_ktx2(file: &[u8]) -> Result<Texture, TextureError> {
     if file.len() < 12 || file[..12] != KTX2_IDENTIFIER {
         return Err(TextureError::Invalid("no KTX 2 identifier"));
     }
-    let mut reader = Reader { bytes: file, at: 12 };
+    let mut reader = Reader {
+        bytes: file,
+        at: 12,
+    };
     let mut header = [0u32; 9];
     for value in &mut header {
         *value = reader.u32()?;
     }
-    let [format_number, _type_size, width, height, depth, layers, faces, level_count, supercompression] = header;
+    let [format_number, _type_size, width, height, depth, layers, faces, level_count, supercompression] =
+        header;
     let (format, srgb) = match format_number {
         131 | 133 => (TextureFormat::Bc1, false),
         132 | 134 => (TextureFormat::Bc1, true),
@@ -332,17 +422,38 @@ pub fn read_ktx2(file: &[u8]) -> Result<Texture, TextureError> {
         144 => (TextureFormat::Bc6hSigned, false),
         145 => (TextureFormat::Bc7, false),
         146 => (TextureFormat::Bc7, true),
-        _ => return Err(TextureError::Unsupported("a Vulkan format other than BC1 to BC7")),
+        _ => {
+            return Err(TextureError::Unsupported(
+                "a Vulkan format other than BC1 to BC7",
+            ))
+        }
     };
     if faces != 1 && faces != 6 {
         return Err(TextureError::Invalid("faces that are neither one nor six"));
     }
     match supercompression {
         0 | 2 | 3 => {}
-        1 => return Err(TextureError::Unsupported("BasisLZ supercompression, which is not for block formats")),
-        _ => return Err(TextureError::Unsupported("a supercompression that is not known")),
+        1 => {
+            return Err(TextureError::Unsupported(
+                "BasisLZ supercompression, which is not for block formats",
+            ))
+        }
+        _ => {
+            return Err(TextureError::Unsupported(
+                "a supercompression that is not known",
+            ))
+        }
     }
-    let mut texture = texture_from_header(format, srgb, width, height, depth, layers, faces == 6, level_count)?;
+    let mut texture = texture_from_header(
+        format,
+        srgb,
+        width,
+        height,
+        depth,
+        layers,
+        faces == 6,
+        level_count,
+    )?;
 
     // (Past the places of the descriptor, the key and value data and the supercompression
     // data, none of which is needed.)
@@ -350,14 +461,34 @@ pub fn read_ktx2(file: &[u8]) -> Result<Texture, TextureError> {
     for level in 0..texture.levels.len() {
         let (offset, length, uncompressed) = (reader.u64()?, reader.u64()?, reader.u64()?);
         let size = texture.level_bytes(level);
-        if (if supercompression == 0 { length } else { uncompressed }) != size as u64 {
-            return Err(TextureError::Invalid("a level is not the size its pixels need"));
+        if (if supercompression == 0 {
+            length
+        } else {
+            uncompressed
+        }) != size as u64
+        {
+            return Err(TextureError::Invalid(
+                "a level is not the size its pixels need",
+            ));
         }
-        let bytes = usize::try_from(offset).ok().zip(usize::try_from(length).ok()).and_then(|(offset, length)| file.get(offset..offset.checked_add(length)?)).ok_or(TextureError::Invalid("the file is cut short"))?;
+        let bytes = usize::try_from(offset)
+            .ok()
+            .zip(usize::try_from(length).ok())
+            .and_then(|(offset, length)| file.get(offset..offset.checked_add(length)?))
+            .ok_or(TextureError::Invalid("the file is cut short"))?;
         texture.levels[level] = match supercompression {
             0 => bytes.to_vec(),
-            2 => zstd::decompress(bytes, size).ok().filter(|blocks| blocks.len() == size).ok_or(TextureError::Invalid("a level's compressed bytes are damaged"))?,
-            _ => miniz::uncompress(bytes, size).filter(|blocks| blocks.len() == size).ok_or(TextureError::Invalid("a level's compressed bytes are damaged"))?,
+            2 => zstd::decompress(bytes, size)
+                .ok()
+                .filter(|blocks| blocks.len() == size)
+                .ok_or(TextureError::Invalid(
+                    "a level's compressed bytes are damaged",
+                ))?,
+            _ => miniz::uncompress(bytes, size)
+                .filter(|blocks| blocks.len() == size)
+                .ok_or(TextureError::Invalid(
+                    "a level's compressed bytes are damaged",
+                ))?,
         };
     }
     Ok(texture)
@@ -367,22 +498,61 @@ pub fn read_ktx2(file: &[u8]) -> Result<Texture, TextureError> {
 mod tests {
     use super::*;
 
-    const FORMATS: [TextureFormat; 8] = [TextureFormat::Bc1, TextureFormat::Bc2, TextureFormat::Bc3, TextureFormat::Bc4, TextureFormat::Bc5, TextureFormat::Bc6hUnsigned, TextureFormat::Bc6hSigned, TextureFormat::Bc7];
+    const FORMATS: [TextureFormat; 8] = [
+        TextureFormat::Bc1,
+        TextureFormat::Bc2,
+        TextureFormat::Bc3,
+        TextureFormat::Bc4,
+        TextureFormat::Bc5,
+        TextureFormat::Bc6hUnsigned,
+        TextureFormat::Bc6hSigned,
+        TextureFormat::Bc7,
+    ];
 
     fn texture(format: TextureFormat, levels: usize) -> Texture {
         shaped(format, levels, 9, 6, 0, 0, false)
     }
 
     /// A texture of a shape, every byte of it saying where it is.
-    fn shaped(format: TextureFormat, levels: usize, width: u32, height: u32, depth: u32, layers: u32, cube: bool) -> Texture {
-        let mut texture = Texture { format, srgb: false, width, height, depth, layers, cube, levels: Vec::new() };
-        texture.levels = (0..levels).map(|level| (0..texture.level_bytes(level)).map(|i| (i * 7 + i / texture.image_bytes(level) * 31 + level * 3) as u8).collect()).collect();
+    fn shaped(
+        format: TextureFormat,
+        levels: usize,
+        width: u32,
+        height: u32,
+        depth: u32,
+        layers: u32,
+        cube: bool,
+    ) -> Texture {
+        let mut texture = Texture {
+            format,
+            srgb: false,
+            width,
+            height,
+            depth,
+            layers,
+            cube,
+            levels: Vec::new(),
+        };
+        texture.levels = (0..levels)
+            .map(|level| {
+                (0..texture.level_bytes(level))
+                    .map(|i| (i * 7 + i / texture.image_bytes(level) * 31 + level * 3) as u8)
+                    .collect()
+            })
+            .collect();
         assert!(texture.is_valid());
         texture
     }
 
     /// Plain, an array of three and of one, a cube map, an array of two cube maps, a volume.
-    const SHAPES: [(u32, u32, u32, u32, bool); 6] = [(9, 6, 0, 0, false), (9, 6, 0, 3, false), (9, 6, 0, 1, false), (8, 8, 0, 0, true), (8, 8, 0, 2, true), (9, 6, 5, 0, false)];
+    const SHAPES: [(u32, u32, u32, u32, bool); 6] = [
+        (9, 6, 0, 0, false),
+        (9, 6, 0, 3, false),
+        (9, 6, 0, 1, false),
+        (8, 8, 0, 0, true),
+        (8, 8, 0, 2, true),
+        (9, 6, 5, 0, false),
+    ];
 
     #[test]
     fn every_format_goes_out_and_comes_back() {
@@ -402,12 +572,24 @@ mod tests {
 
     #[test]
     fn every_shape_goes_out_and_comes_back() {
-        for format in [TextureFormat::Bc1, TextureFormat::Bc3, TextureFormat::Bc6hUnsigned] {
+        for format in [
+            TextureFormat::Bc1,
+            TextureFormat::Bc3,
+            TextureFormat::Bc6hUnsigned,
+        ] {
             for (width, height, depth, layers, cube) in SHAPES {
                 for levels in [1, 3] {
                     let out = shaped(format, levels, width, height, depth, layers, cube);
-                    assert_eq!(read_ktx1(&write_ktx1(&out).unwrap()).unwrap(), out, "{format:?} {width} {height} {depth} {layers} {cube} {levels}");
-                    assert_eq!(read_ktx2(&write_ktx2(&out).unwrap()).unwrap(), out, "{format:?} {width} {height} {depth} {layers} {cube} {levels}");
+                    assert_eq!(
+                        read_ktx1(&write_ktx1(&out).unwrap()).unwrap(),
+                        out,
+                        "{format:?} {width} {height} {depth} {layers} {cube} {levels}"
+                    );
+                    assert_eq!(
+                        read_ktx2(&write_ktx2(&out).unwrap()).unwrap(),
+                        out,
+                        "{format:?} {width} {height} {depth} {layers} {cube} {levels}"
+                    );
                 }
             }
         }
@@ -415,33 +597,57 @@ mod tests {
 
     #[test]
     fn the_shapes_are_laid_out_as_the_formats_say() {
-        let word = |file: &[u8], at: usize| u32::from_le_bytes(file[at..at + 4].try_into().unwrap());
+        let word =
+            |file: &[u8], at: usize| u32::from_le_bytes(file[at..at + 4].try_into().unwrap());
 
         // A cube map: six faces in the header, and before each level the size of one face.
         let cube = shaped(TextureFormat::Bc1, 2, 8, 8, 0, 0, true);
         let file = write_ktx1(&cube).unwrap();
-        assert_eq!([word(&file, 44), word(&file, 48), word(&file, 52)], [0, 0, 6]);
+        assert_eq!(
+            [word(&file, 44), word(&file, 48), word(&file, 52)],
+            [0, 0, 6]
+        );
         assert_eq!(word(&file, 64), 32);
         assert_eq!(&file[68..68 + 192], &cube.levels[0][..]);
         assert_eq!(word(&file, 68 + 192), 8);
         assert_eq!(file.len(), 64 + 4 + 192 + 4 + 48);
         let file = write_ktx2(&cube).unwrap();
-        assert_eq!([word(&file, 28), word(&file, 32), word(&file, 36)], [0, 0, 6]);
+        assert_eq!(
+            [word(&file, 28), word(&file, 32), word(&file, 36)],
+            [0, 0, 6]
+        );
         assert_eq!(u64::from_le_bytes(file[88..96].try_into().unwrap()), 192);
 
         // An array of two cube maps: the size before a level is of the whole level.
         let cubes = shaped(TextureFormat::Bc1, 1, 8, 8, 0, 2, true);
         let file = write_ktx1(&cubes).unwrap();
-        assert_eq!([word(&file, 48), word(&file, 52), word(&file, 64)], [2, 6, 384]);
+        assert_eq!(
+            [word(&file, 48), word(&file, 52), word(&file, 64)],
+            [2, 6, 384]
+        );
 
         // A volume: its depth in the header, and each level with its slices.
         let volume = shaped(TextureFormat::Bc7, 2, 9, 6, 5, 0, false);
         let file = write_ktx1(&volume).unwrap();
-        assert_eq!([word(&file, 44), word(&file, 48), word(&file, 52), word(&file, 64)], [5, 0, 1, 5 * 96]);
+        assert_eq!(
+            [
+                word(&file, 44),
+                word(&file, 48),
+                word(&file, 52),
+                word(&file, 64)
+            ],
+            [5, 0, 1, 5 * 96]
+        );
         let file = write_ktx2(&volume).unwrap();
-        assert_eq!([word(&file, 28), word(&file, 32), word(&file, 36)], [5, 0, 1]);
+        assert_eq!(
+            [word(&file, 28), word(&file, 32), word(&file, 36)],
+            [5, 0, 1]
+        );
         assert_eq!(u64::from_le_bytes(file[88..96].try_into().unwrap()), 5 * 96);
-        assert_eq!(u64::from_le_bytes(file[112..120].try_into().unwrap()), 2 * 16);
+        assert_eq!(
+            u64::from_le_bytes(file[112..120].try_into().unwrap()),
+            2 * 16
+        );
 
         // Faces that are neither one nor six, a cube map that is not square and an array of
         // volumes are not read.
@@ -450,10 +656,16 @@ mod tests {
         assert!(matches!(read_ktx1(&faces), Err(TextureError::Invalid(_))));
         let mut oblong = write_ktx2(&cube).unwrap();
         oblong[24] = 4;
-        assert_eq!(read_ktx2(&oblong), Err(TextureError::Invalid("a cube map that is not square")));
+        assert_eq!(
+            read_ktx2(&oblong),
+            Err(TextureError::Invalid("a cube map that is not square"))
+        );
         let mut stacked = write_ktx2(&volume).unwrap();
         stacked[32] = 2;
-        assert!(matches!(read_ktx2(&stacked), Err(TextureError::Unsupported(_))));
+        assert!(matches!(
+            read_ktx2(&stacked),
+            Err(TextureError::Unsupported(_))
+        ));
     }
 
     #[test]
@@ -468,14 +680,32 @@ mod tests {
         let plain = write_ktx2(&out).unwrap();
         for zlib_level in [1, 6, 9] {
             let file = write_ktx2_with(&out, Supercompression::Zlib(zlib_level)).unwrap();
-            assert!(file.len() < plain.len() / 4, "{zlib_level}: {} {}", file.len(), plain.len());
+            assert!(
+                file.len() < plain.len() / 4,
+                "{zlib_level}: {} {}",
+                file.len(),
+                plain.len()
+            );
             assert_eq!(read_ktx2(&file).unwrap(), out, "{zlib_level}");
             // The scheme is ZLIB, and each level says its bytes in the file and as blocks.
             assert_eq!(u32::from_le_bytes(file[44..48].try_into().unwrap()), 3);
-            let entry = |level: usize, field: usize| u64::from_le_bytes(file[80 + level * 24 + field * 8..88 + level * 24 + field * 8].try_into().unwrap()) as usize;
+            let entry = |level: usize, field: usize| {
+                u64::from_le_bytes(
+                    file[80 + level * 24 + field * 8..88 + level * 24 + field * 8]
+                        .try_into()
+                        .unwrap(),
+                ) as usize
+            };
             for level in 0..4 {
                 assert_eq!(entry(level, 2), out.levels[level].len());
-                assert_eq!(miniz::uncompress(&file[entry(level, 0)..entry(level, 0) + entry(level, 1)], out.levels[level].len()).unwrap(), out.levels[level]);
+                assert_eq!(
+                    miniz::uncompress(
+                        &file[entry(level, 0)..entry(level, 0) + entry(level, 1)],
+                        out.levels[level].len()
+                    )
+                    .unwrap(),
+                    out.levels[level]
+                );
             }
             // The levels follow one another with nothing between, the smallest first.
             assert_eq!(entry(3, 0) + entry(3, 1), entry(2, 0));
@@ -487,20 +717,46 @@ mod tests {
             assert!(matches!(read_ktx2(&damaged), Err(TextureError::Invalid(_))));
             let mut wrong = file.clone();
             wrong[80 + 16] ^= 16;
-            assert_eq!(read_ktx2(&wrong), Err(TextureError::Invalid("a level is not the size its pixels need")));
+            assert_eq!(
+                read_ktx2(&wrong),
+                Err(TextureError::Invalid(
+                    "a level is not the size its pixels need"
+                ))
+            );
         }
-        assert_eq!(write_ktx2_with(&out, Supercompression::None).unwrap(), plain);
+        assert_eq!(
+            write_ktx2_with(&out, Supercompression::None).unwrap(),
+            plain
+        );
 
         // The same with Zstandard: the scheme is 2, and each level is one frame.
         for zstd_level in [-5, 1, 3, 9, 19] {
             let file = write_ktx2_with(&out, Supercompression::Zstd(zstd_level)).unwrap();
-            assert!(file.len() < plain.len() / 4, "{zstd_level}: {} {}", file.len(), plain.len());
+            assert!(
+                file.len() < plain.len() / 4,
+                "{zstd_level}: {} {}",
+                file.len(),
+                plain.len()
+            );
             assert_eq!(read_ktx2(&file).unwrap(), out, "{zstd_level}");
             assert_eq!(u32::from_le_bytes(file[44..48].try_into().unwrap()), 2);
-            let entry = |level: usize, field: usize| u64::from_le_bytes(file[80 + level * 24 + field * 8..88 + level * 24 + field * 8].try_into().unwrap()) as usize;
+            let entry = |level: usize, field: usize| {
+                u64::from_le_bytes(
+                    file[80 + level * 24 + field * 8..88 + level * 24 + field * 8]
+                        .try_into()
+                        .unwrap(),
+                ) as usize
+            };
             for level in 0..4 {
                 assert_eq!(entry(level, 2), out.levels[level].len());
-                assert_eq!(zstd::decompress(&file[entry(level, 0)..entry(level, 0) + entry(level, 1)], out.levels[level].len()).unwrap(), out.levels[level]);
+                assert_eq!(
+                    zstd::decompress(
+                        &file[entry(level, 0)..entry(level, 0) + entry(level, 1)],
+                        out.levels[level].len()
+                    )
+                    .unwrap(),
+                    out.levels[level]
+                );
             }
             assert_eq!(entry(0, 0) + entry(0, 1), file.len());
         }
@@ -525,10 +781,18 @@ mod tests {
         // The descriptor follows the three level entries: its size first, two samples.
         let descriptor_at = u32::from_le_bytes(file[48..52].try_into().unwrap()) as usize;
         assert_eq!(descriptor_at, 80 + 3 * 24);
-        assert_eq!(u32::from_le_bytes(file[52..56].try_into().unwrap()), 4 + 24 + 32);
-        assert_eq!(u32::from_le_bytes(file[descriptor_at..descriptor_at + 4].try_into().unwrap()), 60);
+        assert_eq!(
+            u32::from_le_bytes(file[52..56].try_into().unwrap()),
+            4 + 24 + 32
+        );
+        assert_eq!(
+            u32::from_le_bytes(file[descriptor_at..descriptor_at + 4].try_into().unwrap()),
+            60
+        );
         // The smallest level comes first, and every level starts at a multiple of 16.
-        let offset = |level: usize| u64::from_le_bytes(file[80 + level * 24..88 + level * 24].try_into().unwrap()) as usize;
+        let offset = |level: usize| {
+            u64::from_le_bytes(file[80 + level * 24..88 + level * 24].try_into().unwrap()) as usize
+        };
         assert!(offset(2) < offset(1) && offset(1) < offset(0));
         assert!((0..3).all(|level| offset(level) % 16 == 0));
         assert_eq!(&file[offset(0)..], &out.levels[0][..]);
@@ -538,44 +802,138 @@ mod tests {
     #[test]
     fn the_descriptors_are_the_khronos_tools_own() {
         // BC7, sRGB: one sample of 128 bits.
-        let words: Vec<u32> = data_format_descriptor(TextureFormat::Bc7, true).chunks_exact(4).map(|word| u32::from_le_bytes(word.try_into().unwrap())).collect();
-        assert_eq!(words, [44, 0, 2 | (40 << 16), 134 | (1 << 8) | (2 << 16), 0x0303, 16, 0, 127 << 16, 0, 0, u32::MAX]);
+        let words: Vec<u32> = data_format_descriptor(TextureFormat::Bc7, true)
+            .chunks_exact(4)
+            .map(|word| u32::from_le_bytes(word.try_into().unwrap()))
+            .collect();
+        assert_eq!(
+            words,
+            [
+                44,
+                0,
+                2 | (40 << 16),
+                134 | (1 << 8) | (2 << 16),
+                0x0303,
+                16,
+                0,
+                127 << 16,
+                0,
+                0,
+                u32::MAX
+            ]
+        );
         // BC5: red at bit 0 and green at bit 64, 64 bits each.
-        let words: Vec<u32> = data_format_descriptor(TextureFormat::Bc5, false).chunks_exact(4).map(|word| u32::from_le_bytes(word.try_into().unwrap())).collect();
-        assert_eq!(words[..7], [60, 0, 2 | (56 << 16), 132 | (1 << 8) | (1 << 16), 0x0303, 16, 0]);
-        assert_eq!(words[7..], [63 << 16, 0, 0, u32::MAX, 64 | (63 << 16) | (1 << 24), 0, 0, u32::MAX]);
+        let words: Vec<u32> = data_format_descriptor(TextureFormat::Bc5, false)
+            .chunks_exact(4)
+            .map(|word| u32::from_le_bytes(word.try_into().unwrap()))
+            .collect();
+        assert_eq!(
+            words[..7],
+            [
+                60,
+                0,
+                2 | (56 << 16),
+                132 | (1 << 8) | (1 << 16),
+                0x0303,
+                16,
+                0
+            ]
+        );
+        assert_eq!(
+            words[7..],
+            [
+                63 << 16,
+                0,
+                0,
+                u32::MAX,
+                64 | (63 << 16) | (1 << 24),
+                0,
+                0,
+                u32::MAX
+            ]
+        );
         // BC3, sRGB: alpha at bit 0, marked linear, and colour at bit 64.
-        let words: Vec<u32> = data_format_descriptor(TextureFormat::Bc3, true).chunks_exact(4).map(|word| u32::from_le_bytes(word.try_into().unwrap())).collect();
+        let words: Vec<u32> = data_format_descriptor(TextureFormat::Bc3, true)
+            .chunks_exact(4)
+            .map(|word| u32::from_le_bytes(word.try_into().unwrap()))
+            .collect();
         assert_eq!(words[3], 130 | (1 << 8) | (2 << 16));
-        assert_eq!(words[7..], [(63 << 16) | (0x1F << 24), 0, 0, u32::MAX, 64 | (63 << 16), 0, 0, u32::MAX]);
-        let words: Vec<u32> = data_format_descriptor(TextureFormat::Bc2, false).chunks_exact(4).map(|word| u32::from_le_bytes(word.try_into().unwrap())).collect();
+        assert_eq!(
+            words[7..],
+            [
+                (63 << 16) | (0x1F << 24),
+                0,
+                0,
+                u32::MAX,
+                64 | (63 << 16),
+                0,
+                0,
+                u32::MAX
+            ]
+        );
+        let words: Vec<u32> = data_format_descriptor(TextureFormat::Bc2, false)
+            .chunks_exact(4)
+            .map(|word| u32::from_le_bytes(word.try_into().unwrap()))
+            .collect();
         assert_eq!(words[3], 129 | (1 << 8) | (1 << 16));
         assert_eq!(words[7], (63 << 16) | (0x0F << 24));
         // BC6H, signed: a float sample from -1 to 1.
-        let words: Vec<u32> = data_format_descriptor(TextureFormat::Bc6hSigned, false).chunks_exact(4).map(|word| u32::from_le_bytes(word.try_into().unwrap())).collect();
-        assert_eq!(words[7..], [(127 << 16) | (0xC0 << 24), 0, 0xBF80_0000, 0x3F80_0000]);
+        let words: Vec<u32> = data_format_descriptor(TextureFormat::Bc6hSigned, false)
+            .chunks_exact(4)
+            .map(|word| u32::from_le_bytes(word.try_into().unwrap()))
+            .collect();
+        assert_eq!(
+            words[7..],
+            [(127 << 16) | (0xC0 << 24), 0, 0xBF80_0000, 0x3F80_0000]
+        );
     }
 
     #[test]
     fn damaged_files_are_refused() {
         let out = texture(TextureFormat::Bc1, 2);
         let (ktx1, ktx2) = (write_ktx1(&out).unwrap(), write_ktx2(&out).unwrap());
-        assert_eq!(read_ktx1(&ktx1[..ktx1.len() - 1]), Err(TextureError::Invalid("the file is cut short")));
-        assert_eq!(read_ktx2(&ktx2[..ktx2.len() - 1]), Err(TextureError::Invalid("the file is cut short")));
-        assert_eq!(read_ktx1(&ktx2), Err(TextureError::Invalid("no KTX identifier")));
-        assert_eq!(read_ktx2(&ktx1), Err(TextureError::Invalid("no KTX 2 identifier")));
+        assert_eq!(
+            read_ktx1(&ktx1[..ktx1.len() - 1]),
+            Err(TextureError::Invalid("the file is cut short"))
+        );
+        assert_eq!(
+            read_ktx2(&ktx2[..ktx2.len() - 1]),
+            Err(TextureError::Invalid("the file is cut short"))
+        );
+        assert_eq!(
+            read_ktx1(&ktx2),
+            Err(TextureError::Invalid("no KTX identifier"))
+        );
+        assert_eq!(
+            read_ktx2(&ktx1),
+            Err(TextureError::Invalid("no KTX 2 identifier"))
+        );
         let mut big_endian = ktx1.clone();
         big_endian[12..16].copy_from_slice(&[4, 3, 2, 1]);
-        assert_eq!(read_ktx1(&big_endian), Err(TextureError::Unsupported("a big-endian file")));
+        assert_eq!(
+            read_ktx1(&big_endian),
+            Err(TextureError::Unsupported("a big-endian file"))
+        );
         let mut compressed = ktx2.clone();
         // Said to be compressed with Zstandard, which the blocks are not.
         compressed[44] = 2;
-        assert_eq!(read_ktx2(&compressed), Err(TextureError::Invalid("a level's compressed bytes are damaged")));
+        assert_eq!(
+            read_ktx2(&compressed),
+            Err(TextureError::Invalid(
+                "a level's compressed bytes are damaged"
+            ))
+        );
         compressed[44] = 1;
-        assert!(matches!(read_ktx2(&compressed), Err(TextureError::Unsupported(_))));
+        assert!(matches!(
+            read_ktx2(&compressed),
+            Err(TextureError::Unsupported(_))
+        ));
         let mut wrong_size = ktx2;
         wrong_size[88] ^= 8;
-        assert!(matches!(read_ktx2(&wrong_size), Err(TextureError::Invalid(_))));
+        assert!(matches!(
+            read_ktx2(&wrong_size),
+            Err(TextureError::Invalid(_))
+        ));
         let mut broken = out;
         broken.levels.push(Vec::new());
         assert!(write_ktx1(&broken).is_none() && write_ktx2(&broken).is_none());

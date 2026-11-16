@@ -27,23 +27,80 @@ const CONSUMABLE_NBITS: u32 = 56;
 /// The base of each length symbol, from 257, and its extra bits (`litlen_decode_results`;
 /// the two symbols the format does not use are lengths of 258 too).
 const LENGTH_BASE: [(u32, u32); 31] = [
-    (3, 0), (4, 0), (5, 0), (6, 0), (7, 0), (8, 0), (9, 0), (10, 0),
-    (11, 1), (13, 1), (15, 1), (17, 1), (19, 2), (23, 2), (27, 2), (31, 2),
-    (35, 3), (43, 3), (51, 3), (59, 3), (67, 4), (83, 4), (99, 4), (115, 4),
-    (131, 5), (163, 5), (195, 5), (227, 5), (258, 0), (258, 0), (258, 0),
+    (3, 0),
+    (4, 0),
+    (5, 0),
+    (6, 0),
+    (7, 0),
+    (8, 0),
+    (9, 0),
+    (10, 0),
+    (11, 1),
+    (13, 1),
+    (15, 1),
+    (17, 1),
+    (19, 2),
+    (23, 2),
+    (27, 2),
+    (31, 2),
+    (35, 3),
+    (43, 3),
+    (51, 3),
+    (59, 3),
+    (67, 4),
+    (83, 4),
+    (99, 4),
+    (115, 4),
+    (131, 5),
+    (163, 5),
+    (195, 5),
+    (227, 5),
+    (258, 0),
+    (258, 0),
+    (258, 0),
 ];
 
 /// The base of each offset symbol and its extra bits (`offset_decode_results`; the two
 /// symbols the format does not use are as the last it does).
 const OFFSET_BASE: [(u32, u32); 32] = [
-    (1, 0), (2, 0), (3, 0), (4, 0), (5, 1), (7, 1), (9, 2), (13, 2),
-    (17, 3), (25, 3), (33, 4), (49, 4), (65, 5), (97, 5), (129, 6), (193, 6),
-    (257, 7), (385, 7), (513, 8), (769, 8), (1025, 9), (1537, 9), (2049, 10), (3073, 10),
-    (4097, 11), (6145, 11), (8193, 12), (12289, 12), (16385, 13), (24577, 13), (24577, 13), (24577, 13),
+    (1, 0),
+    (2, 0),
+    (3, 0),
+    (4, 0),
+    (5, 1),
+    (7, 1),
+    (9, 2),
+    (13, 2),
+    (17, 3),
+    (25, 3),
+    (33, 4),
+    (49, 4),
+    (65, 5),
+    (97, 5),
+    (129, 6),
+    (193, 6),
+    (257, 7),
+    (385, 7),
+    (513, 8),
+    (769, 8),
+    (1025, 9),
+    (1537, 9),
+    (2049, 10),
+    (3073, 10),
+    (4097, 11),
+    (6145, 11),
+    (8193, 12),
+    (12289, 12),
+    (16385, 13),
+    (24577, 13),
+    (24577, 13),
+    (24577, 13),
 ];
 
 /// `deflate_precode_lens_permutation`.
-const PRECODE_LENS_PERMUTATION: [usize; NUM_PRECODE_SYMS] = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15];
+const PRECODE_LENS_PERMUTATION: [usize; NUM_PRECODE_SYMS] = [
+    16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15,
+];
 
 /// A Huffman code to decode by: for each `max_len`-bit window of the stream (bit-reversed,
 /// the first bit the lowest), the symbol and the length of its codeword.
@@ -86,7 +143,10 @@ impl Code {
                 }
                 lens.iter().position(|&len| len != 0).expect("one codeword") as u16
             };
-            return Some(Code { max_len: 1, table: vec![(sym, 1); 2] });
+            return Some(Code {
+                max_len: 1,
+                table: vec![(sym, 1); 2],
+            });
         }
 
         // The codewords in order: by length, then by symbol.
@@ -166,7 +226,13 @@ impl Bits<'_> {
 /// `libdeflate_deflate_decompress_ex`: the raw DEFLATE stream at the start of `input` into
 /// `out`. The answer is the bytes taken of the input and the bytes made.
 fn deflate_decompress(input: &[u8], out: &mut [u8]) -> Result<(usize, usize), Stop> {
-    let mut bits = Bits { input, next: 0, bitbuf: 0, bitsleft: 0, overread_count: 0 };
+    let mut bits = Bits {
+        input,
+        next: 0,
+        bitbuf: 0,
+        bitsleft: 0,
+        overread_count: 0,
+    };
     let mut out_next = 0usize;
     let out_end = out.len();
 
@@ -229,8 +295,10 @@ fn deflate_decompress(input: &[u8], out: &mut [u8]) -> Result<(usize, usize), St
                 return Err(Stop::BadData);
             }
             // (The offset code first, as the original builds them.)
-            offset = Code::new(&lens[num_litlen_syms..total], MAX_OFFSET_CODEWORD_LEN).ok_or(Stop::BadData)?;
-            litlen = Code::new(&lens[..num_litlen_syms], MAX_LITLEN_CODEWORD_LEN).ok_or(Stop::BadData)?;
+            offset = Code::new(&lens[num_litlen_syms..total], MAX_OFFSET_CODEWORD_LEN)
+                .ok_or(Stop::BadData)?;
+            litlen = Code::new(&lens[..num_litlen_syms], MAX_LITLEN_CODEWORD_LEN)
+                .ok_or(Stop::BadData)?;
         } else if block_type == BLOCKTYPE_UNCOMPRESSED {
             bits.bitsleft -= 3; // for BTYPE and BFINAL
             let bytes_left = (bits.bitsleft >> 3) as usize;
@@ -371,7 +439,9 @@ fn zlib_decompress(input: &[u8], out: &mut [u8]) -> Result<(usize, usize), Stop>
     let at = 2 + actual_in;
 
     // ADLER32
-    if adler32(1, &out[..actual_out]) != u32::from_be_bytes(input[at..at + 4].try_into().expect("four bytes")) {
+    if adler32(1, &out[..actual_out])
+        != u32::from_be_bytes(input[at..at + 4].try_into().expect("four bytes"))
+    {
         return Err(Stop::BadData);
     }
     Ok((at + 4, actual_out))

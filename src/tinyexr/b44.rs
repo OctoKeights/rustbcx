@@ -94,7 +94,10 @@ pub(crate) fn b44_tables() -> &'static B44Tables {
                 }
             }
         }
-        B44Tables { exp_table, log_table }
+        B44Tables {
+            exp_table,
+            log_table,
+        }
     })
 }
 
@@ -106,7 +109,11 @@ fn unpack_b44_block(dst: &mut [u16; 16], src: &[u8]) {
     let shift = s(2) >> 2;
     let bias = (0x20u32 << shift) as u16 as u32;
     // A value from the one it leans on and a difference of six bits.
-    let step = |from: u16, six_bits: u32| (from as u32).wrapping_add((six_bits & 0x3f).wrapping_mul(1u32 << shift)).wrapping_sub(bias) as u16;
+    let step = |from: u16, six_bits: u32| {
+        (from as u32)
+            .wrapping_add((six_bits & 0x3f).wrapping_mul(1u32 << shift))
+            .wrapping_sub(bias) as u16
+    };
 
     let s4 = step(s0, (s(2) << 4) | (s(3) >> 4));
     let s8 = step(s4, (s(3) << 2) | (s(4) >> 6));
@@ -127,7 +134,9 @@ fn unpack_b44_block(dst: &mut [u16; 16], src: &[u8]) {
     let s11 = step(s10, (s(12) << 2) | (s(13) >> 6));
     let s15 = step(s14, s(13));
 
-    *dst = [s0, s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11, s12, s13, s14, s15];
+    *dst = [
+        s0, s1, s2, s3, s4, s5, s6, s7, s8, s9, s10, s11, s12, s13, s14, s15,
+    ];
 
     // Convert from the ordered-magnitude representation back to halves.
     for value in dst.iter_mut() {
@@ -157,7 +166,13 @@ fn sampling(value: i32) -> i32 {
 
 /// `DecompressB44`: a block of `num_lines` lines of `data_width` pixels into `out`, channel
 /// after channel.
-pub(crate) fn decompress_b44(out: &mut [u8], input: &[u8], data_width: i32, num_lines: i32, channels: &[ChannelInfo]) -> bool {
+pub(crate) fn decompress_b44(
+    out: &mut [u8],
+    input: &[u8],
+    data_width: i32,
+    num_lines: i32,
+    channels: &[ChannelInfo],
+) -> bool {
     let tables = b44_tables();
 
     // Guard: reject if the declared output would overflow the buffer.
@@ -168,10 +183,20 @@ pub(crate) fn decompress_b44(out: &mut [u8], input: &[u8], data_width: i32, num_
             let ys = sampling(channel.y_sampling);
             let cw = (data_width.wrapping_add(xs).wrapping_sub(1) / xs) as usize;
             let ch = (num_lines.wrapping_add(ys).wrapping_sub(1) / ys) as usize;
-            let bpp = if channel.pixel_type == PIXELTYPE_HALF { 2usize } else { 4 };
-            let Some(pixels) = cw.checked_mul(ch) else { return false };
-            let Some(ch_total) = pixels.checked_mul(bpp) else { return false };
-            let Some(sum) = expected_out.checked_add(ch_total) else { return false };
+            let bpp = if channel.pixel_type == PIXELTYPE_HALF {
+                2usize
+            } else {
+                4
+            };
+            let Some(pixels) = cw.checked_mul(ch) else {
+                return false;
+            };
+            let Some(ch_total) = pixels.checked_mul(bpp) else {
+                return false;
+            };
+            let Some(sum) = expected_out.checked_add(ch_total) else {
+                return false;
+            };
             expected_out = sum;
         }
         if expected_out > out.len() {
@@ -250,7 +275,8 @@ pub(crate) fn decompress_b44(out: &mut [u8], input: &[u8], data_width: i32, num_
                     let y = (by * 4 + dy) as usize;
                     for dx in 0..4 {
                         let x = (bx * 4 + dx) as usize;
-                        scratch_buffers[c][y * padded_width as usize + x] = block[(dy * 4 + dx) as usize];
+                        scratch_buffers[c][y * padded_width as usize + x] =
+                            block[(dy * 4 + dx) as usize];
                     }
                 }
             }
@@ -414,7 +440,13 @@ fn pack_b44_block(out: &mut [u8], block: &[u16; 16], flatfields: bool, exactmax:
 /// other, whose channels are stored as `file_types`: the channels of halves in blocks of four
 /// by four of 14 bytes each (of 3 where a block is all one value, for B44A), the others as
 /// they are.
-pub(crate) fn compress_b44(input: &[u8], data_width: i32, num_lines: i32, file_types: &[i32], is_b44a: bool) -> Vec<u8> {
+pub(crate) fn compress_b44(
+    input: &[u8],
+    data_width: i32,
+    num_lines: i32,
+    file_types: &[i32],
+    is_b44a: bool,
+) -> Vec<u8> {
     // B44 compresses 4x4 blocks of HALF data: 14 bytes for a regular block, 3 bytes for a
     // flat block (B44A only).
     let num_blocks_x = (data_width + 3) / 4;
@@ -447,14 +479,20 @@ pub(crate) fn compress_b44(input: &[u8], data_width: i32, num_lines: i32, file_t
             } else {
                 ch_bytes *= 2;
             }
-            out_buf[out_p..out_p + ch_bytes].copy_from_slice(&input[in_offset..in_offset + ch_bytes]);
+            out_buf[out_p..out_p + ch_bytes]
+                .copy_from_slice(&input[in_offset..in_offset + ch_bytes]);
             out_p += ch_bytes;
             in_offset += ch_bytes;
             continue;
         }
 
         // HALF channel: compress 4x4 blocks.
-        let half_at = |index: usize| u16::from_le_bytes([input[in_offset + 2 * index], input[in_offset + 2 * index + 1]]);
+        let half_at = |index: usize| {
+            u16::from_le_bytes([
+                input[in_offset + 2 * index],
+                input[in_offset + 2 * index + 1],
+            ])
+        };
 
         for by in 0..num_blocks_y {
             for bx in 0..num_blocks_x {
@@ -469,7 +507,8 @@ pub(crate) fn compress_b44(input: &[u8], data_width: i32, num_lines: i32, file_t
                         let x = bx * 4 + dx;
                         let src_x = if x >= data_width { data_width - 1 } else { x };
 
-                        block[(dy * 4 + dx) as usize] = half_at((src_y * data_width + src_x) as usize);
+                        block[(dy * 4 + dx) as usize] =
+                            half_at((src_y * data_width + src_x) as usize);
                     }
                 }
 

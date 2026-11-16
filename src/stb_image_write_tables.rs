@@ -1,7 +1,6 @@
 //! The tables of [`crate::stb_image_write`]'s JPEG writer, written out from stb_image_write.h
 //! by a script, so that no digit was copied by hand.
 
-
 /// `std_dc_luminance_nrcodes`
 #[rustfmt::skip]
 pub(crate) const STD_DC_LUMINANCE_NRCODES: [u8; 17] = [

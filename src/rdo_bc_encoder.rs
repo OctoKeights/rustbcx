@@ -238,7 +238,8 @@ fn max_f(a: f32, b: f32) -> f32 {
 
 /// `color_quad_u8::get_luma`, with REC 709's weights.
 fn luma(pixel: &ColorRgba) -> u32 {
-    (13938 * u32::from(pixel[0]) + 46869 * u32::from(pixel[1]) + 4729 * u32::from(pixel[2]) + 32768) >> 16
+    (13938 * u32::from(pixel[0]) + 46869 * u32::from(pixel[1]) + 4729 * u32::from(pixel[2]) + 32768)
+        >> 16
 }
 
 /// The mask of blocks the C++ calls `ultrasmooth_blocks_vis`: a byte a block, and its flood
@@ -251,11 +252,16 @@ struct BlockMask {
 
 impl BlockMask {
     fn get_clamped(&self, x: i32, y: i32) -> u8 {
-        self.values[(x.clamp(0, self.width - 1) + y.clamp(0, self.height - 1) * self.width) as usize]
+        self.values
+            [(x.clamp(0, self.width - 1) + y.clamp(0, self.height - 1) * self.width) as usize]
     }
 
     fn is_inside(&self, x: i32, y: i32) -> bool {
-        x >= 0 && y >= 0 && x < self.width && y < self.height && self.values[(x + y * self.width) as usize] == 0
+        x >= 0
+            && y >= 0
+            && x < self.width
+            && y < self.height
+            && self.values[(x + y * self.width) as usize] == 0
     }
 
     /// Fills the region of 0 that holds a place with 255; the places filled are added to a
@@ -280,7 +286,11 @@ impl BlockMask {
         push(&mut stack, y + 1, x, x, -1);
 
         while let Some(segment) = stack.pop() {
-            let (x1, x2, dy) = (i32::from(segment[1]), i32::from(segment[2]), i32::from(segment[3]));
+            let (x1, x2, dy) = (
+                i32::from(segment[1]),
+                i32::from(segment[2]),
+                i32::from(segment[3]),
+            );
             y = i32::from(segment[0]) + dy;
 
             x = x1;
@@ -336,14 +346,24 @@ impl BlockMask {
 
 /// For each block, the scale the rate-distortion pass gives its error when the block lies in a
 /// large, very smooth region of the image (120), or -1 for the pass to work one out.
-fn compute_block_mse_scales(source_image: &Image, blocks_x: u32, blocks_y: u32, total_blocks: u32, rdo_debug_output: bool) -> Vec<f32> {
+fn compute_block_mse_scales(
+    source_image: &Image,
+    blocks_x: u32,
+    blocks_y: u32,
+    total_blocks: u32,
+    rdo_debug_output: bool,
+) -> Vec<f32> {
     const ULTRASMOOTH_BLOCK_STD_DEV_THRESHOLD: f32 = 2.9;
     const DARK_THRESHOLD: f32 = 13.0;
     const BRIGHT_THRESHOLD: f32 = 222.0;
     const ULTRAMOOTH_BLOCK_MSE_SCALE: f32 = 120.0;
     const ULTRASMOOTH_REGION_TOO_SMALL_THRESHOLD: u32 = 64;
 
-    let mut vis = BlockMask { width: blocks_x as i32, height: blocks_y as i32, values: vec![0u8; total_blocks as usize] };
+    let mut vis = BlockMask {
+        width: blocks_x as i32,
+        height: blocks_y as i32,
+        values: vec![0u8; total_blocks as usize],
+    };
 
     for by in 0..blocks_y {
         for bx in 0..blocks_x {
@@ -441,12 +461,19 @@ fn compute_block_mse_scales(source_image: &Image, blocks_x: u32, blocks_y: u32, 
     let mut total_ultrasmooth_blocks = 0u32;
     for i in 0..total_blocks as usize {
         let is_ultrasmooth = vis.values[i] == 0;
-        block_mse_scales[i] = if is_ultrasmooth { ULTRAMOOTH_BLOCK_MSE_SCALE } else { -1.0 };
+        block_mse_scales[i] = if is_ultrasmooth {
+            ULTRAMOOTH_BLOCK_MSE_SCALE
+        } else {
+            -1.0
+        };
         total_ultrasmooth_blocks += u32::from(is_ultrasmooth);
     }
 
     if rdo_debug_output {
-        println!("Total ultrasmooth blocks: {:3.2}%", total_ultrasmooth_blocks as f32 * 100.0 / total_blocks as f32);
+        println!(
+            "Total ultrasmooth blocks: {:3.2}%",
+            total_ultrasmooth_blocks as f32 * 100.0 / total_blocks as f32
+        );
     }
 
     block_mse_scales
@@ -463,7 +490,12 @@ struct UnpackerFuncs {
 impl UnpackerFuncs {
     fn unpack_bc1_block(&self, block: &[u8], pixels: &mut [ColorRgba]) -> bool {
         let block: &[u8; 8] = block.try_into().expect("a BC1 block");
-        let used_3color_mode = rgbcx::unpack_bc1(block, pixels.try_into().expect("sixteen pixels"), true, self.mode);
+        let used_3color_mode = rgbcx::unpack_bc1(
+            block,
+            pixels.try_into().expect("sixteen pixels"),
+            true,
+            self.mode,
+        );
         if used_3color_mode {
             if !self.allow_3color_mode {
                 return false;
@@ -486,19 +518,30 @@ impl UnpackerFuncs {
     /// (The crate's own, for BC2: the alpha half of a block, to red as BC4 goes.)
     fn unpack_bc2_alpha_block(block: &[u8], pixels: &mut [ColorRgba]) -> bool {
         pixels.fill([0; 4]);
-        bc2::unpack_bc2_alpha(block.try_into().expect("the alpha of a BC2 block"), pixels.as_flattened_mut(), 4);
+        bc2::unpack_bc2_alpha(
+            block.try_into().expect("the alpha of a BC2 block"),
+            pixels.as_flattened_mut(),
+            4,
+        );
         true
     }
 
     // TODO: Enforce 6/8 color constraints
     fn unpack_bc4_block(block: &[u8], pixels: &mut [ColorRgba]) -> bool {
         pixels.fill([0; 4]);
-        rgbcx::unpack_bc4(block.try_into().expect("a BC4 block"), pixels.as_flattened_mut(), 4);
+        rgbcx::unpack_bc4(
+            block.try_into().expect("a BC4 block"),
+            pixels.as_flattened_mut(),
+            4,
+        );
         true
     }
 
     fn unpack_bc7_block(block: &[u8], pixels: &mut [ColorRgba]) -> bool {
-        bc7decomp::unpack_bc7(block.try_into().expect("a BC7 block"), pixels.try_into().expect("sixteen pixels"))
+        bc7decomp::unpack_bc7(
+            block.try_into().expect("a BC7 block"),
+            pixels.try_into().expect("sixteen pixels"),
+        )
     }
 }
 
@@ -721,7 +764,8 @@ impl RdoBcEncoder {
             // Configure the BC7 encoder with some decent parameters for later RDO post-processing.
             // Textures with alpha are harder for BC7 to handle, so we use more conservative defaults.
 
-            self.bc7enc_pack_params.mode17_partition_estimation_filterbank = false;
+            self.bc7enc_pack_params
+                .mode17_partition_estimation_filterbank = false;
 
             if self.params.bc7enc_rdo_bc7_weight_modes {
                 // Weight modes 5 and especially 6 more highly than the other modes.
@@ -769,9 +813,16 @@ impl RdoBcEncoder {
         self.orig_width = orig_source_image.width;
         self.orig_height = orig_source_image.height;
 
-        self.source_image = if self.params.y_flip { orig_source_image.flipped_y() } else { orig_source_image.clone() };
+        self.source_image = if self.params.y_flip {
+            orig_source_image.flipped_y()
+        } else {
+            orig_source_image.clone()
+        };
 
-        self.source_image.crop_dup_borders((self.source_image.width + 3) & !3, (self.source_image.height + 3) & !3);
+        self.source_image.crop_dup_borders(
+            (self.source_image.width + 3) & !3,
+            (self.source_image.height + 3) & !3,
+        );
 
         self.blocks_x = self.source_image.width / 4;
         self.blocks_y = self.source_image.height / 4;
@@ -791,7 +842,11 @@ impl RdoBcEncoder {
         let threads = parallel::worker_count(self.params.threads);
         let mut packed_image = std::mem::take(&mut self.packed_image);
         let this = &*self;
-        let rows: Vec<(u32, &mut [u8])> = packed_image.chunks_exact_mut(row_bytes).enumerate().map(|(by, row)| (by as u32, row)).collect();
+        let rows: Vec<(u32, &mut [u8])> = packed_image
+            .chunks_exact_mut(row_bytes)
+            .enumerate()
+            .map(|(by, row)| (by as u32, row))
+            .collect();
         parallel::for_each(rows, threads, |(by, row)| this.encode_row(by, row));
         self.packed_image = packed_image;
     }
@@ -799,29 +854,58 @@ impl RdoBcEncoder {
     /// Packs a row of blocks.
     fn encode_row(&self, by: u32, row: &mut [u8]) {
         let params = &self.params;
-        for (bx, block) in row.chunks_exact_mut(self.bytes_per_block as usize).enumerate() {
+        for (bx, block) in row
+            .chunks_exact_mut(self.bytes_per_block as usize)
+            .enumerate()
+        {
             let pixels = self.source_image.get_block(bx as u32, by);
 
             match params.format {
                 BlockFormat::Bc1 => {
-                    self.rgbcx_encoder.encode_bc1(params.bc1_quality_level, block.try_into().expect("8 bytes"), &pixels, params.use_bc1_3color_mode, params.use_bc1_3color_mode_for_black, None);
+                    self.rgbcx_encoder.encode_bc1(
+                        params.bc1_quality_level,
+                        block.try_into().expect("8 bytes"),
+                        &pixels,
+                        params.use_bc1_3color_mode,
+                        params.use_bc1_3color_mode_for_black,
+                        None,
+                    );
                 }
                 BlockFormat::Bc2 => {
-                    bc2::encode_bc2(&self.rgbcx_encoder, params.bc1_quality_level, block.try_into().expect("16 bytes"), &pixels);
+                    bc2::encode_bc2(
+                        &self.rgbcx_encoder,
+                        params.bc1_quality_level,
+                        block.try_into().expect("16 bytes"),
+                        &pixels,
+                    );
                 }
                 BlockFormat::Bc3 => {
                     let block: &mut [u8; 16] = block.try_into().expect("16 bytes");
                     if params.use_hq_bc345 {
-                        self.rgbcx_encoder.encode_bc3_hq(params.bc1_quality_level, block, &pixels, params.bc345_search_rad, params.bc345_mode_mask);
+                        self.rgbcx_encoder.encode_bc3_hq(
+                            params.bc1_quality_level,
+                            block,
+                            &pixels,
+                            params.bc345_search_rad,
+                            params.bc345_mode_mask,
+                        );
                     } else {
-                        self.rgbcx_encoder.encode_bc3(params.bc1_quality_level, block, &pixels);
+                        self.rgbcx_encoder
+                            .encode_bc3(params.bc1_quality_level, block, &pixels);
                     }
                 }
                 BlockFormat::Bc4 => {
                     let block: &mut [u8; 8] = block.try_into().expect("8 bytes");
                     let channel = &pixels.as_flattened()[params.bc45_channel0 as usize..];
                     if params.use_hq_bc345 {
-                        rgbcx::encode_bc4_hq(block, channel, 4, params.bc345_search_rad, params.bc345_mode_mask, None);
+                        rgbcx::encode_bc4_hq(
+                            block,
+                            channel,
+                            4,
+                            params.bc345_search_rad,
+                            params.bc345_mode_mask,
+                            None,
+                        );
                     } else {
                         rgbcx::encode_bc4(block, channel, 4);
                     }
@@ -829,17 +913,36 @@ impl RdoBcEncoder {
                 BlockFormat::Bc5 => {
                     let block: &mut [u8; 16] = block.try_into().expect("16 bytes");
                     if params.use_hq_bc345 {
-                        rgbcx::encode_bc5_hq(block, pixels.as_flattened(), params.bc45_channel0 as usize, params.bc45_channel1 as usize, 4, params.bc345_search_rad, params.bc345_mode_mask);
+                        rgbcx::encode_bc5_hq(
+                            block,
+                            pixels.as_flattened(),
+                            params.bc45_channel0 as usize,
+                            params.bc45_channel1 as usize,
+                            4,
+                            params.bc345_search_rad,
+                            params.bc345_mode_mask,
+                        );
                     } else {
-                        rgbcx::encode_bc5(block, pixels.as_flattened(), params.bc45_channel0 as usize, params.bc45_channel1 as usize, 4);
+                        rgbcx::encode_bc5(
+                            block,
+                            pixels.as_flattened(),
+                            params.bc45_channel0 as usize,
+                            params.bc45_channel1 as usize,
+                            4,
+                        );
                     }
                 }
                 BlockFormat::Bc7 => {
                     let block: &mut [u8; 16] = block.try_into().expect("16 bytes");
                     if params.use_bc7e {
-                        self.bc7e_encoder.compress_block(block, &pixels, &self.bc7e_pack_params);
+                        self.bc7e_encoder
+                            .compress_block(block, &pixels, &self.bc7e_pack_params);
                     } else {
-                        self.bc7enc_encoder.compress_block(block, &pixels, &self.bc7enc_pack_params);
+                        self.bc7enc_encoder.compress_block(
+                            block,
+                            &pixels,
+                            &self.bc7enc_pack_params,
+                        );
                     }
                 }
             }
@@ -859,13 +962,24 @@ impl RdoBcEncoder {
         let total_blocks = self.total_blocks;
 
         const MIN_RDO_MULTITHREADING_BLOCKS: u32 = 4096;
-        let rdo_total_threads = if params.rdo_multithreading && params.rdo_max_threads > 1 && total_blocks >= MIN_RDO_MULTITHREADING_BLOCKS { params.rdo_max_threads } else { 1 };
+        let rdo_total_threads = if params.rdo_multithreading
+            && params.rdo_max_threads > 1
+            && total_blocks >= MIN_RDO_MULTITHREADING_BLOCKS
+        {
+            params.rdo_max_threads
+        } else {
+            1
+        };
 
         // The strips: where each starts and how many blocks it has.
         let mut strips: Vec<(usize, usize)> = Vec::with_capacity(rdo_total_threads as usize);
         let (mut blocks_remaining, mut cur_block_index) = (total_blocks, 0u32);
         for p in 0..rdo_total_threads {
-            let num_blocks = if p == rdo_total_threads - 1 { blocks_remaining } else { total_blocks / rdo_total_threads };
+            let num_blocks = if p == rdo_total_threads - 1 {
+                blocks_remaining
+            } else {
+                total_blocks / rdo_total_threads
+            };
             strips.push((cur_block_index as usize, num_blocks as usize));
             cur_block_index += num_blocks;
             blocks_remaining -= num_blocks;
@@ -882,7 +996,13 @@ impl RdoBcEncoder {
         ert_p.allow_relative_movement = params.rdo_allow_relative_movement;
         ert_p.skip_zero_mse_blocks = false;
 
-        let mut block_rgb_mse_scales = compute_block_mse_scales(&self.source_image, self.blocks_x, self.blocks_y, total_blocks, params.rdo_debug_output);
+        let mut block_rgb_mse_scales = compute_block_mse_scales(
+            &self.source_image,
+            self.blocks_x,
+            self.blocks_y,
+            total_blocks,
+            params.rdo_debug_output,
+        );
 
         let mut block_pixels: Vec<ColorRgba> = Vec::with_capacity(total_blocks as usize * 16);
         for by in 0..self.blocks_y {
@@ -891,13 +1011,20 @@ impl RdoBcEncoder {
             }
         }
 
-        let mut block_unpackers = UnpackerFuncs { allow_3color_mode: params.use_bc1_3color_mode, use_bc1_3color_mode_for_black: params.use_bc1_3color_mode_for_black, mode: params.bc1_mode };
+        let mut block_unpackers = UnpackerFuncs {
+            allow_3color_mode: params.use_bc1_3color_mode,
+            use_bc1_3color_mode_for_black: params.use_bc1_3color_mode_for_black,
+            mode: params.bc1_mode,
+        };
 
         // (For the formats that scale the error of very smooth blocks.)
         let scale_rgb_mse_scales = |scales: &mut [f32], ert_p: &ReduceEntropyParams| {
             for s in scales.iter_mut() {
                 if *s > 0.0 {
-                    *s = max_f(ert_p.smooth_block_max_mse_scale, *s * min_f(ert_p.lambda, 3.0));
+                    *s = max_f(
+                        ert_p.smooth_block_max_mse_scale,
+                        *s * min_f(ert_p.lambda, 3.0),
+                    );
                 }
             }
         };
@@ -923,7 +1050,12 @@ impl RdoBcEncoder {
             Bc7,
         }
 
-        let single_channel = |channel: usize| -> Vec<ColorRgba> { block_pixels.iter().map(|pixel| [pixel[channel], 0, 0, 0]).collect() };
+        let single_channel = |channel: usize| -> Vec<ColorRgba> {
+            block_pixels
+                .iter()
+                .map(|pixel| [pixel[channel], 0, 0, 0])
+                .collect()
+        };
         let (block_pixels_first, block_pixels_second);
 
         let stride = self.bytes_per_block;
@@ -935,12 +1067,22 @@ impl RdoBcEncoder {
                 if !params.custom_rdo_smooth_block_error_scale {
                     // Attempt to compute a decent conservative smooth block MSE max scaling factor.
                     // No single smooth block scale setting can work for all textures (unless it's ridiuclously large, killing efficiency).
-                    ert_p.smooth_block_max_mse_scale = lerp(15.0, 50.0, min_f(1.0, ert_p.lambda / 4.0));
+                    ert_p.smooth_block_max_mse_scale =
+                        lerp(15.0, 50.0, min_f(1.0, ert_p.lambda / 4.0));
                 }
 
                 scale_rgb_mse_scales(&mut block_rgb_mse_scales, &ert_p);
 
-                vec![Pass { offset: 0, size: 16, num_comps: 4, pixels: &block_pixels, params: ert_p, unpacker: Unpacker::Bc7, use_scales: true, counter: 0 }]
+                vec![Pass {
+                    offset: 0,
+                    size: 16,
+                    num_comps: 4,
+                    pixels: &block_pixels,
+                    params: ert_p,
+                    unpacker: Unpacker::Bc7,
+                    use_scales: true,
+                    counter: 0,
+                }]
             }
             BlockFormat::Bc5 => {
                 // BC5 RDO - One BC4 block for R followed by one BC4 block for G
@@ -955,12 +1097,31 @@ impl RdoBcEncoder {
                 ert_p.color_weights[3] = 0;
 
                 if !params.custom_rdo_smooth_block_error_scale {
-                    ert_p.smooth_block_max_mse_scale = lerp(10.0, 30.0, min_f(1.0, ert_p.lambda / 4.0));
+                    ert_p.smooth_block_max_mse_scale =
+                        lerp(10.0, 30.0, min_f(1.0, ert_p.lambda / 4.0));
                 }
 
                 vec![
-                    Pass { offset: 0, size: 8, num_comps: 1, pixels: &block_pixels_first, params: ert_p, unpacker: Unpacker::Bc4, use_scales: false, counter: 0 },
-                    Pass { offset: 8, size: 8, num_comps: 1, pixels: &block_pixels_second, params: ert_p, unpacker: Unpacker::Bc4, use_scales: false, counter: 1 },
+                    Pass {
+                        offset: 0,
+                        size: 8,
+                        num_comps: 1,
+                        pixels: &block_pixels_first,
+                        params: ert_p,
+                        unpacker: Unpacker::Bc4,
+                        use_scales: false,
+                        counter: 0,
+                    },
+                    Pass {
+                        offset: 8,
+                        size: 8,
+                        num_comps: 1,
+                        pixels: &block_pixels_second,
+                        params: ert_p,
+                        unpacker: Unpacker::Bc4,
+                        use_scales: false,
+                        counter: 1,
+                    },
                 ]
             }
             BlockFormat::Bc4 => {
@@ -970,11 +1131,21 @@ impl RdoBcEncoder {
                 ert_p.color_weights[3] = 0;
 
                 if !params.custom_rdo_smooth_block_error_scale {
-                    ert_p.smooth_block_max_mse_scale = lerp(10.0, 30.0, min_f(1.0, ert_p.lambda / 4.0));
+                    ert_p.smooth_block_max_mse_scale =
+                        lerp(10.0, 30.0, min_f(1.0, ert_p.lambda / 4.0));
                 }
 
                 // (Against the red of the pixels, whatever the channel packed is.)
-                vec![Pass { offset: 0, size: 8, num_comps: 1, pixels: &block_pixels, params: ert_p, unpacker: Unpacker::Bc4, use_scales: false, counter: 0 }]
+                vec![Pass {
+                    offset: 0,
+                    size: 8,
+                    num_comps: 1,
+                    pixels: &block_pixels,
+                    params: ert_p,
+                    unpacker: Unpacker::Bc4,
+                    use_scales: false,
+                    counter: 0,
+                }]
             }
             BlockFormat::Bc1 => {
                 // BC1 RDO - One BC1 block
@@ -982,12 +1153,22 @@ impl RdoBcEncoder {
 
                 if !params.custom_rdo_smooth_block_error_scale {
                     // This is just a hack - no single setting can work for all textures.
-                    ert_p.smooth_block_max_mse_scale = lerp(15.0, 50.0, min_f(1.0, ert_p.lambda / 8.0));
+                    ert_p.smooth_block_max_mse_scale =
+                        lerp(15.0, 50.0, min_f(1.0, ert_p.lambda / 8.0));
                 }
 
                 scale_rgb_mse_scales(&mut block_rgb_mse_scales, &ert_p);
 
-                vec![Pass { offset: 0, size: 8, num_comps: 3, pixels: &block_pixels, params: ert_p, unpacker: Unpacker::Bc1, use_scales: true, counter: 0 }]
+                vec![Pass {
+                    offset: 0,
+                    size: 8,
+                    num_comps: 3,
+                    pixels: &block_pixels,
+                    params: ert_p,
+                    unpacker: Unpacker::Bc1,
+                    use_scales: true,
+                    counter: 0,
+                }]
             }
             BlockFormat::Bc2 | BlockFormat::Bc3 => {
                 // BC3 RDO - One BC4 block followed by one BC1 block
@@ -1006,9 +1187,11 @@ impl RdoBcEncoder {
 
                 if !params.custom_rdo_smooth_block_error_scale {
                     // This is just a hack - no single setting can work for all textures.
-                    ert_p.smooth_block_max_mse_scale = lerp(15.0, 50.0, min_f(1.0, ert_p.lambda / 8.0));
+                    ert_p.smooth_block_max_mse_scale =
+                        lerp(15.0, 50.0, min_f(1.0, ert_p.lambda / 8.0));
 
-                    ert_alpha_p.smooth_block_max_mse_scale = lerp(10.0, 30.0, min_f(1.0, ert_alpha_p.lambda / 4.0));
+                    ert_alpha_p.smooth_block_max_mse_scale =
+                        lerp(10.0, 30.0, min_f(1.0, ert_alpha_p.lambda / 4.0));
                 }
 
                 scale_rgb_mse_scales(&mut block_rgb_mse_scales, &ert_p);
@@ -1017,8 +1200,30 @@ impl RdoBcEncoder {
                 block_unpackers.use_bc1_3color_mode_for_black = false;
 
                 vec![
-                    Pass { offset: 0, size: 8, num_comps: 1, pixels: &block_pixels_first, params: ert_alpha_p, unpacker: if params.format == BlockFormat::Bc2 { Unpacker::Bc2Alpha } else { Unpacker::Bc4 }, use_scales: false, counter: 1 },
-                    Pass { offset: 8, size: 8, num_comps: 3, pixels: &block_pixels, params: ert_p, unpacker: Unpacker::Bc1, use_scales: true, counter: 0 },
+                    Pass {
+                        offset: 0,
+                        size: 8,
+                        num_comps: 1,
+                        pixels: &block_pixels_first,
+                        params: ert_alpha_p,
+                        unpacker: if params.format == BlockFormat::Bc2 {
+                            Unpacker::Bc2Alpha
+                        } else {
+                            Unpacker::Bc4
+                        },
+                        use_scales: false,
+                        counter: 1,
+                    },
+                    Pass {
+                        offset: 8,
+                        size: 8,
+                        num_comps: 3,
+                        pixels: &block_pixels,
+                        params: ert_p,
+                        unpacker: Unpacker::Bc1,
+                        use_scales: true,
+                        counter: 0,
+                    },
                 ]
             }
         };
@@ -1040,23 +1245,87 @@ impl RdoBcEncoder {
             }
         }
 
-        parallel::for_each(jobs, parallel::worker_count(params.threads), |(first_block, num_blocks, strip)| {
-            for pass in passes {
-                let mut total_modified_local = 0u32;
-                let pixels = &pass.pixels[16 * first_block..16 * (first_block + num_blocks)];
-                let scales = if pass.use_scales && use_scales { Some(&block_rgb_mse_scales[first_block..first_block + num_blocks]) } else { None };
-                let blocks = &mut strip[pass.offset..];
-                match pass.unpacker {
-                    Unpacker::Bc1 => ert::reduce_entropy(blocks, num_blocks as u32, stride, pass.size, 4, 4, pass.num_comps, pixels, &pass.params, &mut total_modified_local, |block, pixels, _| block_unpackers.unpack_bc1_block(block, pixels), scales),
-                    Unpacker::Bc2Alpha => ert::reduce_entropy(blocks, num_blocks as u32, stride, pass.size, 4, 4, pass.num_comps, pixels, &pass.params, &mut total_modified_local, |block, pixels, _| UnpackerFuncs::unpack_bc2_alpha_block(block, pixels), scales),
-                    Unpacker::Bc4 => ert::reduce_entropy(blocks, num_blocks as u32, stride, pass.size, 4, 4, pass.num_comps, pixels, &pass.params, &mut total_modified_local, |block, pixels, _| UnpackerFuncs::unpack_bc4_block(block, pixels), scales),
-                    Unpacker::Bc7 => ert::reduce_entropy(blocks, num_blocks as u32, stride, pass.size, 4, 4, pass.num_comps, pixels, &pass.params, &mut total_modified_local, |block, pixels, _| UnpackerFuncs::unpack_bc7_block(block, pixels), scales),
-                };
-                total_modified_ref[pass.counter].fetch_add(total_modified_local, Ordering::Relaxed);
-            }
-        });
+        parallel::for_each(
+            jobs,
+            parallel::worker_count(params.threads),
+            |(first_block, num_blocks, strip)| {
+                for pass in passes {
+                    let mut total_modified_local = 0u32;
+                    let pixels = &pass.pixels[16 * first_block..16 * (first_block + num_blocks)];
+                    let scales = if pass.use_scales && use_scales {
+                        Some(&block_rgb_mse_scales[first_block..first_block + num_blocks])
+                    } else {
+                        None
+                    };
+                    let blocks = &mut strip[pass.offset..];
+                    match pass.unpacker {
+                        Unpacker::Bc1 => ert::reduce_entropy(
+                            blocks,
+                            num_blocks as u32,
+                            stride,
+                            pass.size,
+                            4,
+                            4,
+                            pass.num_comps,
+                            pixels,
+                            &pass.params,
+                            &mut total_modified_local,
+                            |block, pixels, _| block_unpackers.unpack_bc1_block(block, pixels),
+                            scales,
+                        ),
+                        Unpacker::Bc2Alpha => ert::reduce_entropy(
+                            blocks,
+                            num_blocks as u32,
+                            stride,
+                            pass.size,
+                            4,
+                            4,
+                            pass.num_comps,
+                            pixels,
+                            &pass.params,
+                            &mut total_modified_local,
+                            |block, pixels, _| UnpackerFuncs::unpack_bc2_alpha_block(block, pixels),
+                            scales,
+                        ),
+                        Unpacker::Bc4 => ert::reduce_entropy(
+                            blocks,
+                            num_blocks as u32,
+                            stride,
+                            pass.size,
+                            4,
+                            4,
+                            pass.num_comps,
+                            pixels,
+                            &pass.params,
+                            &mut total_modified_local,
+                            |block, pixels, _| UnpackerFuncs::unpack_bc4_block(block, pixels),
+                            scales,
+                        ),
+                        Unpacker::Bc7 => ert::reduce_entropy(
+                            blocks,
+                            num_blocks as u32,
+                            stride,
+                            pass.size,
+                            4,
+                            4,
+                            pass.num_comps,
+                            pixels,
+                            &pass.params,
+                            &mut total_modified_local,
+                            |block, pixels, _| UnpackerFuncs::unpack_bc7_block(block, pixels),
+                            scales,
+                        ),
+                    };
+                    total_modified_ref[pass.counter]
+                        .fetch_add(total_modified_local, Ordering::Relaxed);
+                }
+            },
+        );
 
-        self.total_modified = [total_modified[0].load(Ordering::Relaxed), total_modified[1].load(Ordering::Relaxed)];
+        self.total_modified = [
+            total_modified[0].load(Ordering::Relaxed),
+            total_modified[1].load(Ordering::Relaxed),
+        ];
     }
 
     /// Unpacks the blocks to an image of whole blocks. None when a BC7 block is of no mode,
@@ -1074,41 +1343,76 @@ impl RdoBcEncoder {
         let mode = self.params.bc1_mode;
         let bytes_per_block = self.bytes_per_block as usize;
 
-        let rows: Vec<(&[u8], &mut [ColorRgba])> = self.packed_image.chunks_exact(row_bytes).zip(unpacked_image.pixels.chunks_exact_mut(row_pixels)).collect();
-        parallel::for_each(rows, parallel::worker_count(self.params.threads), |(blocks, pixels)| {
-            for (bx, block) in blocks.chunks_exact(bytes_per_block).enumerate() {
-                let mut unpacked_pixels = [[0u8, 0, 0, 255]; 16];
+        let rows: Vec<(&[u8], &mut [ColorRgba])> = self
+            .packed_image
+            .chunks_exact(row_bytes)
+            .zip(unpacked_image.pixels.chunks_exact_mut(row_pixels))
+            .collect();
+        parallel::for_each(
+            rows,
+            parallel::worker_count(self.params.threads),
+            |(blocks, pixels)| {
+                for (bx, block) in blocks.chunks_exact(bytes_per_block).enumerate() {
+                    let mut unpacked_pixels = [[0u8, 0, 0, 255]; 16];
 
-                match format {
-                    BlockFormat::Bc1 => {
-                        rgbcx::unpack_bc1(block.try_into().expect("8 bytes"), &mut unpacked_pixels, true, mode);
-                    }
-                    BlockFormat::Bc2 => {
-                        bc2::unpack_bc2(block.try_into().expect("16 bytes"), &mut unpacked_pixels, mode);
-                    }
-                    BlockFormat::Bc3 => {
-                        rgbcx::unpack_bc3(block.try_into().expect("16 bytes"), &mut unpacked_pixels, mode);
-                    }
-                    BlockFormat::Bc4 => {
-                        rgbcx::unpack_bc4(block.try_into().expect("8 bytes"), unpacked_pixels.as_flattened_mut(), 4);
-                    }
-                    BlockFormat::Bc5 => {
-                        rgbcx::unpack_bc5(block.try_into().expect("16 bytes"), unpacked_pixels.as_flattened_mut(), 0, 1, 4);
-                    }
-                    BlockFormat::Bc7 => {
-                        if !bc7decomp::unpack_bc7(block.try_into().expect("16 bytes"), &mut unpacked_pixels) {
-                            unpack_failed.store(1, Ordering::Relaxed);
+                    match format {
+                        BlockFormat::Bc1 => {
+                            rgbcx::unpack_bc1(
+                                block.try_into().expect("8 bytes"),
+                                &mut unpacked_pixels,
+                                true,
+                                mode,
+                            );
+                        }
+                        BlockFormat::Bc2 => {
+                            bc2::unpack_bc2(
+                                block.try_into().expect("16 bytes"),
+                                &mut unpacked_pixels,
+                                mode,
+                            );
+                        }
+                        BlockFormat::Bc3 => {
+                            rgbcx::unpack_bc3(
+                                block.try_into().expect("16 bytes"),
+                                &mut unpacked_pixels,
+                                mode,
+                            );
+                        }
+                        BlockFormat::Bc4 => {
+                            rgbcx::unpack_bc4(
+                                block.try_into().expect("8 bytes"),
+                                unpacked_pixels.as_flattened_mut(),
+                                4,
+                            );
+                        }
+                        BlockFormat::Bc5 => {
+                            rgbcx::unpack_bc5(
+                                block.try_into().expect("16 bytes"),
+                                unpacked_pixels.as_flattened_mut(),
+                                0,
+                                1,
+                                4,
+                            );
+                        }
+                        BlockFormat::Bc7 => {
+                            if !bc7decomp::unpack_bc7(
+                                block.try_into().expect("16 bytes"),
+                                &mut unpacked_pixels,
+                            ) {
+                                unpack_failed.store(1, Ordering::Relaxed);
+                            }
                         }
                     }
-                }
 
-                // set_block
-                let width = row_pixels / 4;
-                for y in 0..4 {
-                    pixels[y * width + bx * 4..y * width + bx * 4 + 4].copy_from_slice(&unpacked_pixels[y * 4..y * 4 + 4]);
+                    // set_block
+                    let width = row_pixels / 4;
+                    for y in 0..4 {
+                        pixels[y * width + bx * 4..y * width + bx * 4 + 4]
+                            .copy_from_slice(&unpacked_pixels[y * 4..y * 4 + 4]);
+                    }
                 }
-            }
-        });
+            },
+        );
 
         (unpack_failed.load(Ordering::Relaxed) == 0).then_some(unpacked_image)
     }
@@ -1126,8 +1430,13 @@ mod tests {
             for x in 0..70u32 {
                 state = state.wrapping_mul(1664525).wrapping_add(1013904223);
                 let noisy = (20..40).contains(&x) && (10..30).contains(&y);
-                let value = if noisy { (state >> 24) as u8 } else { (x * 3) as u8 };
-                image.pixels[(x + y * 70) as usize] = [value, (y * 5) as u8, 128, 255 - (x + y) as u8];
+                let value = if noisy {
+                    (state >> 24) as u8
+                } else {
+                    (x * 3) as u8
+                };
+                image.pixels[(x + y * 70) as usize] =
+                    [value, (y * 5) as u8, 128, 255 - (x + y) as u8];
             }
         }
         image
@@ -1147,7 +1456,14 @@ mod tests {
         params.bc1_quality_level = 2;
         let encoder = encode(&params);
         assert_eq!((encoder.orig_width(), encoder.orig_height()), (70, 50));
-        assert_eq!((encoder.blocks_x(), encoder.blocks_y(), encoder.total_blocks()), (18, 13, 234));
+        assert_eq!(
+            (
+                encoder.blocks_x(),
+                encoder.blocks_y(),
+                encoder.total_blocks()
+            ),
+            (18, 13, 234)
+        );
         assert_eq!(encoder.blocks().len(), 234 * 8);
         assert_eq!(encoder.pixel_format_bpp(), 4);
         // The padding repeats the last column and row.
@@ -1163,13 +1479,23 @@ mod tests {
 
     #[test]
     fn every_format_packs_and_unpacks_close_to_the_image() {
-        for format in [BlockFormat::Bc1, BlockFormat::Bc2, BlockFormat::Bc3, BlockFormat::Bc4, BlockFormat::Bc5, BlockFormat::Bc7] {
+        for format in [
+            BlockFormat::Bc1,
+            BlockFormat::Bc2,
+            BlockFormat::Bc3,
+            BlockFormat::Bc4,
+            BlockFormat::Bc5,
+            BlockFormat::Bc7,
+        ] {
             let mut params = RdoBcParams::new();
             params.format = format;
             params.bc1_quality_level = 5;
             params.bc7_uber_level = 1;
             let encoder = encode(&params);
-            assert_eq!(encoder.blocks().len() as u32, encoder.total_blocks() * format.bytes_per_block());
+            assert_eq!(
+                encoder.blocks().len() as u32,
+                encoder.total_blocks() * format.bytes_per_block()
+            );
             let unpacked = encoder.unpack_blocks().unwrap();
             // The channels a format holds come back near the source, away from the noise.
             let channels: &[usize] = match format {
@@ -1180,7 +1506,10 @@ mod tests {
             };
             let (source, got) = (encoder.source_image().pixel(50, 40), unpacked.pixel(50, 40));
             for &c in channels {
-                assert!((i32::from(source[c]) - i32::from(got[c])).abs() <= 12, "{format:?} channel {c}: {source:?} {got:?}");
+                assert!(
+                    (i32::from(source[c]) - i32::from(got[c])).abs() <= 12,
+                    "{format:?} channel {c}: {source:?} {got:?}"
+                );
             }
         }
     }
@@ -1201,7 +1530,10 @@ mod tests {
             assert_eq!(one.blocks(), other.blocks(), "{threads} threads");
             assert_eq!(one.total_modified(), other.total_modified());
         }
-        assert_eq!(one.bc7_mode_histogram().iter().sum::<u32>(), one.total_blocks());
+        assert_eq!(
+            one.bc7_mode_histogram().iter().sum::<u32>(),
+            one.total_blocks()
+        );
     }
 
     #[test]
@@ -1213,13 +1545,24 @@ mod tests {
         params.threads = 1;
         let encoder = encode(&params);
         // Colours and alphas were both changed, and the colours are still of four.
-        assert!(encoder.total_modified()[0] > 0 && encoder.total_modified()[1] > 0, "{:?}", encoder.total_modified());
+        assert!(
+            encoder.total_modified()[0] > 0 && encoder.total_modified()[1] > 0,
+            "{:?}",
+            encoder.total_modified()
+        );
         assert_ne!(encoder.blocks(), encoder.prerdo_blocks());
-        assert!(encoder.blocks().chunks_exact(16).all(|block| u16::from_le_bytes([block[8], block[9]]) > u16::from_le_bytes([block[10], block[11]])));
+        assert!(encoder
+            .blocks()
+            .chunks_exact(16)
+            .all(|block| u16::from_le_bytes([block[8], block[9]])
+                > u16::from_le_bytes([block[10], block[11]])));
         let unpacked = encoder.unpack_blocks().unwrap();
         let (source, got) = (encoder.source_image().pixel(60, 44), unpacked.pixel(60, 44));
         for c in 0..4 {
-            assert!((i32::from(source[c]) - i32::from(got[c])).abs() <= 24, "channel {c}: {source:?} {got:?}");
+            assert!(
+                (i32::from(source[c]) - i32::from(got[c])).abs() <= 24,
+                "channel {c}: {source:?} {got:?}"
+            );
         }
         params.threads = 0;
         assert_eq!(encode(&params).blocks(), encoder.blocks());
@@ -1255,7 +1598,11 @@ mod tests {
             0, 0, 9, 9, 9,
             9, 0, 9, 9, 9,
         ];
-        let mut mask = BlockMask { width: 5, height: 4, values };
+        let mut mask = BlockMask {
+            width: 5,
+            height: 4,
+            values,
+        };
         let mut filled = Vec::new();
         assert_eq!(mask.flood_fill(0, 0, &mut filled), 6);
         assert_eq!(filled.len(), 6);

@@ -96,8 +96,22 @@ pub fn write(texture: &Texture, force_dx10_header: bool) -> Option<Vec<u8>> {
     desc[19] = DDPF_FOURCC;
     desc[20] = legacy_fourcc.unwrap_or(fourcc(b"DX10"));
     // (Complex: more than one surface in the file.)
-    desc[26] = DDSCAPS_TEXTURE | if levels > 1 { DDSCAPS_MIPMAP } else { 0 } | if levels > 1 || texture.cube || texture.depth != 0 || texture.layers > 1 { DDSCAPS_COMPLEX } else { 0 };
-    desc[27] = if texture.cube { DDSCAPS2_CUBEMAP | DDSCAPS2_CUBEMAP_ALLFACES } else { 0 } | if texture.depth != 0 { DDSCAPS2_VOLUME } else { 0 };
+    desc[26] = DDSCAPS_TEXTURE
+        | if levels > 1 { DDSCAPS_MIPMAP } else { 0 }
+        | if levels > 1 || texture.cube || texture.depth != 0 || texture.layers > 1 {
+            DDSCAPS_COMPLEX
+        } else {
+            0
+        };
+    desc[27] = if texture.cube {
+        DDSCAPS2_CUBEMAP | DDSCAPS2_CUBEMAP_ALLFACES
+    } else {
+        0
+    } | if texture.depth != 0 {
+        DDSCAPS2_VOLUME
+    } else {
+        0
+    };
 
     let mut file = Vec::with_capacity(148 + texture.levels.iter().map(Vec::len).sum::<usize>());
     file.extend_from_slice(b"DDS ");
@@ -107,8 +121,22 @@ pub fn write(texture: &Texture, force_dx10_header: bool) -> Option<Vec<u8>> {
     if legacy_fourcc.is_none() {
         // DDS_HEADER_DXT10: the format, the dimension, whether a cube map, the number of
         // textures in the array (of cube maps, for an array of them), no word on alpha.
-        let dimension = if texture.depth != 0 { D3D10_RESOURCE_DIMENSION_TEXTURE3D } else { D3D10_RESOURCE_DIMENSION_TEXTURE2D };
-        for value in [dxgi_format(texture.format, srgb), dimension, if texture.cube { DDS_RESOURCE_MISC_TEXTURECUBE } else { 0 }, texture.layers.max(1), 0] {
+        let dimension = if texture.depth != 0 {
+            D3D10_RESOURCE_DIMENSION_TEXTURE3D
+        } else {
+            D3D10_RESOURCE_DIMENSION_TEXTURE2D
+        };
+        for value in [
+            dxgi_format(texture.format, srgb),
+            dimension,
+            if texture.cube {
+                DDS_RESOURCE_MISC_TEXTURECUBE
+            } else {
+                0
+            },
+            texture.layers.max(1),
+            0,
+        ] {
             file.extend_from_slice(&value.to_le_bytes());
         }
     }
@@ -153,12 +181,17 @@ pub fn read(file: &[u8]) -> Result<Texture, TextureError> {
     // What the old header says of the shape; the DX10 header, when there is one, says it again
     // and is the one believed.
     let mut cube = desc[27] & DDSCAPS2_CUBEMAP != 0;
-    let mut depth = if desc[27] & DDSCAPS2_VOLUME != 0 { desc[5].max(1) } else { 0 };
+    let mut depth = if desc[27] & DDSCAPS2_VOLUME != 0 {
+        desc[5].max(1)
+    } else {
+        0
+    };
     let mut layers = 0;
 
     let code = desc[20];
     let (format, srgb) = if code == fourcc(b"DX10") {
-        let (dxgi, dimension, misc, array_size) = (reader.u32()?, reader.u32()?, reader.u32()?, reader.u32()?);
+        let (dxgi, dimension, misc, array_size) =
+            (reader.u32()?, reader.u32()?, reader.u32()?, reader.u32()?);
         reader.u32()?;
         match dimension {
             D3D10_RESOURCE_DIMENSION_TEXTURE2D => {
@@ -168,12 +201,18 @@ pub fn read(file: &[u8]) -> Result<Texture, TextureError> {
             }
             D3D10_RESOURCE_DIMENSION_TEXTURE3D => {
                 if array_size > 1 {
-                    return Err(TextureError::Unsupported("an array or a cube map of volume textures"));
+                    return Err(TextureError::Unsupported(
+                        "an array or a cube map of volume textures",
+                    ));
                 }
                 cube = false;
                 depth = desc[5].max(1);
             }
-            _ => return Err(TextureError::Unsupported("a texture that is neither 2D nor 3D")),
+            _ => {
+                return Err(TextureError::Unsupported(
+                    "a texture that is neither 2D nor 3D",
+                ))
+            }
         }
         match dxgi {
             70 | 71 => (TextureFormat::Bc1, false),
@@ -188,7 +227,11 @@ pub fn read(file: &[u8]) -> Result<Texture, TextureError> {
             96 => (TextureFormat::Bc6hSigned, false),
             97 | 98 => (TextureFormat::Bc7, false),
             99 => (TextureFormat::Bc7, true),
-            _ => return Err(TextureError::Unsupported("a DXGI format other than BC1 to BC7")),
+            _ => {
+                return Err(TextureError::Unsupported(
+                    "a DXGI format other than BC1 to BC7",
+                ))
+            }
         }
     } else if code == fourcc(b"DXT1") {
         (TextureFormat::Bc1, false)
@@ -201,18 +244,41 @@ pub fn read(file: &[u8]) -> Result<Texture, TextureError> {
     } else if code == fourcc(b"ATI2") || code == fourcc(b"BC5U") {
         (TextureFormat::Bc5, false)
     } else {
-        return Err(TextureError::Unsupported("a FourCC other than DXT1 to DXT5, ATI1 and ATI2"));
+        return Err(TextureError::Unsupported(
+            "a FourCC other than DXT1 to DXT5, ATI1 and ATI2",
+        ));
     };
 
     // (Only the old header can leave faces of a cube map out.)
-    if code != fourcc(b"DX10") && cube && desc[27] & DDSCAPS2_CUBEMAP_ALLFACES != DDSCAPS2_CUBEMAP_ALLFACES {
-        return Err(TextureError::Unsupported("a cube map without all six faces"));
+    if code != fourcc(b"DX10")
+        && cube
+        && desc[27] & DDSCAPS2_CUBEMAP_ALLFACES != DDSCAPS2_CUBEMAP_ALLFACES
+    {
+        return Err(TextureError::Unsupported(
+            "a cube map without all six faces",
+        ));
     }
 
-    let mut texture = texture_from_header(format, srgb, width, height, depth, layers, cube, if desc[1] & DDSD_MIPMAPCOUNT != 0 { desc[6] } else { 1 })?;
+    let mut texture = texture_from_header(
+        format,
+        srgb,
+        width,
+        height,
+        depth,
+        layers,
+        cube,
+        if desc[1] & DDSD_MIPMAPCOUNT != 0 {
+            desc[6]
+        } else {
+            1
+        },
+    )?;
     let mut at = reader.at;
     let mut take = |size: usize| -> Result<&[u8], TextureError> {
-        let blocks = at.checked_add(size).and_then(|end| file.get(at..end)).ok_or(TextureError::Invalid("the file is cut short"))?;
+        let blocks = at
+            .checked_add(size)
+            .and_then(|end| file.get(at..end))
+            .ok_or(TextureError::Invalid("the file is cut short"))?;
         at += size;
         Ok(blocks)
     };
@@ -240,19 +306,58 @@ mod tests {
     }
 
     /// A texture of a shape, every byte of it saying where it is.
-    fn shaped(format: TextureFormat, levels: usize, width: u32, height: u32, depth: u32, layers: u32, cube: bool) -> Texture {
-        let mut texture = Texture { format, srgb: false, width, height, depth, layers, cube, levels: Vec::new() };
-        texture.levels = (0..levels).map(|level| (0..texture.level_bytes(level)).map(|i| (i * 7 + i / texture.image_bytes(level) * 31 + level * 3) as u8).collect()).collect();
+    fn shaped(
+        format: TextureFormat,
+        levels: usize,
+        width: u32,
+        height: u32,
+        depth: u32,
+        layers: u32,
+        cube: bool,
+    ) -> Texture {
+        let mut texture = Texture {
+            format,
+            srgb: false,
+            width,
+            height,
+            depth,
+            layers,
+            cube,
+            levels: Vec::new(),
+        };
+        texture.levels = (0..levels)
+            .map(|level| {
+                (0..texture.level_bytes(level))
+                    .map(|i| (i * 7 + i / texture.image_bytes(level) * 31 + level * 3) as u8)
+                    .collect()
+            })
+            .collect();
         assert!(texture.is_valid());
         texture
     }
 
     /// Plain, an array of three and of one, a cube map, an array of two cube maps, a volume.
-    const SHAPES: [(u32, u32, u32, u32, bool); 6] = [(9, 6, 0, 0, false), (9, 6, 0, 3, false), (9, 6, 0, 1, false), (8, 8, 0, 0, true), (8, 8, 0, 2, true), (9, 6, 5, 0, false)];
+    const SHAPES: [(u32, u32, u32, u32, bool); 6] = [
+        (9, 6, 0, 0, false),
+        (9, 6, 0, 3, false),
+        (9, 6, 0, 1, false),
+        (8, 8, 0, 0, true),
+        (8, 8, 0, 2, true),
+        (9, 6, 5, 0, false),
+    ];
 
     #[test]
     fn every_format_goes_out_and_comes_back() {
-        for format in [TextureFormat::Bc1, TextureFormat::Bc2, TextureFormat::Bc3, TextureFormat::Bc4, TextureFormat::Bc5, TextureFormat::Bc6hUnsigned, TextureFormat::Bc6hSigned, TextureFormat::Bc7] {
+        for format in [
+            TextureFormat::Bc1,
+            TextureFormat::Bc2,
+            TextureFormat::Bc3,
+            TextureFormat::Bc4,
+            TextureFormat::Bc5,
+            TextureFormat::Bc6hUnsigned,
+            TextureFormat::Bc6hSigned,
+            TextureFormat::Bc7,
+        ] {
             for levels in [1, 2, 4] {
                 for srgb in [false, true] {
                     for dx10 in [false, true] {
@@ -271,7 +376,11 @@ mod tests {
 
     #[test]
     fn every_shape_goes_out_and_comes_back() {
-        for format in [TextureFormat::Bc1, TextureFormat::Bc3, TextureFormat::Bc6hUnsigned] {
+        for format in [
+            TextureFormat::Bc1,
+            TextureFormat::Bc3,
+            TextureFormat::Bc6hUnsigned,
+        ] {
             for (width, height, depth, layers, cube) in SHAPES {
                 for levels in [1, 3] {
                     for dx10 in [false, true] {
@@ -281,7 +390,10 @@ mod tests {
                         if layers == 1 {
                             out.layers = 0;
                         }
-                        assert_eq!(back, out, "{format:?} {width} {height} {depth} {layers} {cube} {levels} {dx10}");
+                        assert_eq!(
+                            back, out,
+                            "{format:?} {width} {height} {depth} {layers} {cube} {levels} {dx10}"
+                        );
                     }
                 }
             }
@@ -290,7 +402,8 @@ mod tests {
 
     #[test]
     fn the_shapes_are_laid_out_as_the_format_says() {
-        let word = |file: &[u8], at: usize| u32::from_le_bytes(file[at..at + 4].try_into().unwrap());
+        let word =
+            |file: &[u8], at: usize| u32::from_le_bytes(file[at..at + 4].try_into().unwrap());
 
         // A cube map with the old header: all six faces flagged, and face by face, each with
         // its levels.
@@ -310,7 +423,10 @@ mod tests {
         let cubes = shaped(TextureFormat::Bc1, 1, 8, 8, 0, 2, true);
         let file = write(&cubes, false).unwrap();
         assert_eq!(&file[84..88], b"DX10");
-        assert_eq!([word(&file, 132), word(&file, 136), word(&file, 140)], [3, 4, 2]);
+        assert_eq!(
+            [word(&file, 132), word(&file, 136), word(&file, 140)],
+            [3, 4, 2]
+        );
         assert_eq!(file.len(), 148 + 12 * 32);
 
         // A volume: its depth in the header, and level by level, each with its slices.
@@ -323,25 +439,39 @@ mod tests {
         assert_eq!(&file[128..128 + 240], &volume.levels[0][..]);
         assert_eq!(&file[128 + 240..], &volume.levels[1][..]);
         let file = write(&volume, true).unwrap();
-        assert_eq!([word(&file, 132), word(&file, 136), word(&file, 140)], [4, 0, 1]);
+        assert_eq!(
+            [word(&file, 132), word(&file, 136), word(&file, 140)],
+            [4, 0, 1]
+        );
 
         // A cube map with a face left out is refused, as is a texture of one dimension.
         let mut partial = write(&cube, false).unwrap();
         partial[113] &= !0x04;
-        assert_eq!(read(&partial), Err(TextureError::Unsupported("a cube map without all six faces")));
+        assert_eq!(
+            read(&partial),
+            Err(TextureError::Unsupported(
+                "a cube map without all six faces"
+            ))
+        );
         let mut line = write(&cube, true).unwrap();
         line[132] = 2;
         assert!(matches!(read(&line), Err(TextureError::Unsupported(_))));
         // A cube map has to be square, and a volume cannot be an array.
         let mut oblong = write(&cube, false).unwrap();
         oblong[12] = 4;
-        assert_eq!(read(&oblong), Err(TextureError::Invalid("a cube map that is not square")));
+        assert_eq!(
+            read(&oblong),
+            Err(TextureError::Invalid("a cube map that is not square"))
+        );
         let mut stacked = write(&volume, true).unwrap();
         stacked[140] = 2;
         assert!(matches!(read(&stacked), Err(TextureError::Unsupported(_))));
         // Cut short anywhere among the faces, it is not read.
         let file = write(&cube, false).unwrap();
-        assert_eq!(read(&file[..file.len() - 41]), Err(TextureError::Invalid("the file is cut short")));
+        assert_eq!(
+            read(&file[..file.len() - 41]),
+            Err(TextureError::Invalid("the file is cut short"))
+        );
     }
 
     #[test]
@@ -364,9 +494,18 @@ mod tests {
     #[test]
     fn damaged_files_are_refused() {
         let file = write(&texture(TextureFormat::Bc3, 2), false).unwrap();
-        assert_eq!(read(&file[..file.len() - 1]), Err(TextureError::Invalid("the file is cut short")));
-        assert_eq!(read(&file[..100]), Err(TextureError::Invalid("the file is cut short")));
-        assert_eq!(read(b"DDX "), Err(TextureError::Invalid("no DDS signature")));
+        assert_eq!(
+            read(&file[..file.len() - 1]),
+            Err(TextureError::Invalid("the file is cut short"))
+        );
+        assert_eq!(
+            read(&file[..100]),
+            Err(TextureError::Invalid("the file is cut short"))
+        );
+        assert_eq!(
+            read(b"DDX "),
+            Err(TextureError::Invalid("no DDS signature"))
+        );
         let mut other = file.clone();
         other[84..88].copy_from_slice(b"UYVY");
         assert!(matches!(read(&other), Err(TextureError::Unsupported(_))));

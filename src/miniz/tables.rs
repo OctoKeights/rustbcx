@@ -1,7 +1,6 @@
 //! The tables of [`super::tdef`], written out from miniz_tdef.c and miniz.c by a script, so
 //! that no digit was copied by hand.
 
-
 /// The symbol of a match length (less 3): `s_tdefl_len_sym`.
 #[rustfmt::skip]
 pub(crate) const S_TDEFL_LEN_SYM: [u16; 256] = [

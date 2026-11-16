@@ -2,7 +2,13 @@
 //! run as well as the comparison (`examples/dump.rs`).
 
 // (The arithmetic is written as dump.cpp has it; not every user of this module uses all of it.)
-#![allow(clippy::manual_is_multiple_of, clippy::needless_range_loop, clippy::manual_div_ceil, clippy::manual_checked_ops, dead_code)]
+#![allow(
+    clippy::manual_is_multiple_of,
+    clippy::needless_range_loop,
+    clippy::manual_div_ceil,
+    clippy::manual_checked_ops,
+    dead_code
+)]
 
 use rustbcx::bc2;
 use rustbcx::bc6h::{self, Bc6hEncSettings};
@@ -23,7 +29,10 @@ pub struct Random {
 
 impl Random {
     pub fn next(&mut self) -> u32 {
-        self.state = self.state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        self.state = self
+            .state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         (self.state >> 32) as u32
     }
 }
@@ -35,7 +44,9 @@ pub struct Hash {
 
 impl Hash {
     pub fn new() -> Hash {
-        Hash { value: 14695981039346656037 }
+        Hash {
+            value: 14695981039346656037,
+        }
     }
 
     pub fn add(&mut self, data: &[u8]) {
@@ -71,7 +82,11 @@ pub fn make_pixels(random: &mut Random) -> [[u8; 4]; 16] {
             for pixel in &mut pixels {
                 let t = (random.next() % 256) as i32;
                 for c in 0..4 {
-                    let n = if noise != 0 { (random.next() % (noise + 1)) as i32 - (noise / 2) as i32 } else { 0 };
+                    let n = if noise != 0 {
+                        (random.next() % (noise + 1)) as i32 - (noise / 2) as i32
+                    } else {
+                        0
+                    };
                     pixel[c] = clamp((i32::from(a[c]) * (255 - t) + i32::from(b[c]) * t) / 255 + n);
                 }
             }
@@ -110,7 +125,11 @@ pub fn make_pixels(random: &mut Random) -> [[u8; 4]; 16] {
             for pixel in &mut pixels {
                 let bright = random.next() % 4 == 0;
                 for value in pixel {
-                    *value = if bright { random.next() as u8 } else { (random.next() % 8) as u8 };
+                    *value = if bright {
+                        random.next() as u8
+                    } else {
+                        (random.next() % 8) as u8
+                    };
                 }
             }
         }
@@ -143,7 +162,11 @@ pub fn ert(seed: u64, blocks: u32) -> String {
     while remaining > 0 {
         let format = random.next() % 5;
         let relative = random.next() % 8 == 0;
-        let mut n = if relative { 8 + random.next() % 57 } else { 32 + random.next() % 481 };
+        let mut n = if relative {
+            8 + random.next() % 57
+        } else {
+            32 + random.next() % 481
+        };
         if n > remaining {
             n = remaining;
         }
@@ -188,7 +211,11 @@ pub fn ert(seed: u64, blocks: u32) -> String {
         if use_scales {
             for scale in &mut scales {
                 let a = random.next();
-                *scale = if a % 4 == 0 { 0.0 } else { 1.0 + ((a >> 8) % 10) as f32 };
+                *scale = if a % 4 == 0 {
+                    0.0
+                } else {
+                    1.0 + ((a >> 8) % 10) as f32
+                };
             }
         }
         let scale_list = if use_scales { Some(&scales[..]) } else { None };
@@ -204,7 +231,12 @@ pub fn ert(seed: u64, blocks: u32) -> String {
             }
         };
         let unpack_bc1 = |block: &[u8], pixels: &mut [[u8; 4]], _: u32| {
-            rgbcx::unpack_bc1(block.try_into().unwrap(), pixels.try_into().unwrap(), true, Bc1ApproxMode::Ideal);
+            rgbcx::unpack_bc1(
+                block.try_into().unwrap(),
+                pixels.try_into().unwrap(),
+                true,
+                Bc1ApproxMode::Ideal,
+            );
             true
         };
         let unpack_bc4 = |block: &[u8], pixels: &mut [[u8; 4]], _: u32| {
@@ -214,24 +246,72 @@ pub fn ert(seed: u64, blocks: u32) -> String {
         let ok = match format {
             0 => {
                 for (block, pixels) in packed.chunks_exact_mut(8).zip(&px) {
-                    rgbcx_encoder.encode_bc1(level, block.try_into().unwrap(), pixels, false, false, None);
+                    rgbcx_encoder.encode_bc1(
+                        level,
+                        block.try_into().unwrap(),
+                        pixels,
+                        false,
+                        false,
+                        None,
+                    );
                 }
                 set_weights(&mut p, 3);
-                ert::reduce_entropy(&mut packed, n as u32, 8, 8, 4, 4, 3, pixels, &p, &mut total, unpack_bc1, scale_list)
+                ert::reduce_entropy(
+                    &mut packed,
+                    n as u32,
+                    8,
+                    8,
+                    4,
+                    4,
+                    3,
+                    pixels,
+                    &p,
+                    &mut total,
+                    unpack_bc1,
+                    scale_list,
+                )
             }
             1 => {
                 for (block, pixels) in packed.chunks_exact_mut(8).zip(&px) {
                     rgbcx::encode_bc4(block.try_into().unwrap(), pixels.as_flattened(), 4);
                 }
                 set_weights(&mut p, 1);
-                ert::reduce_entropy(&mut packed, n as u32, 8, 8, 4, 4, 1, pixels, &p, &mut total, unpack_bc4, scale_list)
+                ert::reduce_entropy(
+                    &mut packed,
+                    n as u32,
+                    8,
+                    8,
+                    4,
+                    4,
+                    1,
+                    pixels,
+                    &p,
+                    &mut total,
+                    unpack_bc4,
+                    scale_list,
+                )
             }
             2 => {
                 for (block, pixels) in packed.chunks_exact_mut(16).zip(&px) {
                     bc7_encoder.compress_block(block.try_into().unwrap(), pixels, &bc7_params);
                 }
                 set_weights(&mut p, 4);
-                ert::reduce_entropy(&mut packed, n as u32, 16, 16, 4, 4, 4, pixels, &p, &mut total, |block, pixels, _| bc7decomp::unpack_bc7(block.try_into().unwrap(), pixels.try_into().unwrap()), scale_list)
+                ert::reduce_entropy(
+                    &mut packed,
+                    n as u32,
+                    16,
+                    16,
+                    4,
+                    4,
+                    4,
+                    pixels,
+                    &p,
+                    &mut total,
+                    |block, pixels, _| {
+                        bc7decomp::unpack_bc7(block.try_into().unwrap(), pixels.try_into().unwrap())
+                    },
+                    scale_list,
+                )
             }
             3 => {
                 for (block, pixels) in packed.chunks_exact_mut(16).zip(&px) {
@@ -240,10 +320,36 @@ pub fn ert(seed: u64, blocks: u32) -> String {
                 // The alpha half, against the alpha of the pixels put in the first channel.
                 let alpha: Vec<[u8; 4]> = pixels.iter().map(|pixel| [pixel[3], 0, 0, 0]).collect();
                 set_weights(&mut p, 1);
-                let alpha_ok = ert::reduce_entropy(&mut packed, n as u32, 16, 8, 4, 4, 1, &alpha, &p, &mut total, unpack_bc4, scale_list);
+                let alpha_ok = ert::reduce_entropy(
+                    &mut packed,
+                    n as u32,
+                    16,
+                    8,
+                    4,
+                    4,
+                    1,
+                    &alpha,
+                    &p,
+                    &mut total,
+                    unpack_bc4,
+                    scale_list,
+                );
                 // The colour half.
                 set_weights(&mut p, 3);
-                ert::reduce_entropy(&mut packed[8..], n as u32, 16, 8, 4, 4, 3, pixels, &p, &mut total, unpack_bc1, scale_list) && alpha_ok
+                ert::reduce_entropy(
+                    &mut packed[8..],
+                    n as u32,
+                    16,
+                    8,
+                    4,
+                    4,
+                    3,
+                    pixels,
+                    &p,
+                    &mut total,
+                    unpack_bc1,
+                    scale_list,
+                ) && alpha_ok
             }
             _ => {
                 for (block, pixels) in packed.chunks_exact_mut(16).zip(&px) {
@@ -262,7 +368,13 @@ pub fn ert(seed: u64, blocks: u32) -> String {
                     &p,
                     &mut total,
                     |block, pixels, _| {
-                        rgbcx::unpack_bc5(block.try_into().unwrap(), pixels.as_flattened_mut(), 0, 1, 4);
+                        rgbcx::unpack_bc5(
+                            block.try_into().unwrap(),
+                            pixels.as_flattened_mut(),
+                            0,
+                            1,
+                            4,
+                        );
                         true
                     },
                     scale_list,
@@ -274,7 +386,10 @@ pub fn ert(seed: u64, blocks: u32) -> String {
         failed += u32::from(!ok);
         runs += 1;
     }
-    format!("ert {:016x}\nert runs: {runs}, blocks changed: {modified}, runs refused: {failed}\n", hash.value)
+    format!(
+        "ert {:016x}\nert runs: {runs}, blocks changed: {modified}, runs refused: {failed}\n",
+        hash.value
+    )
 }
 
 /// A made-up image: noise, a ramp, flat boxes, a repeated tile, a very smooth field, or half a
@@ -306,7 +421,11 @@ pub fn make_image(random: &mut Random, w: u32, h: u32) -> Image {
                 1 => {
                     let t = ((x * 255) / if w > 1 { w - 1 } else { 1 }) as i32;
                     for c in 0..4 {
-                        let n = if noise != 0 { (random.next() % (noise + 1)) as i32 } else { 0 };
+                        let n = if noise != 0 {
+                            (random.next() % (noise + 1)) as i32
+                        } else {
+                            0
+                        };
                         p[c] = clamp((i32::from(a[c]) * (255 - t) + i32::from(b[c]) * t) / 255 + n);
                     }
                 }
@@ -330,7 +449,8 @@ pub fn make_image(random: &mut Random, w: u32, h: u32) -> Image {
                     if x < w / 2 {
                         let t = ((y * 255) / if h > 1 { h - 1 } else { 1 }) as i32;
                         for c in 0..4 {
-                            p[c] = ((i32::from(a[c]) * (255 - t) + i32::from(b[c]) * t) / 255) as u8;
+                            p[c] =
+                                ((i32::from(a[c]) * (255 - t) + i32::from(b[c]) * t) / 255) as u8;
                         }
                     } else {
                         for c in 0..4 {
@@ -355,19 +475,38 @@ pub fn make_image(random: &mut Random, w: u32, h: u32) -> Image {
 /// pass, every setting varied, and the `.dds` file for each. What `compare/dump.cpp` prints for
 /// the same seed and count.
 pub fn rdo(seed: u64, blocks: u32, with_bc7e: bool) -> String {
-    const MODES: [Bc1ApproxMode; 4] = [Bc1ApproxMode::Ideal, Bc1ApproxMode::NVidia, Bc1ApproxMode::Amd, Bc1ApproxMode::IdealRound4];
+    const MODES: [Bc1ApproxMode; 4] = [
+        Bc1ApproxMode::Ideal,
+        Bc1ApproxMode::NVidia,
+        Bc1ApproxMode::Amd,
+        Bc1ApproxMode::IdealRound4,
+    ];
     let mut random = Random { state: seed };
     let mut hash = Hash::new();
     let (mut done, mut images, mut refused) = (0u32, 0u32, 0u32);
     let mut encoder = RdoBcEncoder::new();
     while done < blocks {
         let big = random.next() % 6 == 0;
-        let w = if big { 240 + random.next() % 100 } else { 1 + random.next() % 96 };
-        let h = if big { 240 + random.next() % 100 } else { 1 + random.next() % 96 };
+        let w = if big {
+            240 + random.next() % 100
+        } else {
+            1 + random.next() % 96
+        };
+        let h = if big {
+            240 + random.next() % 100
+        } else {
+            1 + random.next() % 96
+        };
         let image = make_image(&mut random, w, h);
 
         let mut p = RdoBcParams::new();
-        const FORMATS: [BlockFormat; 5] = [BlockFormat::Bc1, BlockFormat::Bc3, BlockFormat::Bc4, BlockFormat::Bc5, BlockFormat::Bc7];
+        const FORMATS: [BlockFormat; 5] = [
+            BlockFormat::Bc1,
+            BlockFormat::Bc3,
+            BlockFormat::Bc4,
+            BlockFormat::Bc5,
+            BlockFormat::Bc7,
+        ];
         p.format = FORMATS[(random.next() % 5) as usize];
         let level = random.next();
         p.bc1_quality_level = if big { level % 3 } else { level % 11 };
@@ -400,7 +539,11 @@ pub fn rdo(seed: u64, blocks: u32, with_bc7e: bool) -> String {
         p.bc7enc_rdo_bc7_pbit1_weighting = random.next() % 2 != 0;
         let lambda_on = random.next() % 3 != 0;
         let lambda = random.next();
-        p.rdo_lambda = if lambda_on { (lambda % 1000) as f32 / 100.0 + 0.05 } else { 0.0 };
+        p.rdo_lambda = if lambda_on {
+            (lambda % 1000) as f32 / 100.0 + 0.05
+        } else {
+            0.0
+        };
         const WINDOWS: [u32; 6] = [8, 16, 64, 128, 256, 1024];
         p.lookback_window_size = WINDOWS[(random.next() % 6) as usize];
         p.custom_rdo_smooth_block_error_scale = random.next() % 2 != 0;
@@ -419,7 +562,12 @@ pub fn rdo(seed: u64, blocks: u32, with_bc7e: bool) -> String {
         let unpacked = if ok { encoder.unpack_blocks() } else { None };
         ok = ok && unpacked.is_some();
 
-        for size in [encoder.blocks_x(), encoder.blocks_y(), encoder.bytes_per_block(), u32::from(ok)] {
+        for size in [
+            encoder.blocks_x(),
+            encoder.blocks_y(),
+            encoder.bytes_per_block(),
+            u32::from(ok),
+        ] {
             hash.add(&size.to_le_bytes());
         }
         if let Some(unpacked) = unpacked {
@@ -427,7 +575,12 @@ pub fn rdo(seed: u64, blocks: u32, with_bc7e: bool) -> String {
             hash.add(encoder.blocks());
             hash.add(unpacked.as_rgba8());
             // The .dds file for it, with the DX10 header forced for every other image.
-            let texture = Texture::new(p.format.into(), encoder.orig_width(), encoder.orig_height(), vec![encoder.blocks().to_vec()]);
+            let texture = Texture::new(
+                p.format.into(),
+                encoder.orig_width(),
+                encoder.orig_height(),
+                vec![encoder.blocks().to_vec()],
+            );
             hash.add(&dds::write(&texture, images % 2 == 1).expect("a whole texture"));
         } else {
             refused += 1;
@@ -435,13 +588,23 @@ pub fn rdo(seed: u64, blocks: u32, with_bc7e: bool) -> String {
         done += encoder.total_blocks();
         images += 1;
     }
-    format!("rdo {:016x}\nrdo images: {images}, blocks: {done}, refused: {refused}\n", hash.value)
+    format!(
+        "rdo {:016x}\nrdo images: {images}, blocks: {done}, refused: {refused}\n",
+        hash.value
+    )
 }
 
 /// The first bits of the fourteen modes of BC6H.
-const BC6H_MODE_BITS: [u8; 14] = [0x00, 0x01, 0x02, 0x06, 0x0a, 0x0e, 0x12, 0x16, 0x1a, 0x1e, 0x03, 0x07, 0x0b, 0x0f];
+const BC6H_MODE_BITS: [u8; 14] = [
+    0x00, 0x01, 0x02, 0x06, 0x0a, 0x0e, 0x12, 0x16, 0x1a, 0x1e, 0x03, 0x07, 0x0b, 0x0f,
+];
 
-const MODES: [Bc1ApproxMode; 4] = [Bc1ApproxMode::Ideal, Bc1ApproxMode::NVidia, Bc1ApproxMode::Amd, Bc1ApproxMode::IdealRound4];
+const MODES: [Bc1ApproxMode; 4] = [
+    Bc1ApproxMode::Ideal,
+    Bc1ApproxMode::NVidia,
+    Bc1ApproxMode::Amd,
+    Bc1ApproxMode::IdealRound4,
+];
 
 /// The `bc2` dump: made-up BC2 blocks unpacked each way of interpolating, and made-up pixels
 /// packed as BC2 at every level and with flags, and unpacked again.
@@ -451,7 +614,11 @@ pub fn bc2(seed: u64, blocks: u32) -> String {
     let mut hash = Hash::new();
     let mut three = 0u32;
     let mut out = String::new();
-    let first_not_larger = |block: &[u8; 16]| u32::from(u16::from_le_bytes([block[8], block[9]]) <= u16::from_le_bytes([block[10], block[11]]));
+    let first_not_larger = |block: &[u8; 16]| {
+        u32::from(
+            u16::from_le_bytes([block[8], block[9]]) <= u16::from_le_bytes([block[10], block[11]]),
+        )
+    };
     for i in 0..blocks {
         let mode = MODES[((i / 100) % 4) as usize];
         let encoder = &encoders[((i / 100) % 4) as usize];
@@ -483,7 +650,10 @@ pub fn bc2(seed: u64, blocks: u32) -> String {
 
         // (Without a need for the block's error the encoder takes one first guess only.)
         let mut flags = options >> 16;
-        if flags & (rgbcx::ENCODE_BC1_USE_LIKELY_TOTAL_ORDERINGS | rgbcx::ENCODE_BC1_USE_FULL_MSE_EVAL) == 0 {
+        if flags
+            & (rgbcx::ENCODE_BC1_USE_LIKELY_TOTAL_ORDERINGS | rgbcx::ENCODE_BC1_USE_FULL_MSE_EVAL)
+            == 0
+        {
             flags &= !rgbcx::ENCODE_BC1_TRY_ALL_INITIAL_ENDPOINTS;
         }
         let mut block = [0xEEu8; 16];
@@ -513,7 +683,11 @@ pub fn bc6h_unpack(seed: u64, blocks: u32) -> String {
         // Half of them of a mode in turn; a few with only small values in them.
         if i % 2 == 0 {
             let bits = BC6H_MODE_BITS[((i / 2) % 14) as usize];
-            block[0] = if bits < 2 { (block[0] & 0xfc) | bits } else { (block[0] & 0xe0) | bits };
+            block[0] = if bits < 2 {
+                (block[0] & 0xfc) | bits
+            } else {
+                (block[0] & 0xe0) | bits
+            };
         }
         if i % 16 == 5 {
             for byte in &mut block[1..10] {
@@ -532,7 +706,10 @@ pub fn bc6h_unpack(seed: u64, blocks: u32) -> String {
             black += u32::from(halves.as_flattened().iter().all(|&value| value == 0));
         }
     }
-    format!("bc6h_unpack {:016x}\nbc6h_unpack blocks unpacked to black: {black}\n", hash.value)
+    format!(
+        "bc6h_unpack {:016x}\nbc6h_unpack blocks unpacked to black: {black}\n",
+        hash.value
+    )
 }
 
 /// Sixteen made-up HDR pixels, four halves each (the fourth is not packed): noise over all the
@@ -610,9 +787,16 @@ pub fn make_hdr_block(r: &mut Random) -> [bc6h::RgbHalf; 16] {
 /// unpacked again. What `compare/dump_bc6h.cpp` prints for the same seed and count.
 pub fn bc6h_pack(seed: u64, blocks: u32) -> String {
     let mut random = Random { state: seed };
-    let pixels: Vec<[bc6h::RgbHalf; 16]> = (0..blocks).map(|_| make_hdr_block(&mut random)).collect();
+    let pixels: Vec<[bc6h::RgbHalf; 16]> =
+        (0..blocks).map(|_| make_hdr_block(&mut random)).collect();
     let mut packed = vec![[0u8; 16]; pixels.len()];
-    let profiles: [(&str, Bc6hEncSettings); 5] = [("veryfast", Bc6hEncSettings::veryfast()), ("fast", Bc6hEncSettings::fast()), ("basic", Bc6hEncSettings::basic()), ("slow", Bc6hEncSettings::slow()), ("veryslow", Bc6hEncSettings::veryslow())];
+    let profiles: [(&str, Bc6hEncSettings); 5] = [
+        ("veryfast", Bc6hEncSettings::veryfast()),
+        ("fast", Bc6hEncSettings::fast()),
+        ("basic", Bc6hEncSettings::basic()),
+        ("slow", Bc6hEncSettings::slow()),
+        ("veryslow", Bc6hEncSettings::veryslow()),
+    ];
     let mut modes = [0u32; 15];
     let mut printed = String::new();
     for (name, settings) in profiles {
@@ -623,12 +807,23 @@ pub fn bc6h_pack(seed: u64, blocks: u32) -> String {
             for value in bc6h::unpack_bc6h_half(block, false).as_flattened() {
                 hash.add(&value.to_le_bytes());
             }
-            let bits = if block[0] & 3 < 2 { block[0] & 3 } else { block[0] & 31 };
-            modes[BC6H_MODE_BITS.iter().position(|&mode_bits| mode_bits == bits).unwrap_or(14)] += 1;
+            let bits = if block[0] & 3 < 2 {
+                block[0] & 3
+            } else {
+                block[0] & 31
+            };
+            modes[BC6H_MODE_BITS
+                .iter()
+                .position(|&mode_bits| mode_bits == bits)
+                .unwrap_or(14)] += 1;
         }
         printed += &format!("{name} {:016x}\n", hash.value);
     }
-    printed + &format!("blocks by mode:{}\n", modes.map(|count| format!(" {count}")).concat())
+    printed
+        + &format!(
+            "blocks by mode:{}\n",
+            modes.map(|count| format!(" {count}")).concat()
+        )
 }
 
 /// A whole number from -range to range, as a float.
@@ -674,8 +869,15 @@ pub fn make_float_block(r: &mut Random) -> [[f32; 4]; 16] {
 
 /// The mode of a BC6H block, in the order the encoders try them; 14 for none.
 fn bc6h_mode(block: &[u8; 16]) -> usize {
-    const MODES: [i32; 32] = [0, 1, 2, 10, -1, -1, 3, 11, -1, -1, 4, 12, -1, -1, 5, 13, -1, -1, 6, -1, -1, -1, 7, -1, -1, -1, 8, -1, -1, -1, 9, -1];
-    let bits = if block[0] & 2 != 0 { block[0] & 31 } else { block[0] & 3 };
+    const MODES: [i32; 32] = [
+        0, 1, 2, 10, -1, -1, 3, 11, -1, -1, 4, 12, -1, -1, 5, 13, -1, -1, 6, -1, -1, -1, 7, -1, -1,
+        -1, 8, -1, -1, -1, 9, -1,
+    ];
+    let bits = if block[0] & 2 != 0 {
+        block[0] & 31
+    } else {
+        block[0] & 3
+    };
     usize::try_from(MODES[usize::from(bits)]).unwrap_or(14)
 }
 
@@ -710,7 +912,10 @@ pub fn bc6h_enc(seed: u64, blocks: u32) -> String {
     out
 }
 
-const WORDS: [&str; 16] = ["the", "texture", "block", "of", "and", "compress", "a", "level", "mip", "to", "pixels", "in", "format", "is", "cube", "data"];
+const WORDS: [&str; 16] = [
+    "the", "texture", "block", "of", "and", "compress", "a", "level", "mip", "to", "pixels", "in",
+    "format", "is", "cube", "data",
+];
 
 /// Made-up data of one of eight kinds, the same in both programs.
 pub fn make_data(r: &mut Random) -> Vec<u8> {
@@ -812,7 +1017,11 @@ fn make_tdefl_flags(r: &mut Random) -> u32 {
     match r.next() % 4 {
         0 | 1 => {
             let level = (r.next() % 12) as i32 - 1;
-            let strategy = if r.next() % 3 != 0 { 0 } else { (r.next() % 5) as i32 };
+            let strategy = if r.next() % 3 != 0 {
+                0
+            } else {
+                (r.next() % 5) as i32
+            };
             let window_bits = if r.next() & 1 != 0 { 15 } else { -15 };
             let mut flags = tdefl_create_comp_flags_from_zip_params(level, window_bits, strategy);
             if r.next() & 1 != 0 {
@@ -822,7 +1031,15 @@ fn make_tdefl_flags(r: &mut Random) -> u32 {
         }
         2 => {
             let mut flags = r.next() % 4096;
-            for flag in [TDEFL_WRITE_ZLIB_HEADER, TDEFL_COMPUTE_ADLER32, TDEFL_GREEDY_PARSING_FLAG, TDEFL_RLE_MATCHES, TDEFL_FILTER_MATCHES, TDEFL_FORCE_ALL_STATIC_BLOCKS, TDEFL_FORCE_ALL_RAW_BLOCKS] {
+            for flag in [
+                TDEFL_WRITE_ZLIB_HEADER,
+                TDEFL_COMPUTE_ADLER32,
+                TDEFL_GREEDY_PARSING_FLAG,
+                TDEFL_RLE_MATCHES,
+                TDEFL_FILTER_MATCHES,
+                TDEFL_FORCE_ALL_STATIC_BLOCKS,
+                TDEFL_FORCE_ALL_RAW_BLOCKS,
+            ] {
                 if r.next() & 3 == 0 {
                     flags |= flag;
                 }
@@ -844,7 +1061,15 @@ fn make_tdefl_flags(r: &mut Random) -> u32 {
 /// when it is done.
 fn miniz_decompress(hash: &mut Hash, stream: &[u8], room: usize, zlib: bool) -> bool {
     use rustbcx::miniz::tinfl::*;
-    match tinfl_decompress(stream, room, if zlib { TINFL_FLAG_PARSE_ZLIB_HEADER } else { 0 }) {
+    match tinfl_decompress(
+        stream,
+        room,
+        if zlib {
+            TINFL_FLAG_PARSE_ZLIB_HEADER
+        } else {
+            0
+        },
+    ) {
         Ok((bytes, taken)) => {
             hash.add(&0u32.to_le_bytes());
             hash.add(&(taken as u32).to_le_bytes());
@@ -930,7 +1155,12 @@ pub fn miniz(seed: u64, count: u32) -> String {
             copy[(bit >> 3) as usize] ^= 1 << (bit & 7);
         }
         tally(miniz_decompress(&mut hash, &copy, len + 64, zlib));
-        miniz_decompress(&mut hash, &stream[..r.next() as usize % stream.len()], len, zlib);
+        miniz_decompress(
+            &mut hash,
+            &stream[..r.next() as usize % stream.len()],
+            len,
+            zlib,
+        );
         let mut copy = stream.clone();
         for _ in 0..4 {
             copy.push(r.next() as u8);
@@ -938,7 +1168,9 @@ pub fn miniz(seed: u64, count: u32) -> String {
         miniz_decompress(&mut hash, &copy, len, zlib);
 
         // Made-up bytes as a stream.
-        let mut garbage: Vec<u8> = (0..1 + r.next() % 64).map(|_| (r.next() >> 7) as u8).collect();
+        let mut garbage: Vec<u8> = (0..1 + r.next() % 64)
+            .map(|_| (r.next() >> 7) as u8)
+            .collect();
         if r.next() & 1 != 0 {
             // (A zlib header in front, so that it gets past that.)
             garbage[0] = 0x78;
@@ -946,7 +1178,12 @@ pub fn miniz(seed: u64, count: u32) -> String {
                 garbage[1] = 0x9C;
             }
         }
-        tally(miniz_decompress(&mut hash, &garbage, 4096, garbage[0] == 0x78));
+        tally(miniz_decompress(
+            &mut hash,
+            &garbage,
+            4096,
+            garbage[0] == 0x78,
+        ));
 
         if (i + 1) % 200 == 0 || i + 1 == count {
             out += &format!("miniz {} {:016x}\n", i + 1, hash.value);
@@ -979,7 +1216,12 @@ pub fn make_picture(r: &mut Random) -> Picture {
         _ => (1 + r.next() % 300, 1 + r.next() % 200),
     };
     let (w, h) = (w as usize, h as usize);
-    let stride = w * comp + if r.next() % 3 == 0 { (r.next() % 7) as usize } else { 0 };
+    let stride = w * comp
+        + if r.next() % 3 == 0 {
+            (r.next() % 7) as usize
+        } else {
+            0
+        };
     let mut bytes = vec![0xCDu8; stride * h];
     let kind = r.next() % 7;
     let mut coefficient = [[0u32; 3]; 4];
@@ -998,24 +1240,34 @@ pub fn make_picture(r: &mut Random) -> Picture {
     for y in 0..h {
         for x in 0..w {
             let (ux, uy) = (x as u32, y as u32);
-            let pick = if kind == 5 { r.next() % colours } else { ((ux / cell) * 7 + (uy / cell) * 13 + (ux / cell) * (uy / cell)) % 16 } as usize;
+            let pick = if kind == 5 {
+                r.next() % colours
+            } else {
+                ((ux / cell) * 7 + (uy / cell) * 13 + (ux / cell) * (uy / cell)) % 16
+            } as usize;
             for c in 0..comp {
                 let along = ux * coefficient[c][0] + uy * coefficient[c][1] + coefficient[c][2];
                 let slope = along >> 4;
                 let value = match kind {
-                    0 => r.next() >> 13,               // noise
-                    1 => palette[0][c],                // one colour
-                    2 => slope,                        // a slope
-                    3 => palette[pick][c],             // squares
-                    4 => slope + r.next() % noise,     // a slope with noise on it
-                    5 => palette[pick][c],             // a few colours, anywhere
-                    _ => wave(along),                  // waves
+                    0 => r.next() >> 13,           // noise
+                    1 => palette[0][c],            // one colour
+                    2 => slope,                    // a slope
+                    3 => palette[pick][c],         // squares
+                    4 => slope + r.next() % noise, // a slope with noise on it
+                    5 => palette[pick][c],         // a few colours, anywhere
+                    _ => wave(along),              // waves
                 };
                 bytes[y * stride + x * comp + c] = value as u8;
             }
         }
     }
-    Picture { w: w as i32, h: h as i32, comp: comp as i32, stride, bytes }
+    Picture {
+        w: w as i32,
+        h: h as i32,
+        comp: comp as i32,
+        stride,
+        bytes,
+    }
 }
 
 /// The `stb_image_write` dump: made-up images written as `.png` (with made-up compression
@@ -1025,7 +1277,8 @@ pub fn stb_image_write(seed: u64, count: u32) -> String {
     use rustbcx::stb_image_write::{write_bmp, write_jpg, write_png, zlib_compress, WriteOptions};
     let mut r = Random { state: seed };
     let mut hash = Hash::new();
-    let (mut png_total, mut bmp_total, mut jpg_total, mut zlib_total, mut pixel_total) = (0u64, 0u64, 0u64, 0u64, 0u64);
+    let (mut png_total, mut bmp_total, mut jpg_total, mut zlib_total, mut pixel_total) =
+        (0u64, 0u64, 0u64, 0u64, 0u64);
     let mut out = String::new();
     for i in 0..count {
         let p = make_picture(&mut r);
@@ -1033,8 +1286,16 @@ pub fn stb_image_write(seed: u64, count: u32) -> String {
 
         // The three settings.
         let options = WriteOptions {
-            png_compression_level: if r.next() % 4 == 0 { (r.next() % 40) as i32 - 3 } else { 8 },
-            force_png_filter: if r.next() % 3 == 0 { (r.next() % 8) as i32 - 1 } else { -1 },
+            png_compression_level: if r.next() % 4 == 0 {
+                (r.next() % 40) as i32 - 3
+            } else {
+                8
+            },
+            force_png_filter: if r.next() % 3 == 0 {
+                (r.next() % 8) as i32 - 1
+            } else {
+                -1
+            },
             flip_vertically_on_write: r.next() % 4 == 0,
         };
 
@@ -1056,14 +1317,19 @@ pub fn stb_image_write(seed: u64, count: u32) -> String {
             2 => 85 + (r.next() % 16) as i32,
             _ => (r.next() % 130) as i32 - 10,
         };
-        let jpg = write_jpg(p.w, p.h, p.comp, &p.bytes, quality, p.stride, &options).expect("a jpg");
+        let jpg =
+            write_jpg(p.w, p.h, p.comp, &p.bytes, quality, p.stride, &options).expect("a jpg");
         hash.add(&(jpg.len() as u32).to_le_bytes());
         hash.add(&jpg);
         jpg_total += jpg.len() as u64;
 
         if i % 4 == 0 {
             let data = make_data(&mut r);
-            let level = if r.next() % 4 == 0 { (r.next() % 50) as i32 } else { 8 };
+            let level = if r.next() % 4 == 0 {
+                (r.next() % 50) as i32
+            } else {
+                8
+            };
             let packed = zlib_compress(&data, level);
             hash.add(&(packed.len() as u32).to_le_bytes());
             hash.add(&packed);
@@ -1161,7 +1427,11 @@ pub fn make_png(r: &mut Random, f: &mut Vec<u8>) {
         raw.extend_from_slice(&[0; 5]);
     }
 
-    let z = if r.next() % 4 == 0 { rustbcx::stb_image_write::zlib_compress(&raw, 5 + (r.next() % 8) as i32) } else { rustbcx::miniz::compress(&raw, (r.next() % 10) as i32) };
+    let z = if r.next() % 4 == 0 {
+        rustbcx::stb_image_write::zlib_compress(&raw, 5 + (r.next() % 8) as i32)
+    } else {
+        rustbcx::miniz::compress(&raw, (r.next() % 10) as i32)
+    };
 
     f.extend_from_slice(&SIG);
     if iphone {
@@ -1177,7 +1447,11 @@ pub fn make_png(r: &mut Random, f: &mut Vec<u8>) {
     }
     // A palette: nearly always where one is needed, now and then where none is.
     let mut pal_len = 0u32;
-    if if color == 3 { r.next() % 20 != 0 } else { r.next() % 8 == 0 } {
+    if if color == 3 {
+        r.next() % 20 != 0
+    } else {
+        r.next() % 8 == 0
+    } {
         pal_len = 1 + r.next() % 256;
         let bytes: Vec<u8> = (0..pal_len * 3).map(|_| (r.next() >> 12) as u8).collect();
         chunk(f, b"PLTE", &bytes);
@@ -1200,7 +1474,15 @@ pub fn make_png(r: &mut Random, f: &mut Vec<u8>) {
         if n > 256 {
             n = 256;
         }
-        let bytes: Vec<u8> = (0..n).map(|_| if color == 3 { (r.next() >> 9) as u8 } else { (r.next() % 4) as u8 }).collect();
+        let bytes: Vec<u8> = (0..n)
+            .map(|_| {
+                if color == 3 {
+                    (r.next() >> 9) as u8
+                } else {
+                    (r.next() % 4) as u8
+                }
+            })
+            .collect();
         if n != 0 {
             chunk(f, b"tRNS", &bytes);
         }
@@ -1212,7 +1494,11 @@ pub fn make_png(r: &mut Random, f: &mut Vec<u8>) {
     // (An iPhone file's stream has no zlib header.)
     let mut at = if iphone && z.len() > 2 { 2 } else { 0 };
     for k in 0..parts {
-        let n = if k + 1 == parts { z.len() - at } else { r.next() as usize % (z.len() - at + 1) };
+        let n = if k + 1 == parts {
+            z.len() - at
+        } else {
+            r.next() as usize % (z.len() - at + 1)
+        };
         chunk(f, b"IDAT", &z[at..at + n]);
         at += n;
     }
@@ -1242,9 +1528,17 @@ pub fn make_bmp(r: &mut Random, f: &mut Vec<u8>) {
     let top_down = hsz != 12 && r.next() % 4 == 0;
     let mask_style = r.next() % 3;
     if mask_style == 0 {
-        masks = if bpp == 16 { [0xf800, 0x07e0, 0x001f, 0] } else { [0xff0000, 0xff00, 0xff, 0xff000000] };
+        masks = if bpp == 16 {
+            [0xf800, 0x07e0, 0x001f, 0]
+        } else {
+            [0xff0000, 0xff00, 0xff, 0xff000000]
+        };
     } else if mask_style == 1 {
-        masks = if bpp == 16 { [0x7c00, 0x03e0, 0x001f, 0x8000] } else { [0xff, 0xff00, 0xff0000, 0xff000000] };
+        masks = if bpp == 16 {
+            [0x7c00, 0x03e0, 0x001f, 0x8000]
+        } else {
+            [0xff, 0xff00, 0xff0000, 0xff000000]
+        };
     } else {
         for mask in &mut masks {
             let count = 1 + r.next() % 8;
@@ -1262,7 +1556,11 @@ pub fn make_bmp(r: &mut Random, f: &mut Vec<u8>) {
     if r.next() % 10 == 0 {
         extra = 1 + r.next() % 20;
     }
-    let offset = 14 + hsz + if hsz == 40 && compress == 3 { 12 } else { 0 } + psize * if hsz == 12 { 3 } else { 4 } + extra;
+    let offset = 14
+        + hsz
+        + if hsz == 40 && compress == 3 { 12 } else { 0 }
+        + psize * if hsz == 12 { 3 } else { 4 }
+        + extra;
 
     f.extend_from_slice(b"BM");
     p32le(f, 0);
@@ -1362,10 +1660,20 @@ fn entropy(r: &mut Random, f: &mut Vec<u8>, blocks: u32, mcus: u32, restart: u32
 pub fn make_jpeg(r: &mut Random, f: &mut Vec<u8>) {
     const COMPS: [u32; 5] = [1, 3, 3, 3, 4];
     const SAMPLING: [u8; 8] = [0x11, 0x22, 0x21, 0x12, 0x41, 0x22, 0x11, 0x42];
-    const DC: [&[u8]; 3] = [&[0, 1, 2, 3], &[0, 2, 1, 5], &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]];
+    const DC: [&[u8]; 3] = [
+        &[0, 1, 2, 3],
+        &[0, 2, 1, 5],
+        &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+    ];
     const DC_LENGTH: [u32; 3] = [2, 2, 4];
     const DC_PICK: [usize; 5] = [0, 0, 1, 1, 2];
-    const AC: [&[u8]; 2] = [&[0x00, 0x01, 0x11, 0x21, 0x10, 0xF0, 0x31, 0x20], &[0x00, 0x01, 0x02, 0x03, 0x11, 0x12, 0x21, 0x31, 0x41, 0x10, 0x20, 0xF0, 0x04, 0x13, 0x51, 0x30]];
+    const AC: [&[u8]; 2] = [
+        &[0x00, 0x01, 0x11, 0x21, 0x10, 0xF0, 0x31, 0x20],
+        &[
+            0x00, 0x01, 0x02, 0x03, 0x11, 0x12, 0x21, 0x31, 0x41, 0x10, 0x20, 0xF0, 0x04, 0x13,
+            0x51, 0x30,
+        ],
+    ];
     let progressive = r.next() % 2 != 0;
     let ncomp = COMPS[(r.next() % 5) as usize];
     let w = 1 + r.next() % 64;
@@ -1389,7 +1697,11 @@ pub fn make_jpeg(r: &mut Random, f: &mut Vec<u8>) {
         p16be(f, 16);
         f.extend_from_slice(b"JFIF\0\x01\x01\0\0\x01\0\x01\0\0");
     }
-    if if ncomp == 4 { r.next() % 4 != 0 } else { r.next() % 3 == 0 } {
+    if if ncomp == 4 {
+        r.next() % 4 != 0
+    } else {
+        r.next() % 3 == 0
+    } {
         p16be(f, 0xffee);
         p16be(f, 14);
         f.extend_from_slice(b"Adobe\0\x64\0\0\0\0");
@@ -1442,8 +1754,16 @@ pub fn make_jpeg(r: &mut Random, f: &mut Vec<u8>) {
     f.push(ncomp as u8);
     let (mut id, mut hv) = ([0u32; 4], [0u32; 4]);
     for c in 0..ncomp as usize {
-        id[c] = if rgb_ids && ncomp == 3 { u32::from(b"RGB"[c]) } else { c as u32 + 1 };
-        hv[c] = if c == 0 || (c == 3 && r.next() % 2 != 0) { y_sampling } else { 0x11 };
+        id[c] = if rgb_ids && ncomp == 3 {
+            u32::from(b"RGB"[c])
+        } else {
+            c as u32 + 1
+        };
+        hv[c] = if c == 0 || (c == 3 && r.next() % 2 != 0) {
+            y_sampling
+        } else {
+            0x11
+        };
         f.extend_from_slice(&[id[c] as u8, hv[c] as u8, if c == 0 { 0 } else { 1 }]);
     }
     let (hmax, vmax) = (y_sampling >> 4, y_sampling & 15);
@@ -1460,7 +1780,11 @@ pub fn make_jpeg(r: &mut Random, f: &mut Vec<u8>) {
     for t in 0..2 {
         f.push(t as u8);
         for k in 1..=16 {
-            f.push(if k == DC_LENGTH[dc_kind[t]] { DC[dc_kind[t]].len() as u8 } else { 0 });
+            f.push(if k == DC_LENGTH[dc_kind[t]] {
+                DC[dc_kind[t]].len() as u8
+            } else {
+                0
+            });
         }
         f.extend_from_slice(DC[dc_kind[t]]);
     }
@@ -1482,7 +1806,11 @@ pub fn make_jpeg(r: &mut Random, f: &mut Vec<u8>) {
         } else {
             let table = AC[ac_kind[t] as usize - 1];
             for k in 1..=16 {
-                f.push(if k == if ac_kind[t] == 1 { 3 } else { 4 } { table.len() as u8 } else { 0 });
+                f.push(if k == if ac_kind[t] == 1 { 3 } else { 4 } {
+                    table.len() as u8
+                } else {
+                    0
+                });
             }
             f.extend_from_slice(table);
         }
@@ -1561,7 +1889,11 @@ pub fn make_jpeg(r: &mut Random, f: &mut Vec<u8>) {
 
 /// Adds what a read came to: the size, the channels and the values, or the reason there are
 /// none. True when there were values.
-fn add_result<T: Copy, const N: usize>(hash: &mut Hash, result: &Result<rustbcx::stb_image::Loaded<T>, rustbcx::stb_image::LoadError>, bytes: fn(T) -> [u8; N]) -> bool {
+fn add_result<T: Copy, const N: usize>(
+    hash: &mut Hash,
+    result: &Result<rustbcx::stb_image::Loaded<T>, rustbcx::stb_image::LoadError>,
+    bytes: fn(T) -> [u8; N],
+) -> bool {
     match result {
         Ok(loaded) => {
             hash.add(&(loaded.x as u32).to_le_bytes());
@@ -1586,8 +1918,12 @@ fn add_result<T: Copy, const N: usize>(hash: &mut Hash, result: &Result<rustbcx:
 /// picture, a third of them then damaged; each asked its size and read at 8 bits a channel,
 /// every third at 16; and for every fourth, made-up data through the zlib decoder.
 pub fn stb_image(seed: u64, count: u32) -> String {
-    use rustbcx::stb_image::zlib::{zlib_decode_buffer, zlib_decode_malloc, zlib_decode_noheader_malloc};
-    use rustbcx::stb_image::{info_from_memory, is_16_bit_from_memory, load_16_from_memory, load_from_memory, LoadOptions};
+    use rustbcx::stb_image::zlib::{
+        zlib_decode_buffer, zlib_decode_malloc, zlib_decode_noheader_malloc,
+    };
+    use rustbcx::stb_image::{
+        info_from_memory, is_16_bit_from_memory, load_16_from_memory, load_from_memory, LoadOptions,
+    };
     use rustbcx::stb_image_write::{write_bmp, write_jpg, write_png, zlib_compress, WriteOptions};
     let mut r = Random { state: seed };
     let mut hash = Hash::new();
@@ -1600,11 +1936,23 @@ pub fn stb_image(seed: u64, count: u32) -> String {
         let kind = r.next() % 8;
         if kind < 3 {
             let p = make_picture(&mut r);
-            let options = WriteOptions { png_compression_level: 5 + (r.next() % 8) as i32, force_png_filter: (r.next() % 6) as i32 - 1, flip_vertically_on_write: false };
+            let options = WriteOptions {
+                png_compression_level: 5 + (r.next() % 8) as i32,
+                force_png_filter: (r.next() % 6) as i32 - 1,
+                flip_vertically_on_write: false,
+            };
             file = match kind {
                 0 => write_png(&p.bytes, p.stride, p.w, p.h, p.comp, &options),
                 1 => write_bmp(p.w, p.h, p.comp, &p.bytes, p.stride, &options),
-                _ => write_jpg(p.w, p.h, p.comp, &p.bytes, 1 + (r.next() % 100) as i32, p.stride, &options),
+                _ => write_jpg(
+                    p.w,
+                    p.h,
+                    p.comp,
+                    &p.bytes,
+                    1 + (r.next() % 100) as i32,
+                    p.stride,
+                    &options,
+                ),
             }
             .expect("a file");
         } else if kind < 5 {
@@ -1644,7 +1992,14 @@ pub fn stb_image(seed: u64, count: u32) -> String {
         match &info {
             Ok(info) => {
                 let number = info.kind.number() as u32;
-                for value in [number, info.x as u32, info.y as u32, info.comp as u32, u32::from(info.is_16_bit), u32::from(info.is_iphone_png)] {
+                for value in [
+                    number,
+                    info.x as u32,
+                    info.y as u32,
+                    info.comp as u32,
+                    u32::from(info.is_16_bit),
+                    u32::from(info.is_iphone_png),
+                ] {
                     hash.add(&value.to_le_bytes());
                 }
                 kinds[match number {
@@ -1663,7 +2018,12 @@ pub fn stb_image(seed: u64, count: u32) -> String {
         hash.add(&u32::from(is_16_bit_from_memory(&file)).to_le_bytes());
 
         let req = (r.next() % 5) as i32;
-        let options = LoadOptions { flip_vertically_on_load: r.next() % 4 == 0, unpremultiply_on_load: r.next() % 2 != 0, convert_iphone_png_to_rgb: r.next() % 2 != 0, ..LoadOptions::default() };
+        let options = LoadOptions {
+            flip_vertically_on_load: r.next() % 4 == 0,
+            unpremultiply_on_load: r.next() % 2 != 0,
+            convert_iphone_png_to_rgb: r.next() % 2 != 0,
+            ..LoadOptions::default()
+        };
         let req16 = (r.next() % 5) as i32;
         // (A damaged size can ask for more memory and time than there is; those are left.)
         if large {
@@ -1678,14 +2038,22 @@ pub fn stb_image(seed: u64, count: u32) -> String {
                 refused += 1;
             }
             if i % 3 == 0 {
-                add_result(&mut hash, &load_16_from_memory(&file, req16, &options), u16::to_le_bytes);
+                add_result(
+                    &mut hash,
+                    &load_16_from_memory(&file, req16, &options),
+                    u16::to_le_bytes,
+                );
             }
         }
 
         // The zlib decoder by itself.
         if i % 4 == 0 {
             let data = make_data(&mut r);
-            let mut z = if r.next() % 2 != 0 { zlib_compress(&data, 5 + (r.next() % 8) as i32) } else { rustbcx::miniz::compress(&data, (r.next() % 10) as i32) };
+            let mut z = if r.next() % 2 != 0 {
+                zlib_compress(&data, 5 + (r.next() % 8) as i32)
+            } else {
+                rustbcx::miniz::compress(&data, (r.next() % 10) as i32)
+            };
             if r.next() % 3 == 0 {
                 let bit = r.next() % (z.len() as u32 * 8);
                 z[(bit >> 3) as usize] ^= 1 << (bit & 7);
@@ -1762,7 +2130,11 @@ fn damage_stb_file(r: &mut Random, file: &mut Vec<u8>) {
 /// A pixel of a TGA file: an index into its palette (now and then one past its end), or bytes.
 fn tga_pixel(r: &mut Random, f: &mut Vec<u8>, indexed: bool, pal_len: u32, bytes: u32) {
     if indexed {
-        let index = if r.next() % 16 == 0 { r.next() % 400 } else { r.next() % pal_len };
+        let index = if r.next() % 16 == 0 {
+            r.next() % 400
+        } else {
+            r.next() % pal_len
+        };
         f.push(index as u8);
         if bytes == 2 {
             f.push((index >> 8) as u8);
@@ -1984,7 +2356,17 @@ impl Lzw<'_> {
 fn lzw_encode(f: &mut Vec<u8>, px: &[u8], mincs: u32, block_max: u32) {
     let clear = 1u32 << mincs;
     f.push(mincs as u8);
-    let mut z = Lzw { f, bits: 0, nbits: 0, block_max, block: Vec::new(), mincs, cs: mincs + 1, avail: clear + 2, hasold: false };
+    let mut z = Lzw {
+        f,
+        bits: 0,
+        nbits: 0,
+        block_max,
+        block: Vec::new(),
+        mincs,
+        cs: mincs + 1,
+        avail: clear + 2,
+        hasold: false,
+    };
     let mut dict = std::collections::HashMap::new();
     z.code(clear);
     let mut next = clear + 2;
@@ -2031,7 +2413,11 @@ pub fn make_gif(r: &mut Random, f: &mut Vec<u8>) {
     let gct = r.next() % 5 != 0;
     let gsize = r.next() % 8;
     let frames = 1 + r.next() % 3;
-    f.extend_from_slice(if r.next() % 2 != 0 { b"GIF89a" } else { b"GIF87a" });
+    f.extend_from_slice(if r.next() % 2 != 0 {
+        b"GIF89a"
+    } else {
+        b"GIF87a"
+    });
     p16le(f, big_w);
     p16le(f, big_h);
     let mut flags = (r.next() & 0x70) | gsize;
@@ -2069,9 +2455,17 @@ pub fn make_gif(r: &mut Random, f: &mut Vec<u8>) {
         }
         let x = r.next() % big_w;
         let y = r.next() % big_h;
-        let w = if r.next() % 20 == 0 { 0 } else { 1 + r.next() % (big_w - x) };
+        let w = if r.next() % 20 == 0 {
+            0
+        } else {
+            1 + r.next() % (big_w - x)
+        };
         let h = 1 + r.next() % (big_h - y);
-        let lct = if gct { r.next() % 3 == 0 } else { r.next() % 10 != 0 };
+        let lct = if gct {
+            r.next() % 3 == 0
+        } else {
+            r.next() % 10 != 0
+        };
         let lsize = r.next() % 8;
         let mut lflags = lsize;
         if lct {
@@ -2118,7 +2512,11 @@ pub fn make_gif(r: &mut Random, f: &mut Vec<u8>) {
                 px[i - 1]
             };
         }
-        let block_max = if r.next() % 4 == 0 { 1 + r.next() % 254 } else { 255 };
+        let block_max = if r.next() % 4 == 0 {
+            1 + r.next() % 254
+        } else {
+            255
+        };
         lzw_encode(f, &px, mincs, block_max);
     }
     if r.next() % 10 != 0 {
@@ -2180,7 +2578,11 @@ pub fn make_pnm(r: &mut Random, f: &mut Vec<u8>) {
     if ascii {
         for _ in 0..n {
             pnm_space(r, f);
-            let v = if r.next() % 20 == 0 { r.next() % (maxv + 100) } else { r.next() % (maxv + 1) };
+            let v = if r.next() % 20 == 0 {
+                r.next() % (maxv + 100)
+            } else {
+                r.next() % (maxv + 1)
+            };
             f.extend_from_slice(v.to_string().as_bytes());
         }
         f.push(b'\n');
@@ -2211,13 +2613,25 @@ fn hdr_byte(r: &mut Random, k: u32) -> u8 {
 /// A made-up Radiance HDR file: a header with lines to skip, then scanlines flat or run-length
 /// encoded.
 pub fn make_hdr(r: &mut Random, f: &mut Vec<u8>) {
-    let w = if r.next() % 2 != 0 { 1 + r.next() % 40 } else { 1 + r.next() % 300 };
+    let w = if r.next() % 2 != 0 {
+        1 + r.next() % 40
+    } else {
+        1 + r.next() % 300
+    };
     let h = 1 + r.next() % 20;
     let rle = r.next() % 4 != 0;
-    f.extend_from_slice(if r.next() % 4 == 0 { b"#?RGBE\n" } else { b"#?RADIANCE\n" });
+    f.extend_from_slice(if r.next() % 4 == 0 {
+        b"#?RGBE\n"
+    } else {
+        b"#?RADIANCE\n"
+    });
     let lines = r.next() % 3;
     for _ in 0..lines {
-        f.extend_from_slice(if r.next() % 2 != 0 { b"# made up\n" } else { b"EXPOSURE=1.0\n" });
+        f.extend_from_slice(if r.next() % 2 != 0 {
+            b"# made up\n"
+        } else {
+            b"EXPOSURE=1.0\n"
+        });
     }
     if r.next() % 30 != 0 {
         f.extend_from_slice(b"FORMAT=32-bit_rle_rgbe\n");
@@ -2271,7 +2685,10 @@ pub fn make_hdr(r: &mut Random, f: &mut Vec<u8>) {
 /// floats and every other at 16, with a made-up gamma and scale; GIFs and every fourth file
 /// also read as an animation.
 pub fn stb_image_more(seed: u64, count: u32) -> String {
-    use rustbcx::stb_image::{info_from_memory, is_16_bit_from_memory, is_hdr_from_memory, load_16_from_memory, load_from_memory, load_gif_from_memory, loadf_from_memory, LoadOptions};
+    use rustbcx::stb_image::{
+        info_from_memory, is_16_bit_from_memory, is_hdr_from_memory, load_16_from_memory,
+        load_from_memory, load_gif_from_memory, loadf_from_memory, LoadOptions,
+    };
     const GAMMA: [f32; 4] = [2.2, 1.0, 1.8, 2.4];
     const SCALE: [f32; 4] = [1.0, 0.5, 2.0, 4.0];
     let mut r = Random { state: seed };
@@ -2300,7 +2717,15 @@ pub fn stb_image_more(seed: u64, count: u32) -> String {
         match &info {
             Ok(info) => {
                 number = info.kind.number() as u32;
-                for value in [number, info.x as u32, info.y as u32, info.comp as u32, u32::from(info.is_16_bit), u32::from(info.is_hdr), u32::from(info.is_iphone_png)] {
+                for value in [
+                    number,
+                    info.x as u32,
+                    info.y as u32,
+                    info.comp as u32,
+                    u32::from(info.is_16_bit),
+                    u32::from(info.is_hdr),
+                    u32::from(info.is_iphone_png),
+                ] {
                     hash.add(&value.to_le_bytes());
                 }
                 large = u64::from(info.x as u32) * u64::from(info.y.unsigned_abs()) > 1 << 20;
@@ -2322,16 +2747,35 @@ pub fn stb_image_more(seed: u64, count: u32) -> String {
         if large {
             too_large += 1;
         } else {
-            let options = LoadOptions { flip_vertically_on_load: flip, hdr_to_ldr_gamma: gamma, hdr_to_ldr_scale: scale, ldr_to_hdr_gamma: gamma, ldr_to_hdr_scale: scale, ..LoadOptions::default() };
-            if add_result(&mut hash, &load_from_memory(&file, req, &options), |value: u8| [value]) {
+            let options = LoadOptions {
+                flip_vertically_on_load: flip,
+                hdr_to_ldr_gamma: gamma,
+                hdr_to_ldr_scale: scale,
+                ldr_to_hdr_gamma: gamma,
+                ldr_to_hdr_scale: scale,
+                ..LoadOptions::default()
+            };
+            if add_result(
+                &mut hash,
+                &load_from_memory(&file, req, &options),
+                |value: u8| [value],
+            ) {
                 loaded += 1;
             } else {
                 refused += 1;
             }
             if i % 2 == 0 {
-                add_result(&mut hash, &load_16_from_memory(&file, req16, &options), u16::to_le_bytes);
+                add_result(
+                    &mut hash,
+                    &load_16_from_memory(&file, req16, &options),
+                    u16::to_le_bytes,
+                );
             }
-            add_result(&mut hash, &loadf_from_memory(&file, reqf, &options), f32::to_le_bytes);
+            add_result(
+                &mut hash,
+                &loadf_from_memory(&file, reqf, &options),
+                f32::to_le_bytes,
+            );
             if number == 3 || i % 4 == 0 {
                 match load_gif_from_memory(&file, reqg, &options) {
                     Ok(gif) => {
@@ -2395,7 +2839,11 @@ pub fn zstd_decode(name: &str, count: u32, file: &[u8]) -> String {
                 hash.add(&[0]);
             }
         }
-        let parsed = if dict_size != 0 { Dictionary::parse(dict) } else { Ok(Dictionary::default()) };
+        let parsed = if dict_size != 0 {
+            Dictionary::parse(dict)
+        } else {
+            Ok(Dictionary::default())
+        };
         match parsed.and_then(|parsed| decompress_with_dict(frame, dst_len, &parsed)) {
             Ok(bytes) => {
                 hash.add(&(bytes.len() as u32).to_le_bytes());
@@ -2414,10 +2862,15 @@ pub fn zstd_decode(name: &str, count: u32, file: &[u8]) -> String {
             out += &format!("{name} {} {:016x}\n", i + 1, hash.value);
         }
     }
-    out + &format!("{name} bytes of frames: {frame_total}; decoded: {decoded}, refused: {refused}\n")
+    out + &format!(
+        "{name} bytes of frames: {frame_total}; decoded: {decoded}, refused: {refused}\n"
+    )
 }
 
-const ZSTD_WORDS: [&str; 16] = ["the", "texture", "block", "of", "and", "compress", "a", "level", "mip", "to", "pixels", "in", "format", "is", "cube", "data"];
+const ZSTD_WORDS: [&str; 16] = [
+    "the", "texture", "block", "of", "and", "compress", "a", "level", "mip", "to", "pixels", "in",
+    "format", "is", "cube", "data",
+];
 
 /// Made-up bytes of one of thirteen kinds, as `FillData` in `compare/dump_zstd_compress.c`
 /// makes them.
@@ -2596,7 +3049,9 @@ pub fn fill_data(r: &mut Random, buf: &mut [u8], kind: u32) {
     }
 }
 
-const ZSTD_LEVELS: [i32; 20] = [1, 1, 2, 2, 3, 3, 3, 0, 4, 4, -1, -1, -2, -3, -5, -7, -20, -100, -1000, -200000];
+const ZSTD_LEVELS: [i32; 20] = [
+    1, 1, 2, 2, 3, 3, 3, 0, 4, 4, -1, -1, -2, -3, -5, -7, -20, -100, -1000, -200000,
+];
 
 /// The `zstd_compress` dumps: made-up data compressed at the levels that are ported, as
 /// `compare/dump_zstd_compress.c` does with `ZSTD_compress`. With `check`, each frame is
@@ -2663,14 +3118,22 @@ pub fn zstd_compress_up_to(name: &str, seed: u64, count: u32, check: bool, highe
         fill_data(&mut r, &mut data, kind);
         let frame = rustbcx::zstd::compress(&data, level).expect("a level that is ported");
         if check {
-            assert_eq!(rustbcx::zstd::decompress(&frame, len).as_deref(), Ok(&data[..]), "frame {i} does not give its data back");
+            assert_eq!(
+                rustbcx::zstd::decompress(&frame, len).as_deref(),
+                Ok(&data[..]),
+                "frame {i} does not give its data back"
+            );
         }
         hash.add(&(len as u32).to_le_bytes());
         hash.add(&(level as u32).to_le_bytes());
         hash.add(&(frame.len() as u32).to_le_bytes());
         hash.add(&frame);
         if std::env::var_os("SHOW_EACH").is_some() {
-            eprintln!("frame {i}: {len} bytes at level {level}, {} bytes, {:016x}", frame.len(), hash.value);
+            eprintln!(
+                "frame {i}: {len} bytes at level {level}, {} bytes, {:016x}",
+                frame.len(),
+                hash.value
+            );
         }
         in_total += len as u64;
         frame_total += frame.len() as u64;
@@ -2678,7 +3141,9 @@ pub fn zstd_compress_up_to(name: &str, seed: u64, count: u32, check: bool, highe
             out.push_str(&format!("{name} {} {:016x}\n", i + 1, hash.value));
         }
     }
-    out.push_str(&format!("{name} bytes: {in_total}; bytes of frames: {frame_total}\n"));
+    out.push_str(&format!(
+        "{name} bytes: {in_total}; bytes of frames: {frame_total}\n"
+    ));
     out
 }
 
@@ -2715,7 +3180,11 @@ pub fn zstd_compress_long(name: &str, seed: u64, count: u32, check: bool) -> Str
         }
         let frame = rustbcx::zstd::compress(&data, level).expect("every level is ported");
         if check {
-            assert_eq!(rustbcx::zstd::decompress(&frame, len).as_deref(), Ok(&data[..]), "frame {i} does not give its data back");
+            assert_eq!(
+                rustbcx::zstd::decompress(&frame, len).as_deref(),
+                Ok(&data[..]),
+                "frame {i} does not give its data back"
+            );
         }
         hash.add(&(len as u32).to_le_bytes());
         hash.add(&(level as u32).to_le_bytes());
@@ -2725,7 +3194,9 @@ pub fn zstd_compress_long(name: &str, seed: u64, count: u32, check: bool) -> Str
         frame_total += frame.len() as u64;
         out.push_str(&format!("{name} {} {:016x}\n", i + 1, hash.value));
     }
-    out.push_str(&format!("{name} bytes: {in_total}; bytes of frames: {frame_total}\n"));
+    out.push_str(&format!(
+        "{name} bytes: {in_total}; bytes of frames: {frame_total}\n"
+    ));
     out
 }
 
@@ -2764,7 +3235,11 @@ fn make_literals(r: &mut Random, buf: &mut [u8]) {
         4 => {
             for byte in buf.iter_mut() {
                 let value = r.next();
-                *byte = if value % 7 == 0 { b' ' } else { b'a' + ((value >> 8) % 26) as u8 };
+                *byte = if value % 7 == 0 {
+                    b' '
+                } else {
+                    b'a' + ((value >> 8) % 26) as u8
+                };
             }
         }
         // a few low values, then noise
@@ -2772,7 +3247,11 @@ fn make_literals(r: &mut Random, buf: &mut [u8]) {
             let m = 2 + r.next() % 15;
             for (i, byte) in buf.iter_mut().enumerate() {
                 let value = r.next();
-                *byte = if i < len / 2 { (value % m) as u8 } else { (value >> 13) as u8 };
+                *byte = if i < len / 2 {
+                    (value % m) as u8
+                } else {
+                    (value >> 13) as u8
+                };
             }
         }
     }
@@ -2812,7 +3291,11 @@ impl Entropy {
         let mut pool = [0u8; 4096];
         let mut symbols = [0u8; 600];
         let r = &mut self.r;
-        let max = if r.next() % 4 == 0 { 1 + r.next() % 255 } else { 1 + r.next() % 52 };
+        let max = if r.next() % 4 == 0 {
+            1 + r.next() % 255
+        } else {
+            1 + r.next() % 52
+        };
         let shape = r.next() % 8;
         let big = 1 + r.next() % 5000;
         for s in 0..=max {
@@ -2862,7 +3345,11 @@ impl Entropy {
             count[0] += 2;
             total += 2;
         }
-        let mut table_log = if r.next() % 4 == 0 { r.next() % 14 } else { hooks::fse_optimal_table_log(5 + r.next() % 8, total, max) };
+        let mut table_log = if r.next() % 4 == 0 {
+            r.next() % 14
+        } else {
+            hooks::fse_optimal_table_log(5 + r.next() % 8, total, max)
+        };
         let low = r.next() & 1 != 0;
 
         let answer = hooks::fse_normalize_count(&mut norm, table_log, &count, total, max, low);
@@ -2907,7 +3394,13 @@ impl Entropy {
         if self.r.next() % 3 == 0 {
             room = self.r.next() % (n + 16);
         }
-        let size = hooks::fse_compress(&mut self.out[..room as usize], &symbols[..n as usize], &norm, max, table_log);
+        let size = hooks::fse_compress(
+            &mut self.out[..room as usize],
+            &symbols[..n as usize],
+            &norm,
+            max,
+            table_log,
+        );
         self.number(size as u32);
         self.hash.add(&self.out[..size]);
         self.outputs += 1;
@@ -2945,7 +3438,14 @@ impl Entropy {
         if self.r.next() % 3 == 0 {
             room = self.r.next() as usize % (len + 32);
         }
-        let answer = self.huf.compress(&mut self.out[..room], &self.lit, four, &mut repeat, prefer, suspect);
+        let answer = self.huf.compress(
+            &mut self.out[..room],
+            &self.lit,
+            four,
+            &mut repeat,
+            prefer,
+            suspect,
+        );
         self.number(entropy_code(&answer));
         self.number(repeat);
         match answer {
@@ -2982,7 +3482,9 @@ impl Entropy {
         if self.r.next() % 3 == 0 {
             room = self.r.next() as usize % (len + 16);
         }
-        let answer = self.literals.compress(&mut self.out[..room], &self.lit, strategy, disable, suspect);
+        let answer =
+            self.literals
+                .compress(&mut self.out[..room], &self.lit, strategy, disable, suspect);
         self.number(entropy_code(&answer));
         self.number(self.literals.next_repeat_mode());
         match answer {
@@ -3003,7 +3505,17 @@ impl Entropy {
 /// a time, as `compare/dump_zstd_entropy.c` asks the originals.
 pub fn zstd_entropy(seed: u64, count: u32) -> String {
     let name = "zstd_entropy";
-    let mut e = Entropy { r: Random { state: seed }, hash: Hash::new(), outputs: 0, errors: 0, lit: Vec::new(), out: vec![0u8; 150000], huf: Default::default(), fresh: false, literals: Default::default() };
+    let mut e = Entropy {
+        r: Random { state: seed },
+        hash: Hash::new(),
+        outputs: 0,
+        errors: 0,
+        lit: Vec::new(),
+        out: vec![0u8; 150000],
+        huf: Default::default(),
+        fresh: false,
+        literals: Default::default(),
+    };
     let mut out = String::new();
     for i in 0..count {
         let what = e.r.next() % 20;
@@ -3018,7 +3530,10 @@ pub fn zstd_entropy(seed: u64, count: u32) -> String {
             out.push_str(&format!("{name} {} {:016x}\n", i + 1, e.hash.value));
         }
     }
-    out.push_str(&format!("{name} outputs: {}, refused: {}\n", e.outputs, e.errors));
+    out.push_str(&format!(
+        "{name} outputs: {}, refused: {}\n",
+        e.outputs, e.errors
+    ));
     out
 }
 
@@ -3032,11 +3547,19 @@ pub fn tinyexr_left(header: &rustbcx::tinyexr::ExrHeader) -> bool {
     let w = i64::from(header.data_window.max_x) - i64::from(header.data_window.min_x) + 1;
     let h = i64::from(header.data_window.max_y) - i64::from(header.data_window.min_y) + 1;
     let (tile_x, tile_y) = (i64::from(header.tile_size_x), i64::from(header.tile_size_y));
-    let refused = w <= 0 || h <= 0 || w > limit || h > limit || (header.tiled != 0 && (tile_x > limit || tile_y > limit));
+    let refused = w <= 0
+        || h <= 0
+        || w > limit
+        || h > limit
+        || (header.tiled != 0 && (tile_x > limit || tile_y > limit));
     if refused {
         false
     } else if header.tiled != 0 {
-        w * h > (1 << 22) || tile_x <= 0 || tile_y <= 0 || tile_x * tile_y > (1 << 16) || (w / tile_x + 1) * (h / tile_y + 1) * tile_x * tile_y > (1 << 23)
+        w * h > (1 << 22)
+            || tile_x <= 0
+            || tile_y <= 0
+            || tile_x * tile_y > (1 << 16)
+            || (w / tile_x + 1) * (h / tile_y + 1) * tile_x * tile_y > (1 << 23)
     } else {
         w * h > (1 << 22) || header.chunk_count > (1 << 24)
     }
@@ -3049,7 +3572,8 @@ pub fn tinyexr_left(header: &rustbcx::tinyexr::ExrHeader) -> bool {
 pub fn tinyexr_read(name: &str, count: u32, file: &[u8]) -> String {
     use rustbcx::tinyexr::{self, ChannelData, ExrError, ExrImage};
     let mut hash = Hash::new();
-    let (mut headers, mut images, mut refused, mut left, mut as_rgba, mut stopped) = (0u32, 0u32, 0u32, 0u32, 0u32, 0u32);
+    let (mut headers, mut images, mut refused, mut left, mut as_rgba, mut stopped) =
+        (0u32, 0u32, 0u32, 0u32, 0u32, 0u32);
     let mut file_total = 0u64;
     let mut out = String::new();
     let mut at = 0;
@@ -3084,9 +3608,15 @@ pub fn tinyexr_read(name: &str, count: u32, file: &[u8]) -> String {
     }
     fn add_values(hash: &mut Hash, values: &ChannelData) {
         match values {
-            ChannelData::Uint(values) => values.iter().for_each(|value| hash.add(&value.to_le_bytes())),
-            ChannelData::Half(values) => values.iter().for_each(|value| hash.add(&value.to_le_bytes())),
-            ChannelData::Float(values) => values.iter().for_each(|value| hash.add(&value.to_bits().to_le_bytes())),
+            ChannelData::Uint(values) => values
+                .iter()
+                .for_each(|value| hash.add(&value.to_le_bytes())),
+            ChannelData::Half(values) => values
+                .iter()
+                .for_each(|value| hash.add(&value.to_le_bytes())),
+            ChannelData::Float(values) => values
+                .iter()
+                .for_each(|value| hash.add(&value.to_bits().to_le_bytes())),
         }
     }
     // The file as floats of red, green, blue and alpha.
@@ -3188,14 +3718,18 @@ pub fn tinyexr_read(name: &str, count: u32, file: &[u8]) -> String {
                             // (A damaged file that is not compressed is read with halves as
                             // floats: tinyexr reads its halves as halves without a look at
                             // the length of a block, past the end of the file.)
-                            if wish & 1 != 0 || (wish & 2 != 0 && header.compression_type == tinyexr::COMPRESSIONTYPE_NONE) {
+                            if wish & 1 != 0
+                                || (wish & 2 != 0
+                                    && header.compression_type == tinyexr::COMPRESSIONTYPE_NONE)
+                            {
                                 for c in 0..header.channels.len() {
                                     if header.pixel_types[c] == tinyexr::PIXELTYPE_HALF {
                                         header.requested_pixel_types[c] = tinyexr::PIXELTYPE_FLOAT;
                                     }
                                 }
                             }
-                            let loaded = tinyexr::load_exr_image_from_memory_as_tinyexr(&mut header, bytes);
+                            let loaded =
+                                tinyexr::load_exr_image_from_memory_as_tinyexr(&mut header, bytes);
                             match (wish & 4 != 0, loaded) {
                                 // Where tinyexr stops (it throws, and nothing catches it),
                                 // the port has to refuse the file.
@@ -3285,7 +3819,9 @@ fn exr_values(r: &mut Random, pixel_type: i32, w: i32, h: i32) -> rustbcx::tinye
         for x in 0..w as u32 {
             values.push(match kind {
                 0 => r.next(),
-                1 => first.wrapping_add(x.wrapping_mul(step_x)).wrapping_add(y.wrapping_mul(step_y)),
+                1 => first
+                    .wrapping_add(x.wrapping_mul(step_x))
+                    .wrapping_add(y.wrapping_mul(step_y)),
                 2 => first,
                 _ => {
                     let n = r.next();
@@ -3313,11 +3849,20 @@ fn exr_values(r: &mut Random, pixel_type: i32, w: i32, h: i32) -> rustbcx::tinye
 /// (`ZfpDouble`: less than nothing, which asks for most of four gigabits a block, only where
 /// there is more than one channel, `many`.)
 fn exr_zfp_double(r: &mut Random, tolerance: bool, many: bool) -> f64 {
-    const RATES: [f64; 16] = [0.5, 1.0, 2.0, 2.0, 4.0, 7.3, 8.0, 12.0, 16.0, 24.0, 31.9, 32.0, 40.0, 0.0, -0.01, 1e-9];
-    const TOLERANCES: [f64; 16] = [1e-3, 0.5, 1e-7, 0.01, 2.0, 1e-30, 0.0, -1.0, 1e-40, 1e30, 1e-320, 0.25, 3.0, 1e-5, 100.0, 1e300];
+    const RATES: [f64; 16] = [
+        0.5, 1.0, 2.0, 2.0, 4.0, 7.3, 8.0, 12.0, 16.0, 24.0, 31.9, 32.0, 40.0, 0.0, -0.01, 1e-9,
+    ];
+    const TOLERANCES: [f64; 16] = [
+        1e-3, 0.5, 1e-7, 0.01, 2.0, 1e-30, 0.0, -1.0, 1e-40, 1e30, 1e-320, 0.25, 3.0, 1e-5, 100.0,
+        1e300,
+    ];
     let kind = r.next() % 32;
     if kind < 16 {
-        return if tolerance { TOLERANCES[kind as usize] } else { RATES[kind as usize] };
+        return if tolerance {
+            TOLERANCES[kind as usize]
+        } else {
+            RATES[kind as usize]
+        };
     }
     if kind < 28 {
         return f64::from(r.next() % 400) / if tolerance { 1000.0 } else { 10.0 };
@@ -3383,7 +3928,11 @@ fn exr_image(r: &mut Random, small: bool, zfp: bool) -> ExrMade {
     }
     let mut header = ExrHeader::default();
     for c in 0..count {
-        let name = if names_kind == 2 { "Y" } else { NAMES[(start + c) as usize] };
+        let name = if names_kind == 2 {
+            "Y"
+        } else {
+            NAMES[(start + c) as usize]
+        };
         if zfp {
             // Floats, halves or integers handed over, stored as floats, now and then not.
             let kind = r.next() % 16;
@@ -3395,8 +3944,18 @@ fn exr_image(r: &mut Random, small: bool, zfp: bool) -> ExrMade {
                 tinyexr::PIXELTYPE_UINT
             };
             let as_half = r.next().is_multiple_of(24);
-            let file_type = if as_half && memory_type != tinyexr::PIXELTYPE_UINT { tinyexr::PIXELTYPE_HALF } else { tinyexr::PIXELTYPE_FLOAT };
-            header.channels.push(ChannelInfo { name: name.to_string(), pixel_type: file_type, x_sampling: 1, y_sampling: 1, p_linear: 0 });
+            let file_type = if as_half && memory_type != tinyexr::PIXELTYPE_UINT {
+                tinyexr::PIXELTYPE_HALF
+            } else {
+                tinyexr::PIXELTYPE_FLOAT
+            };
+            header.channels.push(ChannelInfo {
+                name: name.to_string(),
+                pixel_type: file_type,
+                x_sampling: 1,
+                y_sampling: 1,
+                p_linear: 0,
+            });
             header.pixel_types.push(memory_type);
             header.requested_pixel_types.push(file_type);
             continue;
@@ -3410,7 +3969,13 @@ fn exr_image(r: &mut Random, small: bool, zfp: bool) -> ExrMade {
         } else {
             tinyexr::PIXELTYPE_FLOAT
         };
-        header.channels.push(ChannelInfo { name: name.to_string(), pixel_type: file_type, x_sampling: 1, y_sampling: 1, p_linear: 0 });
+        header.channels.push(ChannelInfo {
+            name: name.to_string(),
+            pixel_type: file_type,
+            x_sampling: 1,
+            y_sampling: 1,
+            p_linear: 0,
+        });
         header.pixel_types.push(memory_type);
         header.requested_pixel_types.push(file_type);
     }
@@ -3449,20 +4014,40 @@ fn exr_image(r: &mut Random, small: bool, zfp: bool) -> ExrMade {
         } else {
             0
         };
-        let attribute = |name: &str, type_name: &str, value: Vec<u8>| Attribute { name: name.to_string(), type_name: type_name.to_string(), value };
+        let attribute = |name: &str, type_name: &str, value: Vec<u8>| Attribute {
+            name: name.to_string(),
+            type_name: type_name.to_string(),
+            value,
+        };
         if kind != 29 {
-            header.custom_attributes.push(attribute("zfpCompressionType", "uchar", vec![zfp_type as u8; if kind == 30 { 2 } else { 1 }]));
+            header.custom_attributes.push(attribute(
+                "zfpCompressionType",
+                "uchar",
+                vec![zfp_type as u8; if kind == 30 { 2 } else { 1 }],
+            ));
         }
         if kind != 31 {
             if zfp_type == 0 {
                 let rate = exr_zfp_double(r, false, header.channels.len() > 1);
-                header.custom_attributes.push(attribute("zfpCompressionRate", "double", rate.to_le_bytes().to_vec()));
+                header.custom_attributes.push(attribute(
+                    "zfpCompressionRate",
+                    "double",
+                    rate.to_le_bytes().to_vec(),
+                ));
             } else if zfp_type == 1 {
                 let precision = r.next() % 70;
-                header.custom_attributes.push(attribute("zfpCompressionPrecision", "int", precision.to_le_bytes().to_vec()));
+                header.custom_attributes.push(attribute(
+                    "zfpCompressionPrecision",
+                    "int",
+                    precision.to_le_bytes().to_vec(),
+                ));
             } else {
                 let tolerance = exr_zfp_double(r, true, header.channels.len() > 1);
-                header.custom_attributes.push(attribute("zfpCompressionTolerance", "double", tolerance.to_le_bytes().to_vec()));
+                header.custom_attributes.push(attribute(
+                    "zfpCompressionTolerance",
+                    "double",
+                    tolerance.to_le_bytes().to_vec(),
+                ));
             }
         }
         // (A file without them saves, at 2 bits a value, and is not read.)
@@ -3477,7 +4062,11 @@ fn exr_image(r: &mut Random, small: bool, zfp: bool) -> ExrMade {
         let attributes = 1 + r.next() % 3;
         for j in 0..attributes {
             let kind = r.next() % 16;
-            let mut attribute = Attribute { name: String::new(), type_name: "string".to_string(), value: Vec::new() };
+            let mut attribute = Attribute {
+                name: String::new(),
+                type_name: "string".to_string(),
+                value: Vec::new(),
+            };
             if kind < 6 {
                 attribute.name = if kind < 4 { "comment" } else { "owner" }.to_string();
                 attribute.value = vec![0; (r.next() % 20) as usize];
@@ -3485,7 +4074,13 @@ fn exr_image(r: &mut Random, small: bool, zfp: bool) -> ExrMade {
                     *byte = b'a' + (r.next() % 26) as u8;
                 }
             } else if kind < 10 {
-                const TYPES: [&str; 5] = ["scanlineimage", "tiledimage", "deeptile", "deepscanline", "other"];
+                const TYPES: [&str; 5] = [
+                    "scanlineimage",
+                    "tiledimage",
+                    "deeptile",
+                    "deepscanline",
+                    "other",
+                ];
                 attribute.name = "type".to_string();
                 attribute.value = TYPES[(r.next() % 5) as usize].as_bytes().to_vec();
                 plain = false;
@@ -3537,19 +4132,39 @@ fn exr_image(r: &mut Random, small: bool, zfp: bool) -> ExrMade {
         }
     };
 
-    let mut image = ExrImage { width, height, num_channels: count as i32, ..ExrImage::default() };
-    header.data_window = Box2i { min_x: 0, min_y: 0, max_x: width - 1, max_y: height - 1 };
+    let mut image = ExrImage {
+        width,
+        height,
+        num_channels: count as i32,
+        ..ExrImage::default()
+    };
+    header.data_window = Box2i {
+        min_x: 0,
+        min_y: 0,
+        max_x: width - 1,
+        max_y: height - 1,
+    };
     if !tiled {
         for c in 0..count as usize {
-            image.images.push(exr_values(r, header.pixel_types[c], width, height));
+            image
+                .images
+                .push(exr_values(r, header.pixel_types[c], width, height));
         }
         let lines = match header.compression_type {
-            tinyexr::COMPRESSIONTYPE_ZIP | tinyexr::COMPRESSIONTYPE_PXR24 | tinyexr::COMPRESSIONTYPE_ZFP => 16,
-            tinyexr::COMPRESSIONTYPE_PIZ | tinyexr::COMPRESSIONTYPE_B44 | tinyexr::COMPRESSIONTYPE_B44A => 32,
+            tinyexr::COMPRESSIONTYPE_ZIP
+            | tinyexr::COMPRESSIONTYPE_PXR24
+            | tinyexr::COMPRESSIONTYPE_ZFP => 16,
+            tinyexr::COMPRESSIONTYPE_PIZ
+            | tinyexr::COMPRESSIONTYPE_B44
+            | tinyexr::COMPRESSIONTYPE_B44A => 32,
             _ => 1,
         };
         set_chunk_count(&mut header, ((height + lines - 1) / lines) as u32);
-        return ExrMade { header, image, plain };
+        return ExrMade {
+            header,
+            image,
+            plain,
+        };
     }
 
     header.tiled = 1;
@@ -3560,7 +4175,11 @@ fn exr_image(r: &mut Random, small: bool, zfp: bool) -> ExrMade {
         header.tile_size_x = (header.tile_size_x + 3) & !3;
         header.tile_size_y = (header.tile_size_y + 3) & !3;
     }
-    header.tile_level_mode = if zfp && !r.next().is_multiple_of(4) { tinyexr::TILE_ONE_LEVEL } else { (r.next() % 3) as i32 };
+    header.tile_level_mode = if zfp && !r.next().is_multiple_of(4) {
+        tinyexr::TILE_ONE_LEVEL
+    } else {
+        (r.next() % 3) as i32
+    };
     header.tile_rounding_mode = (r.next() % 2) as i32;
     let without_last_level = r.next().is_multiple_of(16);
 
@@ -3569,7 +4188,14 @@ fn exr_image(r: &mut Random, small: bool, zfp: bool) -> ExrMade {
     let mut images = Vec::new();
     let mut chunks = 0u32;
     for level in &levels {
-        let mut level_image = ExrImage { level_x: level.level_x, level_y: level.level_y, width: level.width, height: level.height, num_channels: count as i32, ..ExrImage::default() };
+        let mut level_image = ExrImage {
+            level_x: level.level_x,
+            level_y: level.level_y,
+            width: level.width,
+            height: level.height,
+            num_channels: count as i32,
+            ..ExrImage::default()
+        };
         for t in 0..level.num_x_tiles * level.num_y_tiles {
             let (offset_x, offset_y) = (t % level.num_x_tiles, t / level.num_x_tiles);
             let mut tile = ExrTile {
@@ -3577,12 +4203,21 @@ fn exr_image(r: &mut Random, small: bool, zfp: bool) -> ExrMade {
                 offset_y,
                 level_x: level.level_x,
                 level_y: level.level_y,
-                width: header.tile_size_x.min(level.width - offset_x * header.tile_size_x),
-                height: header.tile_size_y.min(level.height - offset_y * header.tile_size_y),
+                width: header
+                    .tile_size_x
+                    .min(level.width - offset_x * header.tile_size_x),
+                height: header
+                    .tile_size_y
+                    .min(level.height - offset_y * header.tile_size_y),
                 images: Vec::new(),
             };
             for c in 0..count as usize {
-                tile.images.push(exr_values(r, header.pixel_types[c], header.tile_size_x, header.tile_size_y));
+                tile.images.push(exr_values(
+                    r,
+                    header.pixel_types[c],
+                    header.tile_size_x,
+                    header.tile_size_y,
+                ));
             }
             level_image.tiles.push(tile);
             chunks += 1;
@@ -3600,7 +4235,11 @@ fn exr_image(r: &mut Random, small: bool, zfp: bool) -> ExrMade {
         level.next_level = chain.take();
         chain = Some(Box::new(level));
     }
-    ExrMade { header, image: *chain.expect("a level"), plain }
+    ExrMade {
+        header,
+        image: *chain.expect("a level"),
+        plain,
+    }
 }
 
 /// The `tinyexr_write` dumps: made-up images saved, as `compare/dump_tinyexr.cc` saves them
@@ -3629,7 +4268,11 @@ pub fn tinyexr_write(name: &str, seed: u64, count: u32) -> String {
             Err(error) => {
                 not_saved += 1;
                 // (What tinyexr gives as the size: nothing, or one of its error numbers.)
-                let refusal = if error.code == tinyexr::ERROR_SERIALIZATION_FAILED { 0 } else { error.code };
+                let refusal = if error.code == tinyexr::ERROR_SERIALIZATION_FAILED {
+                    0
+                } else {
+                    error.code
+                };
                 hash.add(&refusal.to_le_bytes());
                 hash.add(error.message.as_bytes());
                 hash.add(&[0]);
@@ -3643,37 +4286,81 @@ pub fn tinyexr_write(name: &str, seed: u64, count: u32) -> String {
                 if made.plain {
                     // Read back from the file as the format has it, which is tinyexr's own
                     // unless a PXR24 or B44 block did not come out smaller than its pixels.
-                    let lossy_blocks = matches!(made.header.compression_type, tinyexr::COMPRESSIONTYPE_PXR24 | tinyexr::COMPRESSIONTYPE_B44 | tinyexr::COMPRESSIONTYPE_B44A);
-                    let file = if lossy_blocks { tinyexr::save_exr_image_to_memory(&made.image, &made.header).unwrap_or_else(|error| panic!("{name}: file {i} is not saved the other way: {error:?}")) } else { file };
-                    let version = tinyexr::parse_exr_version_from_memory(&file).unwrap_or_else(|code| panic!("{name}: file {i} is not read back: {code}"));
-                    let mut header = tinyexr::parse_exr_header_from_memory(&version, &file).unwrap_or_else(|error| panic!("{name}: file {i} is not read back: {error:?}"));
-                    let read = tinyexr::load_exr_image_from_memory(&mut header, &file).unwrap_or_else(|error| panic!("{name}: file {i} is not read back: {error:?}"));
+                    let lossy_blocks = matches!(
+                        made.header.compression_type,
+                        tinyexr::COMPRESSIONTYPE_PXR24
+                            | tinyexr::COMPRESSIONTYPE_B44
+                            | tinyexr::COMPRESSIONTYPE_B44A
+                    );
+                    let file = if lossy_blocks {
+                        tinyexr::save_exr_image_to_memory(&made.image, &made.header).unwrap_or_else(
+                            |error| {
+                                panic!("{name}: file {i} is not saved the other way: {error:?}")
+                            },
+                        )
+                    } else {
+                        file
+                    };
+                    let version = tinyexr::parse_exr_version_from_memory(&file)
+                        .unwrap_or_else(|code| panic!("{name}: file {i} is not read back: {code}"));
+                    let mut header = tinyexr::parse_exr_header_from_memory(&version, &file)
+                        .unwrap_or_else(|error| {
+                            panic!("{name}: file {i} is not read back: {error:?}")
+                        });
+                    let read = tinyexr::load_exr_image_from_memory(&mut header, &file)
+                        .unwrap_or_else(|error| {
+                            panic!("{name}: file {i} is not read back: {error:?}")
+                        });
                     // A channel stored as the type it had, by a compression that loses
                     // nothing of that type, comes back bit for bit.
                     let comp = made.header.compression_type;
                     let (mut ours, mut theirs) = (Some(&made.image), Some(&read));
                     while let (Some(wrote), Some(got)) = (ours, theirs) {
-                        assert_eq!((wrote.width, wrote.height, wrote.tiles.len()), (got.width, got.height, got.tiles.len()), "{name}: file {i}");
+                        assert_eq!(
+                            (wrote.width, wrote.height, wrote.tiles.len()),
+                            (got.width, got.height, got.tiles.len()),
+                            "{name}: file {i}"
+                        );
                         for c in 0..made.header.channels.len() {
                             let file_type = made.header.requested_pixel_types[c];
                             let kept = made.header.pixel_types[c] == file_type
                                 && comp != tinyexr::COMPRESSIONTYPE_ZFP
-                                && !(comp == tinyexr::COMPRESSIONTYPE_PXR24 && file_type == tinyexr::PIXELTYPE_FLOAT)
-                                && !((comp == tinyexr::COMPRESSIONTYPE_B44 || comp == tinyexr::COMPRESSIONTYPE_B44A) && file_type == tinyexr::PIXELTYPE_HALF);
+                                && !(comp == tinyexr::COMPRESSIONTYPE_PXR24
+                                    && file_type == tinyexr::PIXELTYPE_FLOAT)
+                                && !((comp == tinyexr::COMPRESSIONTYPE_B44
+                                    || comp == tinyexr::COMPRESSIONTYPE_B44A)
+                                    && file_type == tinyexr::PIXELTYPE_HALF);
                             if !kept {
                                 continue;
                             }
                             if wrote.tiles.is_empty() {
                                 for index in 0..(wrote.width * wrote.height) as usize {
-                                    assert_eq!(bits(&wrote.images[c], index), bits(&got.images[c], index), "{name}: file {i}, channel {c}, value {index}");
+                                    assert_eq!(
+                                        bits(&wrote.images[c], index),
+                                        bits(&got.images[c], index),
+                                        "{name}: file {i}, channel {c}, value {index}"
+                                    );
                                 }
                             }
                             for (tile, got_tile) in wrote.tiles.iter().zip(&got.tiles) {
-                                assert_eq!((tile.width, tile.height, tile.offset_x, tile.offset_y), (got_tile.width, got_tile.height, got_tile.offset_x, got_tile.offset_y), "{name}: file {i}");
+                                assert_eq!(
+                                    (tile.width, tile.height, tile.offset_x, tile.offset_y),
+                                    (
+                                        got_tile.width,
+                                        got_tile.height,
+                                        got_tile.offset_x,
+                                        got_tile.offset_y
+                                    ),
+                                    "{name}: file {i}"
+                                );
                                 for y in 0..tile.height as usize {
                                     for x in 0..tile.width as usize {
                                         let index = y * made.header.tile_size_x as usize + x;
-                                        assert_eq!(bits(&tile.images[c], index), bits(&got_tile.images[c], index), "{name}: file {i}, channel {c}, a tile's value {index}");
+                                        assert_eq!(
+                                            bits(&tile.images[c], index),
+                                            bits(&got_tile.images[c], index),
+                                            "{name}: file {i}, channel {c}, a tile's value {index}"
+                                        );
                                     }
                                 }
                             }
@@ -3681,7 +4368,10 @@ pub fn tinyexr_write(name: &str, seed: u64, count: u32) -> String {
                         ours = wrote.next_level.as_deref();
                         theirs = got.next_level.as_deref();
                     }
-                    assert!(ours.is_none() && theirs.is_none(), "{name}: file {i} comes back with other levels");
+                    assert!(
+                        ours.is_none() && theirs.is_none(),
+                        "{name}: file {i} comes back with other levels"
+                    );
                 }
             }
         }
@@ -3694,7 +4384,11 @@ pub fn tinyexr_write(name: &str, seed: u64, count: u32) -> String {
             let width = 1 + (r.next() % 40) as i32;
             let height = 1 + (r.next() % 40) as i32;
             let as_halves = r.next() % 2 != 0;
-            let ChannelData::Float(floats) = exr_values(&mut r, tinyexr::PIXELTYPE_FLOAT, width * components, height) else { unreachable!() };
+            let ChannelData::Float(floats) =
+                exr_values(&mut r, tinyexr::PIXELTYPE_FLOAT, width * components, height)
+            else {
+                unreachable!()
+            };
             match tinyexr::save_exr_to_memory(&floats, width, height, components, as_halves) {
                 Ok(file) => {
                     short_way += 1;
@@ -3709,7 +4403,11 @@ pub fn tinyexr_write(name: &str, seed: u64, count: u32) -> String {
                             for k in 0..components as usize {
                                 // (One channel comes back as all four.)
                                 let wrote = floats[pixel * components as usize + k];
-                                assert_eq!(wrote.to_bits(), rgba[pixel * 4 + k].to_bits(), "{name}: file {i}, saved the short way, pixel {pixel}");
+                                assert_eq!(
+                                    wrote.to_bits(),
+                                    rgba[pixel * 4 + k].to_bits(),
+                                    "{name}: file {i}, saved the short way, pixel {pixel}"
+                                );
                             }
                         }
                     }
@@ -3800,13 +4498,23 @@ fn exr_add_header(hash: &mut Hash, header: &rustbcx::tinyexr::ExrHeader) {
 }
 
 /// An image and its levels, as `AddImage` puts them.
-fn exr_add_image(hash: &mut Hash, image: &rustbcx::tinyexr::ExrImage, header: &rustbcx::tinyexr::ExrHeader) {
+fn exr_add_image(
+    hash: &mut Hash,
+    image: &rustbcx::tinyexr::ExrImage,
+    header: &rustbcx::tinyexr::ExrHeader,
+) {
     use rustbcx::tinyexr::ChannelData;
     fn add_values(hash: &mut Hash, values: &ChannelData) {
         match values {
-            ChannelData::Uint(values) => values.iter().for_each(|value| hash.add(&value.to_le_bytes())),
-            ChannelData::Half(values) => values.iter().for_each(|value| hash.add(&value.to_le_bytes())),
-            ChannelData::Float(values) => values.iter().for_each(|value| hash.add(&value.to_bits().to_le_bytes())),
+            ChannelData::Uint(values) => values
+                .iter()
+                .for_each(|value| hash.add(&value.to_le_bytes())),
+            ChannelData::Half(values) => values
+                .iter()
+                .for_each(|value| hash.add(&value.to_le_bytes())),
+            ChannelData::Float(values) => values
+                .iter()
+                .for_each(|value| hash.add(&value.to_bits().to_le_bytes())),
         }
     }
     for &pixel_type in &header.pixel_types {
@@ -3847,7 +4555,15 @@ fn exr_add_image(hash: &mut Hash, image: &rustbcx::tinyexr::ExrImage, header: &r
 /// 0 and the hash of what was read. `theirs` is what the other program found; the flags.
 fn exr_add_outcome(hash: &mut Hash, end: ExrEnd, read: &Hash, theirs: u32) -> u32 {
     let refused = end == ExrEnd::PastTheEnd || (theirs == 2 && end == ExrEnd::Error);
-    let flags = if refused { if theirs != 0 { theirs } else { 1 } } else { 0 };
+    let flags = if refused {
+        if theirs != 0 {
+            theirs
+        } else {
+            1
+        }
+    } else {
+        0
+    };
     hash.add(&flags.to_le_bytes());
     if flags == 0 {
         hash.add(&read.value.to_le_bytes());
@@ -3882,14 +4598,15 @@ fn exr_read_parts(hash: &mut Hash, bytes: &[u8], wish: u32) -> ExrEnd {
     exr_add_number(hash, i32::from(version.long_name));
     exr_add_number(hash, i32::from(version.non_image));
     exr_add_number(hash, i32::from(version.multipart));
-    let mut headers = match tinyexr::parse_exr_multipart_header_from_memory_as_tinyexr(&version, bytes) {
-        Err(error) if error.message == PAST_THE_END => return ExrEnd::PastTheEnd,
-        Err(error) => {
-            exr_add_error(hash, error.code, &error.message);
-            return ExrEnd::Error;
-        }
-        Ok(headers) => headers,
-    };
+    let mut headers =
+        match tinyexr::parse_exr_multipart_header_from_memory_as_tinyexr(&version, bytes) {
+            Err(error) if error.message == PAST_THE_END => return ExrEnd::PastTheEnd,
+            Err(error) => {
+                exr_add_error(hash, error.code, &error.message);
+                return ExrEnd::Error;
+            }
+            Ok(headers) => headers,
+        };
     exr_add_error(hash, 0, "");
     exr_add_number(hash, headers.len() as i32);
     let mut left = headers.len() > 64;
@@ -3946,7 +4663,11 @@ pub fn tinyexr_parts(name: &str, seed: u64, count: u32, file: &[u8]) -> String {
         value
     };
     for i in 0..count {
-        let num_parts = if r.next().is_multiple_of(10) { 1 } else { 2 + r.next() % 3 };
+        let num_parts = if r.next().is_multiple_of(10) {
+            1
+        } else {
+            2 + r.next() % 3
+        };
         let mut parts = Vec::new();
         let mut names: Vec<String> = Vec::new();
         for p in 0..num_parts {
@@ -3964,11 +4685,18 @@ pub fn tinyexr_parts(name: &str, seed: u64, count: u32, file: &[u8]) -> String {
         for (made, part_name) in parts.iter_mut().zip(&names) {
             made.header.name = part_name.clone();
         }
-        let list: Vec<_> = parts.iter().map(|made| (&made.image, &made.header)).collect();
+        let list: Vec<_> = parts
+            .iter()
+            .map(|made| (&made.image, &made.header))
+            .collect();
         match tinyexr::save_exr_multipart_image_to_memory_as_tinyexr(&list) {
             Err(error) => {
                 not_saved += 1;
-                let refusal = if error.code == tinyexr::ERROR_SERIALIZATION_FAILED { 0 } else { error.code };
+                let refusal = if error.code == tinyexr::ERROR_SERIALIZATION_FAILED {
+                    0
+                } else {
+                    error.code
+                };
                 hash.add(&refusal.to_le_bytes());
                 hash.add(error.message.as_bytes());
                 hash.add(&[0]);
@@ -4175,7 +4903,32 @@ pub fn libdeflate(seed: u64, count: u32) -> String {
 /// (`dwa_read`).
 pub fn dwa(what: &str, seed: u64, count: u32) -> String {
     use rustbcx::dwa::{compress, uncompress, Channel};
-    const NAMES: [&str; 24] = ["R", "G", "B", "A", "Y", "BY", "RY", "Z", "r", "g", "b", "a", "red", "green", "blue", "diffuse.R", "diffuse.G", "diffuse.B", "diffuse.A", "spec.R", "spec.B", "left.Y", "mask", "N.x"];
+    const NAMES: [&str; 24] = [
+        "R",
+        "G",
+        "B",
+        "A",
+        "Y",
+        "BY",
+        "RY",
+        "Z",
+        "r",
+        "g",
+        "b",
+        "a",
+        "red",
+        "green",
+        "blue",
+        "diffuse.R",
+        "diffuse.G",
+        "diffuse.B",
+        "diffuse.A",
+        "spec.R",
+        "spec.B",
+        "left.Y",
+        "mask",
+        "N.x",
+    ];
     let read = what == "dwa_read";
     let mut r = Random { state: seed };
     let mut hash = Hash::new();
@@ -4252,7 +5005,13 @@ pub fn dwa(what: &str, seed: u64, count: u32) -> String {
         let mut planes: Vec<Vec<u8>> = Vec::new();
         for _ in 0..n {
             let t = r.next() % 10;
-            let pixel_type = if t < 6 { 1 } else if t < 9 { 2 } else { 0 };
+            let pixel_type = if t < 6 {
+                1
+            } else if t < 9 {
+                2
+            } else {
+                0
+            };
             let lin = r.next() % 8 == 0;
             let bpe = if pixel_type == 1 { 2 } else { 4 };
             let kind = r.next() % 8;
@@ -4292,7 +5051,12 @@ pub fn dwa(what: &str, seed: u64, count: u32) -> String {
                         continue;
                     }
                     let f = match kind {
-                        0 => ((x as i32 * a as i32 + y as i32 * b as i32 + c as i32) as u32 % 4096) as f32 / 1000.0 - 1.0,
+                        0 => {
+                            ((x as i32 * a as i32 + y as i32 * b as i32 + c as i32) as u32 % 4096)
+                                as f32
+                                / 1000.0
+                                - 1.0
+                        }
                         1 => (r.next() % 20000) as f32 / 5000.0 - 2.0,
                         2 => a as f32 / 100.0,
                         3 => {
@@ -4323,7 +5087,13 @@ pub fn dwa(what: &str, seed: u64, count: u32) -> String {
             linear.push(lin);
             planes.push(plane);
         }
-        let channels: Vec<Channel> = (0..n).map(|c| Channel { name: NAMES[names[c]], pixel_type: types[c], p_linear: linear[c] }).collect();
+        let channels: Vec<Channel> = (0..n)
+            .map(|c| Channel {
+                name: NAMES[names[c]],
+                pixel_type: types[c],
+                p_linear: linear[c],
+            })
+            .collect();
 
         // RawBlock
         let mut raw = Vec::new();
@@ -4334,7 +5104,14 @@ pub fn dwa(what: &str, seed: u64, count: u32) -> String {
             }
         }
 
-        let mut block = compress(&raw, &channels, width, lines, level, compression == 8 && tiled);
+        let mut block = compress(
+            &raw,
+            &channels,
+            width,
+            lines,
+            level,
+            compression == 8 && tiled,
+        );
         raw_total += raw.len() as u64;
         block_total += block.len() as u64;
         stored += u64::from(block.len() == raw.len());
@@ -4364,8 +5141,12 @@ pub fn dwa(what: &str, seed: u64, count: u32) -> String {
             let size = block.len();
             let room = size + 400;
             block.resize(room, 0);
-            let put = |data: &mut [u8], i: usize, value: u64| data[8 * i..8 * i + 8].copy_from_slice(&value.to_le_bytes());
-            let get = |data: &[u8], i: usize| u64::from_le_bytes(data[8 * i..8 * i + 8].try_into().unwrap());
+            let put = |data: &mut [u8], i: usize, value: u64| {
+                data[8 * i..8 * i + 8].copy_from_slice(&value.to_le_bytes())
+            };
+            let get = |data: &[u8], i: usize| {
+                u64::from_le_bytes(data[8 * i..8 * i + 8].try_into().unwrap())
+            };
             let size = match r.next() % 11 {
                 10 => 'rules: {
                     if size < 90 || get(&block, 0) != 2 {
@@ -4418,7 +5199,9 @@ pub fn dwa(what: &str, seed: u64, count: u32) -> String {
                         let i = (r.next() % 11) as usize;
                         let value = match r.next() % 3 {
                             0 => u64::from(r.next() % 2000),
-                            1 => get(&block, i).wrapping_add(u64::from(r.next() % 5)).wrapping_sub(2),
+                            1 => get(&block, i)
+                                .wrapping_add(u64::from(r.next() % 5))
+                                .wrapping_sub(2),
                             _ => {
                                 let low = u64::from(r.next());
                                 low | (u64::from(r.next()) << 32)

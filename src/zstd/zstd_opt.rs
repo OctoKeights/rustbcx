@@ -16,7 +16,9 @@
 use super::common::{highbit32, read32};
 use super::hist;
 use super::zstd_compress::{
-    count, get_lowest_match_index, hash3_ptr, hash_ptr, ll_code, ml_code, offset_to_offbase, MatchState, OptMatch, OptState, Optimal, PriceType, RawSeq, RawSeqPos, SeqStore, update_rep, ZSTD_OPT_NUM,
+    count, get_lowest_match_index, hash3_ptr, hash_ptr, ll_code, ml_code, offset_to_offbase,
+    update_rep, MatchState, OptMatch, OptState, Optimal, PriceType, RawSeq, RawSeqPos, SeqStore,
+    ZSTD_OPT_NUM,
 };
 use super::zstd_compress_sequences::{LL_BITS, MAX_LL, MAX_ML, MAX_OFF, ML_BITS};
 
@@ -202,7 +204,9 @@ fn lit_length_price(lit_length: u32, opt: &OptState, opt_level: i32) -> u32 {
 
     // dynamic statistics
     let ll_code = ll_code(lit_length);
-    (u32::from(LL_BITS[ll_code as usize]) * BITCOST_MULTIPLIER).wrapping_add(opt.lit_length_sum_base_price).wrapping_sub(weight(opt.lit_length_freq[ll_code as usize], opt_level))
+    (u32::from(LL_BITS[ll_code as usize]) * BITCOST_MULTIPLIER)
+        .wrapping_add(opt.lit_length_sum_base_price)
+        .wrapping_sub(weight(opt.lit_length_freq[ll_code as usize], opt_level))
 }
 
 /// `ZSTD_getMatchPrice`: the cost of the match part (offset + matchLength) of a sequence.
@@ -214,11 +218,15 @@ fn get_match_price(off_base: u32, match_length: u32, opt: &OptState, opt_level: 
 
     if opt.price_type == PriceType::Predef {
         // fixed scheme, does not use statistics
-        return weight(ml_base, opt_level) + ((16 + off_code) * BITCOST_MULTIPLIER); // emulated offset cost
+        return weight(ml_base, opt_level) + ((16 + off_code) * BITCOST_MULTIPLIER);
+        // emulated offset cost
     }
 
     // dynamic statistics
-    let mut price = (off_code * BITCOST_MULTIPLIER).wrapping_add(opt.off_code_sum_base_price.wrapping_sub(weight(opt.off_code_freq[off_code as usize], opt_level)));
+    let mut price = (off_code * BITCOST_MULTIPLIER).wrapping_add(
+        opt.off_code_sum_base_price
+            .wrapping_sub(weight(opt.off_code_freq[off_code as usize], opt_level)),
+    );
     if opt_level < 2 && off_code >= 20 {
         price = price.wrapping_add((off_code - 19) * 2 * BITCOST_MULTIPLIER); // handicap for long distance offsets, favor decompression speed
     }
@@ -226,7 +234,12 @@ fn get_match_price(off_base: u32, match_length: u32, opt: &OptState, opt_level: 
     // match Length
     {
         let ml_code = ml_code(ml_base);
-        price = price.wrapping_add((u32::from(ML_BITS[ml_code as usize]) * BITCOST_MULTIPLIER).wrapping_add(opt.match_length_sum_base_price.wrapping_sub(weight(opt.match_length_freq[ml_code as usize], opt_level))));
+        price = price.wrapping_add(
+            (u32::from(ML_BITS[ml_code as usize]) * BITCOST_MULTIPLIER).wrapping_add(
+                opt.match_length_sum_base_price
+                    .wrapping_sub(weight(opt.match_length_freq[ml_code as usize], opt_level)),
+            ),
+        );
     }
 
     price.wrapping_add(BITCOST_MULTIPLIER / 5) // heuristic : make matches a bit more costly to favor less sequences -> faster decompression speed
@@ -282,7 +295,12 @@ fn new_rep(mut rep: [u32; 3], off_base: u32, ll0: bool) -> [u32; 3] {
 }
 
 /// `ZSTD_insertAndFindFirstIndexHash3`: update hashTable3 up to ip (excluded).
-fn insert_and_find_first_index_hash3(ms: &mut MatchState, next_to_update3: &mut u32, src: &[u8], ip: usize) -> u32 {
+fn insert_and_find_first_index_hash3(
+    ms: &mut MatchState,
+    next_to_update3: &mut u32,
+    src: &[u8],
+    ip: usize,
+) -> u32 {
     let hash_log3 = ms.hash_log3;
     let base = ms.window.base as usize;
     let mut idx = *next_to_update3;
@@ -304,7 +322,14 @@ const NOWHERE: usize = usize::MAX;
 /// `ZSTD_insertBt1`: add one or multiple positions to the tree; `ip` is assumed to be no
 /// further than `iend - 8`, and `target` is where the update goes to. The answer is the
 /// number of positions added.
-fn insert_bt1(ms: &mut MatchState, src: &[u8], ip: usize, iend: usize, target: u32, mls: u32) -> u32 {
+fn insert_bt1(
+    ms: &mut MatchState,
+    src: &[u8],
+    ip: usize,
+    iend: usize,
+    target: u32,
+    mls: u32,
+) -> u32 {
     let hash_log = ms.cparams.hash_log;
     let h = hash_ptr(src, ip, hash_log, mls);
     let bt_log = ms.cparams.chain_log - 1;
@@ -400,7 +425,18 @@ fn update_tree_internal(ms: &mut MatchState, src: &[u8], ip: usize, iend: usize,
 /// tree, each longer than the one before; with `ip` put into the tree. The answer is how
 /// many there are, in `matches`.
 #[allow(clippy::too_many_arguments)]
-fn insert_bt_and_get_all_matches(matches: &mut [OptMatch], ms: &mut MatchState, next_to_update3: &mut u32, src: &[u8], ip: usize, i_limit: usize, rep: &[u32; 3], ll0: bool, length_to_beat: u32, mls: u32) -> u32 {
+fn insert_bt_and_get_all_matches(
+    matches: &mut [OptMatch],
+    ms: &mut MatchState,
+    next_to_update3: &mut u32,
+    src: &[u8],
+    ip: usize,
+    i_limit: usize,
+    rep: &[u32; 3],
+    ll0: bool,
+    length_to_beat: u32,
+    mls: u32,
+) -> u32 {
     let sufficient_len = ms.cparams.target_length.min(ZSTD_OPT_NUM - 1);
     let base = ms.window.base as usize;
     let curr = (ip + base) as u32;
@@ -428,20 +464,37 @@ fn insert_bt_and_get_all_matches(matches: &mut [OptMatch], ms: &mut MatchState, 
         let ll0 = u32::from(ll0);
         let last_r = ZSTD_REP_NUM + ll0;
         for rep_code in ll0..last_r {
-            let rep_offset = if rep_code == ZSTD_REP_NUM { rep[0].wrapping_sub(1) } else { rep[rep_code as usize] };
+            let rep_offset = if rep_code == ZSTD_REP_NUM {
+                rep[0].wrapping_sub(1)
+            } else {
+                rep[rep_code as usize]
+            };
             let rep_index = curr.wrapping_sub(rep_offset);
             let mut rep_len = 0u32;
-            if rep_offset.wrapping_sub(1) /* intentional overflow, discards 0 and -1 */ < curr - dict_limit {
+            if rep_offset.wrapping_sub(1) /* intentional overflow, discards 0 and -1 */ < curr - dict_limit
+            {
                 // equivalent to `curr > repIndex >= dictLimit`
-                if rep_index >= window_low && read_minmatch(src, ip, min_match) == read_minmatch(src, ip - rep_offset as usize, min_match) {
-                    rep_len = count(src, ip + min_match as usize, ip + min_match as usize - rep_offset as usize, i_limit) as u32 + min_match;
+                if rep_index >= window_low
+                    && read_minmatch(src, ip, min_match)
+                        == read_minmatch(src, ip - rep_offset as usize, min_match)
+                {
+                    rep_len = count(
+                        src,
+                        ip + min_match as usize,
+                        ip + min_match as usize - rep_offset as usize,
+                        i_limit,
+                    ) as u32
+                        + min_match;
                 }
             }
             // (Else repIndex < dictLimit || repIndex >= curr: there is no dictionary.)
             // save longer solution
             if rep_len as usize > best_length {
                 best_length = rep_len as usize;
-                matches[mnum as usize] = OptMatch { off: rep_code - ll0 + 1, len: rep_len }; // expect value between 1 and 3
+                matches[mnum as usize] = OptMatch {
+                    off: rep_code - ll0 + 1,
+                    len: rep_len,
+                }; // expect value between 1 and 3
                 mnum += 1;
                 if rep_len > sufficient_len || ip + rep_len as usize == i_limit {
                     // best possible
@@ -462,7 +515,10 @@ fn insert_bt_and_get_all_matches(matches: &mut [OptMatch], ms: &mut MatchState, 
             if mlen >= mls as usize {
                 // == 3 > bestLength
                 best_length = mlen;
-                matches[0] = OptMatch { off: offset_to_offbase(curr - match_index3), len: mlen as u32 };
+                matches[0] = OptMatch {
+                    off: offset_to_offbase(curr - match_index3),
+                    len: mlen as u32,
+                };
                 mnum = 1;
                 if mlen > sufficient_len as usize || ip + mlen == i_limit {
                     // best possible length
@@ -488,7 +544,10 @@ fn insert_bt_and_get_all_matches(matches: &mut [OptMatch], ms: &mut MatchState, 
                 match_end_idx = match_index + match_length as u32;
             }
             best_length = match_length;
-            matches[mnum as usize] = OptMatch { off: offset_to_offbase(curr - match_index), len: match_length as u32 };
+            matches[mnum as usize] = OptMatch {
+                off: offset_to_offbase(curr - match_index),
+                len: match_length as u32,
+            };
             mnum += 1;
             if match_length > ZSTD_OPT_NUM as usize || ip + match_length == i_limit {
                 // equal : no way to know if inf or sup
@@ -533,12 +592,34 @@ fn insert_bt_and_get_all_matches(matches: &mut [OptMatch], ms: &mut MatchState, 
 /// `ZSTD_btGetAllMatches_internal`, with no dictionary.
 #[allow(clippy::too_many_arguments)]
 #[inline]
-fn bt_get_all_matches(matches: &mut [OptMatch], ms: &mut MatchState, next_to_update3: &mut u32, src: &[u8], ip: usize, i_high_limit: usize, rep: &[u32; 3], ll0: bool, length_to_beat: u32, mls: u32) -> u32 {
+fn bt_get_all_matches(
+    matches: &mut [OptMatch],
+    ms: &mut MatchState,
+    next_to_update3: &mut u32,
+    src: &[u8],
+    ip: usize,
+    i_high_limit: usize,
+    rep: &[u32; 3],
+    ll0: bool,
+    length_to_beat: u32,
+    mls: u32,
+) -> u32 {
     if ip + (ms.window.base as usize) < ms.next_to_update as usize {
         return 0; // skipped area
     }
     update_tree_internal(ms, src, ip, i_high_limit, mls);
-    insert_bt_and_get_all_matches(matches, ms, next_to_update3, src, ip, i_high_limit, rep, ll0, length_to_beat, mls)
+    insert_bt_and_get_all_matches(
+        matches,
+        ms,
+        next_to_update3,
+        src,
+        ip,
+        i_high_limit,
+        rep,
+        ll0,
+        length_to_beat,
+        mls,
+    )
 }
 
 // ---------- LDM helper functions ----------
@@ -577,7 +658,11 @@ impl OptLdm<'_> {
 
     /// `ZSTD_opt_getNextMatchAndUpdateSeqStore`: the beginning and end of the next match in
     /// the current block.
-    fn get_next_match_and_update_seq_store(&mut self, curr_pos_in_block: u32, block_bytes_remaining: u32) {
+    fn get_next_match_and_update_seq_store(
+        &mut self,
+        curr_pos_in_block: u32,
+        block_bytes_remaining: u32,
+    ) {
         // Setting match end position to MAX to ensure we never use an LDM during this block.
         if self.seq.is_empty() || self.at.pos >= self.seq.len() {
             self.start_pos_in_block = u32::MAX;
@@ -589,8 +674,16 @@ impl OptLdm<'_> {
         let curr_seq = self.seq[self.at.pos];
         let curr_block_end_pos = curr_pos_in_block + block_bytes_remaining;
         let pos_in_sequence = self.at.pos_in_sequence as u32;
-        let literals_bytes_remaining = if pos_in_sequence < curr_seq.lit_length { curr_seq.lit_length - pos_in_sequence } else { 0 };
-        let match_bytes_remaining = if literals_bytes_remaining == 0 { curr_seq.match_length - (pos_in_sequence - curr_seq.lit_length) } else { curr_seq.match_length };
+        let literals_bytes_remaining = if pos_in_sequence < curr_seq.lit_length {
+            curr_seq.lit_length - pos_in_sequence
+        } else {
+            0
+        };
+        let match_bytes_remaining = if literals_bytes_remaining == 0 {
+            curr_seq.match_length - (pos_in_sequence - curr_seq.lit_length)
+        } else {
+            curr_seq.match_length
+        };
 
         // If there are more literal bytes than bytes remaining in block, no ldm is possible.
         if literals_bytes_remaining >= block_bytes_remaining {
@@ -612,31 +705,58 @@ impl OptLdm<'_> {
             self.skip_raw_seq_store_bytes((curr_block_end_pos - curr_pos_in_block) as usize);
         } else {
             // Consume nb of bytes equal to size of sequence left.
-            self.skip_raw_seq_store_bytes((literals_bytes_remaining + match_bytes_remaining) as usize);
+            self.skip_raw_seq_store_bytes(
+                (literals_bytes_remaining + match_bytes_remaining) as usize,
+            );
         }
     }
 
     /// `ZSTD_optLdm_maybeAddMatch`: adds a match if it's long enough, keeping the order of
     /// `matches`.
-    fn maybe_add_match(&self, matches: &mut [OptMatch], nb_matches: &mut u32, curr_pos_in_block: u32, min_match: u32) {
+    fn maybe_add_match(
+        &self,
+        matches: &mut [OptMatch],
+        nb_matches: &mut u32,
+        curr_pos_in_block: u32,
+        min_match: u32,
+    ) {
         let pos_diff = curr_pos_in_block.wrapping_sub(self.start_pos_in_block);
         // Note: ZSTD_match_t actually contains offBase and matchLength (before subtracting MINMATCH).
-        let candidate_match_length = self.end_pos_in_block.wrapping_sub(self.start_pos_in_block).wrapping_sub(pos_diff);
+        let candidate_match_length = self
+            .end_pos_in_block
+            .wrapping_sub(self.start_pos_in_block)
+            .wrapping_sub(pos_diff);
 
         // Ensure that current block position is not outside of the match.
-        if curr_pos_in_block < self.start_pos_in_block || curr_pos_in_block >= self.end_pos_in_block || candidate_match_length < min_match {
+        if curr_pos_in_block < self.start_pos_in_block
+            || curr_pos_in_block >= self.end_pos_in_block
+            || candidate_match_length < min_match
+        {
             return;
         }
 
-        if *nb_matches == 0 || (candidate_match_length > matches[*nb_matches as usize - 1].len && *nb_matches < ZSTD_OPT_NUM) {
+        if *nb_matches == 0
+            || (candidate_match_length > matches[*nb_matches as usize - 1].len
+                && *nb_matches < ZSTD_OPT_NUM)
+        {
             let candidate_off_base = offset_to_offbase(self.offset);
-            matches[*nb_matches as usize] = OptMatch { off: candidate_off_base, len: candidate_match_length };
+            matches[*nb_matches as usize] = OptMatch {
+                off: candidate_off_base,
+                len: candidate_match_length,
+            };
             *nb_matches += 1;
         }
     }
 
     /// `ZSTD_optLdm_processMatchCandidate`: the store updated and the match added as needed.
-    fn process_match_candidate(&mut self, matches: &mut [OptMatch], nb_matches: &mut u32, curr_pos_in_block: u32, remaining_bytes: u32, min_match: u32) {
+    fn process_match_candidate(
+        &mut self,
+        matches: &mut [OptMatch],
+        nb_matches: &mut u32,
+        curr_pos_in_block: u32,
+        remaining_bytes: u32,
+        min_match: u32,
+    ) {
         if self.seq.is_empty() || self.at.pos >= self.seq.len() {
             return;
         }
@@ -663,7 +783,16 @@ impl OptLdm<'_> {
 /// for `btultra`; `ldm` the long-distance matches for the block, if there are any. The
 /// answer is how many bytes at the end of the block no sequence covers.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn compress_block_opt(ms: &mut MatchState, seq_store: &mut SeqStore, rep: &mut [u32; 3], src: &[u8], istart: usize, src_size: usize, opt_level: i32, ldm: (&[RawSeq], RawSeqPos)) -> usize {
+pub(crate) fn compress_block_opt(
+    ms: &mut MatchState,
+    seq_store: &mut SeqStore,
+    rep: &mut [u32; 3],
+    src: &[u8],
+    istart: usize,
+    src_size: usize,
+    opt_level: i32,
+    ldm: (&[RawSeq], RawSeqPos),
+) -> usize {
     let mut ip = istart;
     let mut anchor = istart;
     let iend = istart + src_size;
@@ -680,7 +809,13 @@ pub(crate) fn compress_block_opt(ms: &mut MatchState, seq_store: &mut SeqStore, 
     let mut opt = std::mem::take(&mut ms.opt.price_table);
     let mut matches = std::mem::take(&mut ms.opt.match_table);
     let mut last_stretch = Optimal::default();
-    let mut opt_ldm = OptLdm { seq: ldm.0, at: ldm.1, start_pos_in_block: 0, end_pos_in_block: 0, offset: 0 };
+    let mut opt_ldm = OptLdm {
+        seq: ldm.0,
+        at: ldm.1,
+        start_pos_in_block: 0,
+        end_pos_in_block: 0,
+        offset: 0,
+    };
 
     opt_ldm.get_next_match_and_update_seq_store((ip - istart) as u32, (iend - ip) as u32);
 
@@ -688,9 +823,15 @@ pub(crate) fn compress_block_opt(ms: &mut MatchState, seq_store: &mut SeqStore, 
     rescale_freqs(&mut ms.opt, &src[istart..iend], opt_level);
     ip += usize::from(ip == prefix_start);
 
-    let lit_price = |opt_state: &OptState, pos: usize| raw_literals_cost(&src[pos..pos + 1], opt_state, opt_level) as i32;
-    let ll_price = |opt_state: &OptState, lit_length: u32| lit_length_price(lit_length, opt_state, opt_level) as i32;
-    let ll_incprice = |opt_state: &OptState, lit_length: u32| ll_price(opt_state, lit_length) - ll_price(opt_state, lit_length - 1);
+    let lit_price = |opt_state: &OptState, pos: usize| {
+        raw_literals_cost(&src[pos..pos + 1], opt_state, opt_level) as i32
+    };
+    let ll_price = |opt_state: &OptState, lit_length: u32| {
+        lit_length_price(lit_length, opt_state, opt_level) as i32
+    };
+    let ll_incprice = |opt_state: &OptState, lit_length: u32| {
+        ll_price(opt_state, lit_length) - ll_price(opt_state, lit_length - 1)
+    };
 
     // Match Loop
     'outer: while (ip as isize) < ilimit {
@@ -702,8 +843,25 @@ pub(crate) fn compress_block_opt(ms: &mut MatchState, seq_store: &mut SeqStore, 
             {
                 let litlen = (ip - anchor) as u32;
                 let ll0 = litlen == 0;
-                let mut nb_matches = bt_get_all_matches(&mut matches, ms, &mut next_to_update3, src, ip, iend, rep, ll0, min_match, mls);
-                opt_ldm.process_match_candidate(&mut matches, &mut nb_matches, (ip - istart) as u32, (iend - ip) as u32, min_match);
+                let mut nb_matches = bt_get_all_matches(
+                    &mut matches,
+                    ms,
+                    &mut next_to_update3,
+                    src,
+                    ip,
+                    iend,
+                    rep,
+                    ll0,
+                    min_match,
+                    mls,
+                );
+                opt_ldm.process_match_candidate(
+                    &mut matches,
+                    &mut nb_matches,
+                    (ip - istart) as u32,
+                    (iend - ip) as u32,
+                    min_match,
+                );
                 if nb_matches == 0 {
                     ip += 1;
                     continue 'outer;
@@ -754,7 +912,8 @@ pub(crate) fn compress_block_opt(ms: &mut MatchState, seq_store: &mut SeqStore, 
                         let off_base = matches[match_nb].off;
                         let end = matches[match_nb].len;
                         while pos <= end {
-                            let match_price = get_match_price(off_base, pos, &ms.opt, opt_level) as i32;
+                            let match_price =
+                                get_match_price(off_base, pos, &ms.opt, opt_level) as i32;
                             let sequence_price = opt[0].price + match_price;
                             let o = &mut opt[pos as usize];
                             o.mlen = pos;
@@ -778,7 +937,9 @@ pub(crate) fn compress_block_opt(ms: &mut MatchState, seq_store: &mut SeqStore, 
                 // Fix current position with one literal if cheaper
                 {
                     let litlen = opt[c - 1].litlen + 1;
-                    let price = opt[c - 1].price + lit_price(&ms.opt, ip + c - 1) + ll_incprice(&ms.opt, litlen);
+                    let price = opt[c - 1].price
+                        + lit_price(&ms.opt, ip + c - 1)
+                        + ll_incprice(&ms.opt, litlen);
                     if price <= opt[c].price {
                         let prev_match = opt[c];
                         opt[c] = opt[c - 1];
@@ -790,12 +951,18 @@ pub(crate) fn compress_block_opt(ms: &mut MatchState, seq_store: &mut SeqStore, 
                             && ip + c < iend
                         {
                             // check next position, in case it would be cheaper
-                            let with1literal = prev_match.price + lit_price(&ms.opt, ip + c) + ll_incprice(&ms.opt, 1);
-                            let with_more_literals = price + lit_price(&ms.opt, ip + c) + ll_incprice(&ms.opt, litlen + 1);
-                            if with1literal < with_more_literals && with1literal < opt[c + 1].price {
+                            let with1literal = prev_match.price
+                                + lit_price(&ms.opt, ip + c)
+                                + ll_incprice(&ms.opt, 1);
+                            let with_more_literals = price
+                                + lit_price(&ms.opt, ip + c)
+                                + ll_incprice(&ms.opt, litlen + 1);
+                            if with1literal < with_more_literals && with1literal < opt[c + 1].price
+                            {
                                 // update offset history - before it disappears
                                 let prev = (cur - prev_match.mlen) as usize;
-                                let new_reps = new_rep(opt[prev].rep, prev_match.off, opt[prev].litlen == 0);
+                                let new_reps =
+                                    new_rep(opt[prev].rep, prev_match.off, opt[prev].litlen == 0);
                                 opt[c + 1] = prev_match; // mlen & offbase
                                 opt[c + 1].rep = new_reps;
                                 opt[c + 1].litlen = 1;
@@ -827,7 +994,9 @@ pub(crate) fn compress_block_opt(ms: &mut MatchState, seq_store: &mut SeqStore, 
                     break;
                 }
 
-                if opt_level == 0 && opt[c + 1].price <= opt[c].price + (BITCOST_MULTIPLIER / 2) as i32 {
+                if opt_level == 0
+                    && opt[c + 1].price <= opt[c].price + (BITCOST_MULTIPLIER / 2) as i32
+                {
                     cur += 1;
                     continue; // skip unpromising positions; about ~+6% speed, -0.01 ratio
                 }
@@ -837,9 +1006,26 @@ pub(crate) fn compress_block_opt(ms: &mut MatchState, seq_store: &mut SeqStore, 
                     let previous_price = opt[c].price;
                     let base_price = previous_price + ll_price(&ms.opt, 0);
                     let reps = opt[c].rep;
-                    let mut nb_matches = bt_get_all_matches(&mut matches, ms, &mut next_to_update3, src, inr, iend, &reps, ll0, min_match, mls);
+                    let mut nb_matches = bt_get_all_matches(
+                        &mut matches,
+                        ms,
+                        &mut next_to_update3,
+                        src,
+                        inr,
+                        iend,
+                        &reps,
+                        ll0,
+                        min_match,
+                        mls,
+                    );
 
-                    opt_ldm.process_match_candidate(&mut matches, &mut nb_matches, (inr - istart) as u32, (iend - inr) as u32, min_match);
+                    opt_ldm.process_match_candidate(
+                        &mut matches,
+                        &mut nb_matches,
+                        (inr - istart) as u32,
+                        (iend - inr) as u32,
+                        min_match,
+                    );
 
                     if nb_matches == 0 {
                         cur += 1;
@@ -848,7 +1034,10 @@ pub(crate) fn compress_block_opt(ms: &mut MatchState, seq_store: &mut SeqStore, 
 
                     {
                         let longest_ml = matches[nb_matches as usize - 1].len;
-                        if longest_ml > sufficient_len || cur + longest_ml >= ZSTD_OPT_NUM || ip + (cur + longest_ml) as usize >= iend {
+                        if longest_ml > sufficient_len
+                            || cur + longest_ml >= ZSTD_OPT_NUM
+                            || ip + (cur + longest_ml) as usize >= iend
+                        {
                             last_stretch.mlen = longest_ml;
                             last_stretch.off = matches[nb_matches as usize - 1].off;
                             last_stretch.litlen = 0;
@@ -861,12 +1050,17 @@ pub(crate) fn compress_block_opt(ms: &mut MatchState, seq_store: &mut SeqStore, 
                     for match_nb in 0..nb_matches as usize {
                         let offset = matches[match_nb].off;
                         let last_ml = matches[match_nb].len;
-                        let start_ml = if match_nb > 0 { matches[match_nb - 1].len + 1 } else { min_match };
+                        let start_ml = if match_nb > 0 {
+                            matches[match_nb - 1].len + 1
+                        } else {
+                            min_match
+                        };
                         let mut mlen = last_ml;
                         while mlen >= start_ml {
                             // scan downward
                             let pos = cur + mlen;
-                            let price = base_price + get_match_price(offset, mlen, &ms.opt, opt_level) as i32;
+                            let price = base_price
+                                + get_match_price(offset, mlen, &ms.opt, opt_level) as i32;
 
                             if pos > last_pos || price < opt[pos as usize].price {
                                 while last_pos < pos {
@@ -905,7 +1099,11 @@ pub(crate) fn compress_block_opt(ms: &mut MatchState, seq_store: &mut SeqStore, 
         // Update offset history
         if last_stretch.litlen == 0 {
             // finishing on a match : update offset history
-            *rep = new_rep(opt[cur as usize].rep, last_stretch.off, opt[cur as usize].litlen == 0);
+            *rep = new_rep(
+                opt[cur as usize].rep,
+                last_stretch.off,
+                opt[cur as usize].litlen == 0,
+            );
         } else {
             *rep = last_stretch.rep;
             cur -= last_stretch.litlen;
@@ -978,7 +1176,15 @@ pub(crate) fn compress_block_opt(ms: &mut MatchState, seq_store: &mut SeqStore, 
 /// `ZSTD_initStats_ultra`: a first compression pass, just to seed stats with more accurate
 /// starting values. Only works on first block, with no dictionary. (The long-distance
 /// matches, where there are any, are taken in it too.)
-fn init_stats_ultra(ms: &mut MatchState, seq_store: &mut SeqStore, rep: &[u32; 3], src: &[u8], istart: usize, src_size: usize, ldm: (&[RawSeq], RawSeqPos)) {
+fn init_stats_ultra(
+    ms: &mut MatchState,
+    seq_store: &mut SeqStore,
+    rep: &[u32; 3],
+    src: &[u8],
+    istart: usize,
+    src_size: usize,
+    ldm: (&[RawSeq], RawSeqPos),
+) {
     let mut tmp_rep = *rep; // updated rep codes will sink here
 
     compress_block_opt(ms, seq_store, &mut tmp_rep, src, istart, src_size, 2, ldm); // generate stats into ms->opt
@@ -994,7 +1200,15 @@ fn init_stats_ultra(ms: &mut MatchState, seq_store: &mut SeqStore, rep: &[u32; 3
 /// `ZSTD_compressBlock_btultra2`: as `btultra`, with a first pass over the first block of
 /// the frame to collect statistics, which seed the second. `ldm` the long-distance matches
 /// for the block, if there are any.
-pub(crate) fn compress_block_btultra2(ms: &mut MatchState, seq_store: &mut SeqStore, rep: &mut [u32; 3], src: &[u8], istart: usize, src_size: usize, ldm: (&[RawSeq], RawSeqPos)) -> usize {
+pub(crate) fn compress_block_btultra2(
+    ms: &mut MatchState,
+    seq_store: &mut SeqStore,
+    rep: &mut [u32; 3],
+    src: &[u8],
+    istart: usize,
+    src_size: usize,
+    ldm: (&[RawSeq], RawSeqPos),
+) -> usize {
     let curr = (istart + ms.window.base as usize) as u32;
 
     // 2-passes strategy: this strategy makes a first pass over first block to collect

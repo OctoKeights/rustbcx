@@ -15,7 +15,11 @@
 #![allow(clippy::implicit_saturating_sub, clippy::manual_is_multiple_of)]
 
 use super::common::{highbit32, read32};
-use super::zstd_compress::{count, get_lowest_match_index, get_lowest_prefix_index, hash_ptr, hash_ptr_salted, offset_to_offbase, MatchState, SeqStore, K_SEARCH_STRENGTH, REPCODE1_TO_OFFBASE, ZSTD_ROW_HASH_CACHE_SIZE};
+use super::zstd_compress::{
+    count, get_lowest_match_index, get_lowest_prefix_index, hash_ptr, hash_ptr_salted,
+    offset_to_offbase, MatchState, SeqStore, K_SEARCH_STRENGTH, REPCODE1_TO_OFFBASE,
+    ZSTD_ROW_HASH_CACHE_SIZE,
+};
 
 const K_LAZY_SKIPPING_STEP: usize = 8;
 
@@ -66,7 +70,14 @@ fn update_dubt(ms: &mut MatchState, src: &[u8], ip: usize, mls: u32) {
 
 /// `ZSTD_insertDUBT1`: sort one already inserted but unsorted position. Assumption:
 /// `curr >= btlow == (curr - btmask)`.
-fn insert_dubt1(ms: &mut MatchState, src: &[u8], curr: u32, input_end: usize, mut nb_compares: u32, bt_low: u32) {
+fn insert_dubt1(
+    ms: &mut MatchState,
+    src: &[u8],
+    curr: u32,
+    input_end: usize,
+    mut nb_compares: u32,
+    bt_low: u32,
+) {
     let bt_log = ms.cparams.chain_log - 1;
     let bt_mask = (1u32 << bt_log) - 1;
     let mut common_length_smaller = 0usize;
@@ -82,7 +93,11 @@ fn insert_dubt1(ms: &mut MatchState, src: &[u8], curr: u32, input_end: usize, mu
     let mut match_index = ms.chain_table[smaller_ptr];
     let window_valid = ms.window.low_limit;
     let max_distance = 1u32 << ms.cparams.window_log;
-    let window_low = if curr - window_valid > max_distance { curr - max_distance } else { window_valid };
+    let window_low = if curr - window_valid > max_distance {
+        curr - max_distance
+    } else {
+        window_valid
+    };
     let bt = &mut ms.chain_table;
 
     while nb_compares != 0 && match_index > window_low {
@@ -130,7 +145,14 @@ fn insert_dubt1(ms: &mut MatchState, src: &[u8], curr: u32, input_end: usize, mu
 
 /// `ZSTD_DUBT_findBestMatch`: the places of the chain that are not sorted yet sorted into
 /// the tree, then the longest match found in it, with `ip` put into it.
-fn dubt_find_best_match(ms: &mut MatchState, src: &[u8], ip: usize, iend: usize, off_base: &mut u32, mls: u32) -> usize {
+fn dubt_find_best_match(
+    ms: &mut MatchState,
+    src: &[u8],
+    ip: usize,
+    iend: usize,
+    off_base: &mut u32,
+    mls: u32,
+) -> usize {
     let hash_log = ms.cparams.hash_log;
     let h = hash_ptr(src, ip, hash_log, mls);
     let mut match_index = ms.hash_table[h];
@@ -151,7 +173,10 @@ fn dubt_find_best_match(ms: &mut MatchState, src: &[u8], ip: usize, iend: usize,
     let mut previous_candidate = 0u32;
 
     // reach end of unsorted candidates list
-    while match_index > unsort_limit && ms.chain_table[unsorted_mark] == ZSTD_DUBT_UNSORTED_MARK && nb_candidates > 1 {
+    while match_index > unsort_limit
+        && ms.chain_table[unsorted_mark] == ZSTD_DUBT_UNSORTED_MARK
+        && nb_candidates > 1
+    {
         ms.chain_table[unsorted_mark] = previous_candidate; // the unsortedMark becomes a reversed chain, to move up back to original position
         previous_candidate = match_index;
         match_index = ms.chain_table[next_candidate];
@@ -199,7 +224,9 @@ fn dubt_find_best_match(ms: &mut MatchState, src: &[u8], ip: usize, iend: usize,
             if match_length as u32 > match_end_idx - match_index {
                 match_end_idx = match_index + match_length as u32;
             }
-            if 4 * (match_length - best_length) as i32 > highbit32(curr - match_index + 1) as i32 - highbit32(*off_base) as i32 {
+            if 4 * (match_length - best_length) as i32
+                > highbit32(curr - match_index + 1) as i32 - highbit32(*off_base) as i32
+            {
                 best_length = match_length;
                 *off_base = offset_to_offbase(curr - match_index);
             }
@@ -245,7 +272,14 @@ fn dubt_find_best_match(ms: &mut MatchState, src: &[u8], ip: usize, iend: usize,
 }
 
 /// `ZSTD_BtFindBestMatch`: tree updater, providing best match.
-fn bt_find_best_match(ms: &mut MatchState, src: &[u8], ip: usize, i_limit: usize, off_base: &mut u32, mls: u32) -> usize {
+fn bt_find_best_match(
+    ms: &mut MatchState,
+    src: &[u8],
+    ip: usize,
+    i_limit: usize,
+    off_base: &mut u32,
+    mls: u32,
+) -> usize {
     if ip + (ms.window.base as usize) < ms.next_to_update as usize {
         return 0; // skipped area
     }
@@ -257,7 +291,13 @@ fn bt_find_best_match(ms: &mut MatchState, src: &[u8], ip: usize, i_limit: usize
 
 /// `ZSTD_insertAndFindFirstIndex_internal`: the chains updated up to `ip` (excluded), and
 /// the first place in the chain of `ip`.
-fn insert_and_find_first_index(ms: &mut MatchState, src: &[u8], ip: usize, mls: u32, lazy_skipping: bool) -> u32 {
+fn insert_and_find_first_index(
+    ms: &mut MatchState,
+    src: &[u8],
+    ip: usize,
+    mls: u32,
+    lazy_skipping: bool,
+) -> u32 {
     let hash_log = ms.cparams.hash_log;
     let chain_mask = (1u32 << ms.cparams.chain_log) - 1;
     let base = ms.window.base as usize;
@@ -281,17 +321,36 @@ fn insert_and_find_first_index(ms: &mut MatchState, src: &[u8], ip: usize, mls: 
 }
 
 /// `ZSTD_HcFindBestMatch`: the longest match along the chain of `ip`.
-fn hc_find_best_match(ms: &mut MatchState, src: &[u8], ip: usize, i_limit: usize, offset: &mut u32, mls: u32) -> usize {
+fn hc_find_best_match(
+    ms: &mut MatchState,
+    src: &[u8],
+    ip: usize,
+    i_limit: usize,
+    offset: &mut u32,
+    mls: u32,
+) -> usize {
     let chain_size = 1u32 << ms.cparams.chain_log;
     let chain_mask = chain_size - 1;
     let base = ms.window.base as usize;
     let curr = (ip + base) as u32;
     let max_distance = 1u32 << ms.cparams.window_log;
     let lowest_valid = ms.window.low_limit;
-    let within_max_distance = if curr - lowest_valid > max_distance { curr - max_distance } else { lowest_valid };
+    let within_max_distance = if curr - lowest_valid > max_distance {
+        curr - max_distance
+    } else {
+        lowest_valid
+    };
     let is_dictionary = ms.loaded_dict_end != 0;
-    let low_limit = if is_dictionary { lowest_valid } else { within_max_distance };
-    let min_chain = if curr > chain_size { curr - chain_size } else { 0 };
+    let low_limit = if is_dictionary {
+        lowest_valid
+    } else {
+        within_max_distance
+    };
+    let min_chain = if curr > chain_size {
+        curr - chain_size
+    } else {
+        0
+    };
     let mut nb_attempts = 1u32 << ms.cparams.search_log;
     let mut ml = 4 - 1;
 
@@ -344,11 +403,21 @@ fn row_fill_hash_cache(ms: &mut MatchState, src: &[u8], mls: u32, idx: u32, i_li
     let hash_log = ms.row_hash_log;
     let base = ms.window.base as isize;
     let pos = idx as isize - base;
-    let max_elems_to_prefetch = if pos > i_limit { 0 } else { (i_limit - pos + 1) as u32 };
+    let max_elems_to_prefetch = if pos > i_limit {
+        0
+    } else {
+        (i_limit - pos + 1) as u32
+    };
     let lim = idx + (ZSTD_ROW_HASH_CACHE_SIZE as u32).min(max_elems_to_prefetch);
 
     for idx in idx..lim {
-        let hash = hash_ptr_salted(src, (idx as isize - base) as usize, hash_log + ZSTD_ROW_HASH_TAG_BITS, mls, ms.hash_salt);
+        let hash = hash_ptr_salted(
+            src,
+            (idx as isize - base) as usize,
+            hash_log + ZSTD_ROW_HASH_TAG_BITS,
+            mls,
+            ms.hash_salt,
+        );
         ms.hash_cache[(idx & ZSTD_ROW_HASH_CACHE_MASK) as usize] = hash;
     }
 }
@@ -358,7 +427,13 @@ fn row_fill_hash_cache(ms: &mut MatchState, src: &[u8], mls: u32, idx: u32, i_li
 #[inline]
 fn row_next_cached_hash(ms: &mut MatchState, src: &[u8], idx: u32, mls: u32) -> u32 {
     let pos = idx as usize - ms.window.base as usize;
-    let new_hash = hash_ptr_salted(src, pos + ZSTD_ROW_HASH_CACHE_SIZE, ms.row_hash_log + ZSTD_ROW_HASH_TAG_BITS, mls, ms.hash_salt);
+    let new_hash = hash_ptr_salted(
+        src,
+        pos + ZSTD_ROW_HASH_CACHE_SIZE,
+        ms.row_hash_log + ZSTD_ROW_HASH_TAG_BITS,
+        mls,
+        ms.hash_salt,
+    );
     let slot = (idx & ZSTD_ROW_HASH_CACHE_MASK) as usize;
     let hash = ms.hash_cache[slot];
     ms.hash_cache[slot] = new_hash;
@@ -367,10 +442,29 @@ fn row_next_cached_hash(ms: &mut MatchState, src: &[u8], idx: u32, mls: u32) -> 
 
 /// `ZSTD_row_update_internalImpl`: the places from `update_start_idx` to `update_end_idx`
 /// into the hash table.
-fn row_update_internal_impl(ms: &mut MatchState, src: &[u8], update_start_idx: u32, update_end_idx: u32, mls: u32, row_log: u32, row_mask: u32, use_cache: bool) {
+fn row_update_internal_impl(
+    ms: &mut MatchState,
+    src: &[u8],
+    update_start_idx: u32,
+    update_end_idx: u32,
+    mls: u32,
+    row_log: u32,
+    row_mask: u32,
+    use_cache: bool,
+) {
     let base = ms.window.base as usize;
     for idx in update_start_idx..update_end_idx {
-        let hash = if use_cache { row_next_cached_hash(ms, src, idx, mls) } else { hash_ptr_salted(src, idx as usize - base, ms.row_hash_log + ZSTD_ROW_HASH_TAG_BITS, mls, ms.hash_salt) };
+        let hash = if use_cache {
+            row_next_cached_hash(ms, src, idx, mls)
+        } else {
+            hash_ptr_salted(
+                src,
+                idx as usize - base,
+                ms.row_hash_log + ZSTD_ROW_HASH_TAG_BITS,
+                mls,
+                ms.hash_salt,
+            )
+        };
         let rel_row = ((hash >> ZSTD_ROW_HASH_TAG_BITS) << row_log) as usize;
         let pos = row_next_index(&mut ms.tag_table[rel_row], row_mask) as usize;
         ms.tag_table[rel_row + pos] = (hash & ZSTD_ROW_HASH_TAG_MASK) as u8;
@@ -380,7 +474,14 @@ fn row_update_internal_impl(ms: &mut MatchState, src: &[u8], update_start_idx: u
 
 /// `ZSTD_row_update_internal`: the places up to `ip` into the hash table, but for the
 /// middle of a long match.
-fn row_update_internal(ms: &mut MatchState, src: &[u8], ip: usize, mls: u32, row_log: u32, row_mask: u32) {
+fn row_update_internal(
+    ms: &mut MatchState,
+    src: &[u8],
+    ip: usize,
+    mls: u32,
+    row_log: u32,
+    row_mask: u32,
+) {
     let mut idx = ms.next_to_update;
     let target = (ip + ms.window.base as usize) as u32;
     const K_SKIP_THRESHOLD: u32 = 384;
@@ -416,14 +517,30 @@ fn row_get_match_mask(tag_row: &[u8], tag: u8, head: u32, row_entries: usize) ->
 
 /// `ZSTD_RowFindBestMatch`: the longest match among the entries of the row of `ip` whose
 /// tag is its tag, with `ip` put into the row.
-fn row_find_best_match(ms: &mut MatchState, src: &[u8], ip: usize, i_limit: usize, offset: &mut u32, mls: u32, row_log: u32) -> usize {
+fn row_find_best_match(
+    ms: &mut MatchState,
+    src: &[u8],
+    ip: usize,
+    i_limit: usize,
+    offset: &mut u32,
+    mls: u32,
+    row_log: u32,
+) -> usize {
     let base = ms.window.base as usize;
     let curr = (ip + base) as u32;
     let max_distance = 1u32 << ms.cparams.window_log;
     let lowest_valid = ms.window.low_limit;
-    let within_max_distance = if curr - lowest_valid > max_distance { curr - max_distance } else { lowest_valid };
+    let within_max_distance = if curr - lowest_valid > max_distance {
+        curr - max_distance
+    } else {
+        lowest_valid
+    };
     let is_dictionary = ms.loaded_dict_end != 0;
-    let low_limit = if is_dictionary { lowest_valid } else { within_max_distance };
+    let low_limit = if is_dictionary {
+        lowest_valid
+    } else {
+        within_max_distance
+    };
     let row_entries = 1usize << row_log;
     let row_mask = row_entries as u32 - 1;
     let capped_search_log = ms.cparams.search_log.min(row_log); // nb of searches is capped at nb entries per row
@@ -438,7 +555,13 @@ fn row_find_best_match(ms: &mut MatchState, src: &[u8], ip: usize, i_limit: usiz
         // Stop inserting every position when in the lazy skipping mode. The hash cache is
         // also not kept up to date in this mode.
         ms.next_to_update = curr;
-        hash_ptr_salted(src, ip, ms.row_hash_log + ZSTD_ROW_HASH_TAG_BITS, mls, ms.hash_salt)
+        hash_ptr_salted(
+            src,
+            ip,
+            ms.row_hash_log + ZSTD_ROW_HASH_TAG_BITS,
+            mls,
+            ms.hash_salt,
+        )
     };
 
     // Get the hash for ip, compute the appropriate row.
@@ -499,7 +622,16 @@ fn row_find_best_match(ms: &mut MatchState, src: &[u8], ip: usize, i_limit: usiz
 /// `ZSTD_searchMax`: the length of the longest match from `ip`, and its offset, by the
 /// search method.
 #[inline]
-fn search_max(ms: &mut MatchState, src: &[u8], ip: usize, iend: usize, offset: &mut u32, mls: u32, row_log: u32, search_method: SearchMethod) -> usize {
+fn search_max(
+    ms: &mut MatchState,
+    src: &[u8],
+    ip: usize,
+    iend: usize,
+    offset: &mut u32,
+    mls: u32,
+    row_log: u32,
+    search_method: SearchMethod,
+) -> usize {
     match search_method {
         SearchMethod::BinaryTree => bt_find_best_match(ms, src, ip, iend, offset, mls),
         SearchMethod::HashChain => hc_find_best_match(ms, src, ip, iend, offset, mls),
@@ -519,12 +651,27 @@ fn gain(a: usize, b: u32, c: i64) -> i32 {
 /// strategy, 1 for the lazy one, 2 for the second lazy one. The answer is how many bytes at
 /// the end of the block no sequence covers.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn compress_block_lazy(ms: &mut MatchState, seq_store: &mut SeqStore, rep: &mut [u32; 3], src: &[u8], istart: usize, src_size: usize, search_method: SearchMethod, depth: u32) -> usize {
+pub(crate) fn compress_block_lazy(
+    ms: &mut MatchState,
+    seq_store: &mut SeqStore,
+    rep: &mut [u32; 3],
+    src: &[u8],
+    istart: usize,
+    src_size: usize,
+    search_method: SearchMethod,
+    depth: u32,
+) -> usize {
     let mut ip = istart;
     let mut anchor = istart;
     let iend = istart + src_size;
     // (Before the block, for a block too short for it: a place, not an offset.)
-    let ilimit = iend as isize - 8 - if search_method == SearchMethod::RowHash { ZSTD_ROW_HASH_CACHE_SIZE as isize } else { 0 };
+    let ilimit = iend as isize
+        - 8
+        - if search_method == SearchMethod::RowHash {
+            ZSTD_ROW_HASH_CACHE_SIZE as isize
+        } else {
+            0
+        };
     let base = ms.window.base as usize;
     let prefix_lowest_index = ms.window.dict_limit;
     let prefix_lowest = prefix_lowest_index as usize - base;
@@ -578,7 +725,16 @@ pub(crate) fn compress_block_lazy(ms: &mut MatchState, seq_store: &mut SeqStore,
             // first search (depth 0)
             {
                 let mut offbase_found = 999999999u32;
-                let ml2 = search_max(ms, src, ip, iend, &mut offbase_found, mls, row_log, search_method);
+                let ml2 = search_max(
+                    ms,
+                    src,
+                    ip,
+                    iend,
+                    &mut offbase_found,
+                    mls,
+                    row_log,
+                    search_method,
+                );
                 if ml2 > match_length {
                     match_length = ml2;
                     start = ip;
@@ -600,7 +756,10 @@ pub(crate) fn compress_block_lazy(ms: &mut MatchState, seq_store: &mut SeqStore,
             if depth >= 1 {
                 while (ip as isize) < ilimit {
                     ip += 1;
-                    if off_base != 0 && offset_1 > 0 && read32(src, ip) == read32(src, ip - offset_1 as usize) {
+                    if off_base != 0
+                        && offset_1 > 0
+                        && read32(src, ip) == read32(src, ip - offset_1 as usize)
+                    {
                         let ml_rep = count(src, ip + 4, ip + 4 - offset_1 as usize, iend) + 4;
                         let gain2 = (ml_rep * 3) as i32;
                         let gain1 = gain(match_length * 3, highbit32(off_base), 1);
@@ -612,7 +771,16 @@ pub(crate) fn compress_block_lazy(ms: &mut MatchState, seq_store: &mut SeqStore,
                     }
                     {
                         let mut ofb_candidate = 999999999u32;
-                        let ml2 = search_max(ms, src, ip, iend, &mut ofb_candidate, mls, row_log, search_method);
+                        let ml2 = search_max(
+                            ms,
+                            src,
+                            ip,
+                            iend,
+                            &mut ofb_candidate,
+                            mls,
+                            row_log,
+                            search_method,
+                        );
                         let gain2 = gain(ml2 * 4, highbit32(ofb_candidate), 0); // raw approx
                         let gain1 = gain(match_length * 4, highbit32(off_base), 4);
                         if ml2 >= 4 && gain2 > gain1 {
@@ -626,7 +794,10 @@ pub(crate) fn compress_block_lazy(ms: &mut MatchState, seq_store: &mut SeqStore,
                     // let's find an even better one
                     if depth == 2 && (ip as isize) < ilimit {
                         ip += 1;
-                        if off_base != 0 && offset_1 > 0 && read32(src, ip) == read32(src, ip - offset_1 as usize) {
+                        if off_base != 0
+                            && offset_1 > 0
+                            && read32(src, ip) == read32(src, ip - offset_1 as usize)
+                        {
                             let ml_rep = count(src, ip + 4, ip + 4 - offset_1 as usize, iend) + 4;
                             let gain2 = (ml_rep * 4) as i32;
                             let gain1 = gain(match_length * 4, highbit32(off_base), 1);
@@ -638,7 +809,16 @@ pub(crate) fn compress_block_lazy(ms: &mut MatchState, seq_store: &mut SeqStore,
                         }
                         {
                             let mut ofb_candidate = 999999999u32;
-                            let ml2 = search_max(ms, src, ip, iend, &mut ofb_candidate, mls, row_log, search_method);
+                            let ml2 = search_max(
+                                ms,
+                                src,
+                                ip,
+                                iend,
+                                &mut ofb_candidate,
+                                mls,
+                                row_log,
+                                search_method,
+                            );
                             let gain2 = gain(ml2 * 4, highbit32(ofb_candidate), 0); // raw approx
                             let gain1 = gain(match_length * 4, highbit32(off_base), 7);
                             if ml2 >= 4 && gain2 > gain1 {
@@ -658,7 +838,10 @@ pub(crate) fn compress_block_lazy(ms: &mut MatchState, seq_store: &mut SeqStore,
                 // `OFFBASE_IS_OFFSET`
                 let offset = (off_base - 3) as usize;
                 // only search for offset within prefix
-                while start > anchor && start as isize - offset as isize > prefix_lowest as isize && src[start - 1] == src[start - offset - 1] {
+                while start > anchor
+                    && start as isize - offset as isize > prefix_lowest as isize
+                    && src[start - 1] == src[start - offset - 1]
+                {
                     start -= 1;
                     match_length += 1;
                 }
@@ -685,7 +868,10 @@ pub(crate) fn compress_block_lazy(ms: &mut MatchState, seq_store: &mut SeqStore,
         }
 
         // check immediate repcode
-        while (ip as isize) <= ilimit && offset_2 > 0 && read32(src, ip) == read32(src, ip - offset_2 as usize) {
+        while (ip as isize) <= ilimit
+            && offset_2 > 0
+            && read32(src, ip) == read32(src, ip - offset_2 as usize)
+        {
             // store sequence
             match_length = count(src, ip + 4, ip + 4 - offset_2 as usize, iend) + 4;
             std::mem::swap(&mut offset_1, &mut offset_2); // swap repcodes
@@ -697,11 +883,23 @@ pub(crate) fn compress_block_lazy(ms: &mut MatchState, seq_store: &mut SeqStore,
 
     // If offset_1 started invalid (offsetSaved1 != 0) and became valid (offset_1 != 0),
     // rotate saved offsets. See comment in ZSTD_compressBlock_fast_noDict for more context.
-    offset_saved2 = if offset_saved1 != 0 && offset_1 != 0 { offset_saved1 } else { offset_saved2 };
+    offset_saved2 = if offset_saved1 != 0 && offset_1 != 0 {
+        offset_saved1
+    } else {
+        offset_saved2
+    };
 
     // save reps for next block
-    rep[0] = if offset_1 != 0 { offset_1 } else { offset_saved1 };
-    rep[1] = if offset_2 != 0 { offset_2 } else { offset_saved2 };
+    rep[0] = if offset_1 != 0 {
+        offset_1
+    } else {
+        offset_saved1
+    };
+    rep[1] = if offset_2 != 0 {
+        offset_2
+    } else {
+        offset_saved2
+    };
 
     // Return the last literals size
     iend - anchor

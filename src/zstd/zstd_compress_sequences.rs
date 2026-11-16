@@ -19,8 +19,14 @@ pub(crate) const ML_FSE_LOG: u32 = 9;
 pub(crate) const LL_FSE_LOG: u32 = 9;
 pub(crate) const OFF_FSE_LOG: u32 = 8;
 
-pub(crate) const LL_BITS: [u8; MAX_LL as usize + 1] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 3, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
-pub(crate) const LL_DEFAULT_NORM: [i16; MAX_LL as usize + 1] = [4, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 1, 1, 1, 1, 1, -1, -1, -1, -1];
+pub(crate) const LL_BITS: [u8; MAX_LL as usize + 1] = [
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 3, 3, 4, 6, 7, 8, 9, 10, 11,
+    12, 13, 14, 15, 16,
+];
+pub(crate) const LL_DEFAULT_NORM: [i16; MAX_LL as usize + 1] = [
+    4, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 1, 1, 1, 1, 1,
+    -1, -1, -1, -1,
+];
 pub(crate) const LL_DEFAULT_NORM_LOG: u32 = 6;
 
 #[rustfmt::skip]
@@ -35,7 +41,9 @@ pub(crate) const ML_DEFAULT_NORM: [i16; MAX_ML as usize + 1] = [
 ];
 pub(crate) const ML_DEFAULT_NORM_LOG: u32 = 6;
 
-pub(crate) const OF_DEFAULT_NORM: [i16; DEFAULT_MAX_OFF as usize + 1] = [1, 1, 1, 1, 1, 1, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, -1, -1, -1, -1, -1];
+pub(crate) const OF_DEFAULT_NORM: [i16; DEFAULT_MAX_OFF as usize + 1] = [
+    1, 1, 1, 1, 1, 1, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, -1, -1, -1, -1, -1,
+];
 pub(crate) const OF_DEFAULT_NORM_LOG: u32 = 5;
 
 /// `FSE_repeat`.
@@ -93,7 +101,16 @@ fn ncount_cost(count: &[u32], max: u32, nb_seq: usize, fse_log: u32) -> usize {
     let mut norm = [0i16; MAX_SEQ + 1];
     let mut wksp = [0u8; 512]; // FSE_NCOUNTBOUND
     let table_log = fse_compress::optimal_table_log(fse_log, nb_seq, max);
-    if fse_compress::normalize_count(&mut norm, table_log, count, nb_seq, max, use_low_prob_count(nb_seq)).is_err() {
+    if fse_compress::normalize_count(
+        &mut norm,
+        table_log,
+        count,
+        nb_seq,
+        max,
+        use_low_prob_count(nb_seq),
+    )
+    .is_err()
+    {
         return COST_ERROR;
     }
     fse_compress::write_ncount(&mut wksp, &norm, max, table_log).unwrap_or(COST_ERROR)
@@ -130,8 +147,10 @@ pub(crate) fn fse_bit_cost(ctable: &FseCTable, count: &[u32], max: u32) -> usize
             let min_nb_bits = delta_nb_bits >> 16;
             let threshold = (min_nb_bits + 1) << 16;
             let table_size = 1u32 << table_log;
-            let delta_from_threshold = threshold.wrapping_sub(delta_nb_bits.wrapping_add(table_size));
-            let normalized_delta_from_threshold = (delta_from_threshold << K_ACCURACY_LOG) >> table_log; // linear interpolation (very approximate)
+            let delta_from_threshold =
+                threshold.wrapping_sub(delta_nb_bits.wrapping_add(table_size));
+            let normalized_delta_from_threshold =
+                (delta_from_threshold << K_ACCURACY_LOG) >> table_log; // linear interpolation (very approximate)
             let bit_multiplier = 1u32 << K_ACCURACY_LOG;
             ((min_nb_bits + 1) * bit_multiplier).wrapping_sub(normalized_delta_from_threshold)
         };
@@ -148,7 +167,12 @@ pub(crate) fn fse_bit_cost(ctable: &FseCTable, count: &[u32], max: u32) -> usize
 
 /// `ZSTD_crossEntropyCost`: the cost in bits of the symbols of `count` with the table of
 /// `norm`.
-pub(crate) fn cross_entropy_cost(norm: &[i16], accuracy_log: u32, count: &[u32], max: u32) -> usize {
+pub(crate) fn cross_entropy_cost(
+    norm: &[i16],
+    accuracy_log: u32,
+    count: &[u32],
+    max: u32,
+) -> usize {
     let shift = 8 - accuracy_log;
     let mut cost = 0usize;
     for s in 0..=max as usize {
@@ -193,7 +217,8 @@ pub(crate) fn select_encoding_type(
             if *repeat_mode == FseRepeat::Valid && nb_seq < static_fse_nb_seq_max {
                 return SET_REPEAT;
             }
-            if nb_seq < dynamic_fse_nb_seq_min || most_frequent < (nb_seq >> (default_norm_log - 1)) {
+            if nb_seq < dynamic_fse_nb_seq_min || most_frequent < (nb_seq >> (default_norm_log - 1))
+            {
                 // The format allows default tables to be repeated, but it isn't useful. When
                 // using simple heuristics to select the encoding type, default tables are never
                 // repeated; a new block always starts from them afresh.
@@ -202,8 +227,16 @@ pub(crate) fn select_encoding_type(
             }
         }
     } else {
-        let basic_cost = if is_default_allowed { cross_entropy_cost(default_norm, default_norm_log, count, max) } else { COST_ERROR };
-        let repeat_cost = if *repeat_mode != FseRepeat::None { fse_bit_cost(prev_ctable, count, max) } else { COST_ERROR };
+        let basic_cost = if is_default_allowed {
+            cross_entropy_cost(default_norm, default_norm_log, count, max)
+        } else {
+            COST_ERROR
+        };
+        let repeat_cost = if *repeat_mode != FseRepeat::None {
+            fse_bit_cost(prev_ctable, count, max)
+        } else {
+            COST_ERROR
+        };
         let ncount_cost = ncount_cost(count, max, nb_seq, fse_log);
         let compressed_cost = (ncount_cost << 3).wrapping_add(entropy_cost(count, max, nb_seq));
 
@@ -261,7 +294,14 @@ pub(crate) fn build_ctable(
                 count[code_table[nb_seq - 1] as usize] -= 1;
                 nb_seq_1 -= 1;
             }
-            fse_compress::normalize_count(&mut norm, table_log, count, nb_seq_1, max, use_low_prob_count(nb_seq_1))?;
+            fse_compress::normalize_count(
+                &mut norm,
+                table_log,
+                count,
+                nb_seq_1,
+                max,
+                use_low_prob_count(nb_seq_1),
+            )?;
             {
                 let n_count_size = fse_compress::write_ncount(dst, &norm, max, table_log)?; // overflow protected
                 fse_compress::build_ctable(next_ctable, &norm, max, table_log);
@@ -291,13 +331,26 @@ pub(crate) fn encode_sequences(
     };
 
     // First symbols.
-    let mut state_match_length = FseCState::init2(ctable_match_length, ml_code_table[nb_seq - 1] as u32);
-    let mut state_offset_bits = FseCState::init2(ctable_offset_bits, of_code_table[nb_seq - 1] as u32);
-    let mut state_lit_length = FseCState::init2(ctable_lit_length, ll_code_table[nb_seq - 1] as u32);
-    block_stream.add_bits(sequences[nb_seq - 1].lit_length as u64, LL_BITS[ll_code_table[nb_seq - 1] as usize] as u32);
-    block_stream.add_bits(sequences[nb_seq - 1].ml_base as u64, ML_BITS[ml_code_table[nb_seq - 1] as usize] as u32);
+    let mut state_match_length =
+        FseCState::init2(ctable_match_length, ml_code_table[nb_seq - 1] as u32);
+    let mut state_offset_bits =
+        FseCState::init2(ctable_offset_bits, of_code_table[nb_seq - 1] as u32);
+    let mut state_lit_length =
+        FseCState::init2(ctable_lit_length, ll_code_table[nb_seq - 1] as u32);
+    block_stream.add_bits(
+        sequences[nb_seq - 1].lit_length as u64,
+        LL_BITS[ll_code_table[nb_seq - 1] as usize] as u32,
+    );
+    block_stream.add_bits(
+        sequences[nb_seq - 1].ml_base as u64,
+        ML_BITS[ml_code_table[nb_seq - 1] as usize] as u32,
+    );
     // (A 64-bit build never has offsets too long for one go: the window stops at 2^31.)
-    add_offset_bits(&mut block_stream, sequences[nb_seq - 1].off_base, of_code_table[nb_seq - 1] as u32);
+    add_offset_bits(
+        &mut block_stream,
+        sequences[nb_seq - 1].off_base,
+        of_code_table[nb_seq - 1] as u32,
+    );
     block_stream.flush_bits();
 
     for n in (0..nb_seq - 1).rev() {

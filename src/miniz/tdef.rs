@@ -14,7 +14,10 @@
 #![allow(clippy::manual_div_ceil)]
 
 use super::mz_adler32;
-use super::tables::{S_TDEFL_LARGE_DIST_EXTRA, S_TDEFL_LARGE_DIST_SYM, S_TDEFL_LEN_EXTRA, S_TDEFL_LEN_SYM, S_TDEFL_SMALL_DIST_EXTRA, S_TDEFL_SMALL_DIST_SYM};
+use super::tables::{
+    S_TDEFL_LARGE_DIST_EXTRA, S_TDEFL_LARGE_DIST_SYM, S_TDEFL_LEN_EXTRA, S_TDEFL_LEN_SYM,
+    S_TDEFL_SMALL_DIST_EXTRA, S_TDEFL_SMALL_DIST_SYM,
+};
 
 // tdefl_init() compression flags logically OR'd together (low 12 bits contain the max. number of probes per dictionary search):
 /// The compressor does no dictionary searches: Huffman coding only.
@@ -137,7 +140,11 @@ struct TdeflSymFreq {
 
 /// Radix sorts tdefl_sym_freq[] array by 16-bit key m_key. Returns the sorted values (in one
 /// of the two arrays; true for the second).
-fn tdefl_radix_sort_syms(num_syms: usize, syms0: &mut [TdeflSymFreq], syms1: &mut [TdeflSymFreq]) -> bool {
+fn tdefl_radix_sort_syms(
+    num_syms: usize,
+    syms0: &mut [TdeflSymFreq],
+    syms1: &mut [TdeflSymFreq],
+) -> bool {
     let mut total_passes = 2usize;
     let mut hist = [0u32; 256 * 2];
     for sym in &syms0[..num_syms] {
@@ -158,7 +165,11 @@ fn tdefl_radix_sort_syms(num_syms: usize, syms0: &mut [TdeflSymFreq], syms1: &mu
             offsets[i] = cur_ofs;
             cur_ofs += p_hist[i] as usize;
         }
-        let (cur, new): (&[TdeflSymFreq], &mut [TdeflSymFreq]) = if in_second { (&*syms1, &mut *syms0) } else { (&*syms0, &mut *syms1) };
+        let (cur, new): (&[TdeflSymFreq], &mut [TdeflSymFreq]) = if in_second {
+            (&*syms1, &mut *syms0)
+        } else {
+            (&*syms0, &mut *syms1)
+        };
         for sym in &cur[..num_syms] {
             let slot = &mut offsets[usize::from(sym.m_key >> pass_shift) & 0xFF];
             new[*slot] = *sym;
@@ -232,7 +243,11 @@ fn tdefl_calculate_minimum_redundancy(a: &mut [TdeflSymFreq], n: usize) {
 // Limits canonical Huffman code table's max code size.
 const TDEFL_MAX_SUPPORTED_HUFF_CODESIZE: usize = 32;
 
-fn tdefl_huffman_enforce_max_code_size(num_codes: &mut [i32; 1 + TDEFL_MAX_SUPPORTED_HUFF_CODESIZE], code_list_len: usize, max_code_size: usize) {
+fn tdefl_huffman_enforce_max_code_size(
+    num_codes: &mut [i32; 1 + TDEFL_MAX_SUPPORTED_HUFF_CODESIZE],
+    code_list_len: usize,
+    max_code_size: usize,
+) {
     let mut total = 0u32;
     if code_list_len <= 1 {
         return;
@@ -256,9 +271,14 @@ fn tdefl_huffman_enforce_max_code_size(num_codes: &mut [i32; 1 + TDEFL_MAX_SUPPO
     }
 }
 
-const S_TDEFL_PACKED_CODE_SIZE_SYMS_SWIZZLE: [u8; 19] = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15];
+const S_TDEFL_PACKED_CODE_SIZE_SYMS_SWIZZLE: [u8; 19] = [
+    16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15,
+];
 
-const MZ_BITMASKS: [u32; 17] = [0x0000, 0x0001, 0x0003, 0x0007, 0x000F, 0x001F, 0x003F, 0x007F, 0x00FF, 0x01FF, 0x03FF, 0x07FF, 0x0FFF, 0x1FFF, 0x3FFF, 0x7FFF, 0xFFFF];
+const MZ_BITMASKS: [u32; 17] = [
+    0x0000, 0x0001, 0x0003, 0x0007, 0x000F, 0x001F, 0x003F, 0x007F, 0x00FF, 0x01FF, 0x03FF, 0x07FF,
+    0x0FFF, 0x1FFF, 0x3FFF, 0x7FFF, 0xFFFF,
+];
 
 const S_TDEFL_NUM_PROBES: [u32; 11] = [0, 1, 6, 32, 16, 32, 128, 256, 512, 768, 1500];
 
@@ -272,7 +292,10 @@ impl TdeflCompressor {
         TdeflCompressor {
             out: Vec::new(),
             m_flags: flags,
-            m_max_probes: [1 + ((flags & 0xFFF) + 2) / 3, 1 + (((flags & 0xFFF) >> 2) + 2) / 3],
+            m_max_probes: [
+                1 + ((flags & 0xFFF) + 2) / 3,
+                1 + (((flags & 0xFFF) >> 2) + 2) / 3,
+            ],
             m_greedy_parsing: flags & TDEFL_GREEDY_PARSING_FLAG != 0,
             m_adler32: 1,
             m_lookahead_pos: 0,
@@ -321,7 +344,13 @@ impl TdeflCompressor {
         self.m_adler32
     }
 
-    fn tdefl_optimize_huffman_table(&mut self, table_num: usize, table_len: usize, code_size_limit: usize, static_table: bool) {
+    fn tdefl_optimize_huffman_table(
+        &mut self,
+        table_num: usize,
+        table_len: usize,
+        code_size_limit: usize,
+        static_table: bool,
+    ) {
         let mut num_codes = [0i32; 1 + TDEFL_MAX_SUPPORTED_HUFF_CODESIZE];
         let mut next_code = [0u32; TDEFL_MAX_SUPPORTED_HUFF_CODESIZE + 1];
         if static_table {
@@ -426,8 +455,10 @@ impl TdeflCompressor {
             num_dist_codes -= 1;
         }
 
-        code_sizes_to_pack[..num_lit_codes].copy_from_slice(&self.m_huff_code_sizes[0][..num_lit_codes]);
-        code_sizes_to_pack[num_lit_codes..num_lit_codes + num_dist_codes].copy_from_slice(&self.m_huff_code_sizes[1][..num_dist_codes]);
+        code_sizes_to_pack[..num_lit_codes]
+            .copy_from_slice(&self.m_huff_code_sizes[0][..num_lit_codes]);
+        code_sizes_to_pack[num_lit_codes..num_lit_codes + num_dist_codes]
+            .copy_from_slice(&self.m_huff_code_sizes[1][..num_dist_codes]);
         let total_code_sizes_to_pack = num_lit_codes + num_dist_codes;
         let mut num_packed_code_sizes = 0usize;
         let mut rle_z_count = 0u32;
@@ -436,10 +467,17 @@ impl TdeflCompressor {
         self.m_huff_count[2][..TDEFL_MAX_HUFF_SYMBOLS_2].fill(0);
 
         // TDEFL_RLE_PREV_CODE_SIZE
-        fn rle_prev_code_size(count: &mut [u16; TDEFL_MAX_HUFF_SYMBOLS], packed: &mut [u8], num_packed: &mut usize, rle_repeat_count: &mut u32, prev_code_size: u8) {
+        fn rle_prev_code_size(
+            count: &mut [u16; TDEFL_MAX_HUFF_SYMBOLS],
+            packed: &mut [u8],
+            num_packed: &mut usize,
+            rle_repeat_count: &mut u32,
+            prev_code_size: u8,
+        ) {
             if *rle_repeat_count != 0 {
                 if *rle_repeat_count < 3 {
-                    count[usize::from(prev_code_size)] = count[usize::from(prev_code_size)].wrapping_add(*rle_repeat_count as u16);
+                    count[usize::from(prev_code_size)] =
+                        count[usize::from(prev_code_size)].wrapping_add(*rle_repeat_count as u16);
                     while *rle_repeat_count != 0 {
                         *rle_repeat_count -= 1;
                         packed[*num_packed] = prev_code_size;
@@ -455,7 +493,12 @@ impl TdeflCompressor {
             }
         }
         // TDEFL_RLE_ZERO_CODE_SIZE
-        fn rle_zero_code_size(count: &mut [u16; TDEFL_MAX_HUFF_SYMBOLS], packed: &mut [u8], num_packed: &mut usize, rle_z_count: &mut u32) {
+        fn rle_zero_code_size(
+            count: &mut [u16; TDEFL_MAX_HUFF_SYMBOLS],
+            packed: &mut [u8],
+            num_packed: &mut usize,
+            rle_z_count: &mut u32,
+        ) {
             if *rle_z_count != 0 {
                 if *rle_z_count < 3 {
                     count[0] = count[0].wrapping_add(*rle_z_count as u16);
@@ -482,31 +525,71 @@ impl TdeflCompressor {
         for i in 0..total_code_sizes_to_pack {
             let code_size = code_sizes_to_pack[i];
             if code_size == 0 {
-                rle_prev_code_size(&mut self.m_huff_count[2], &mut packed_code_sizes, &mut num_packed_code_sizes, &mut rle_repeat_count, prev_code_size);
+                rle_prev_code_size(
+                    &mut self.m_huff_count[2],
+                    &mut packed_code_sizes,
+                    &mut num_packed_code_sizes,
+                    &mut rle_repeat_count,
+                    prev_code_size,
+                );
                 rle_z_count += 1;
                 if rle_z_count == 138 {
-                    rle_zero_code_size(&mut self.m_huff_count[2], &mut packed_code_sizes, &mut num_packed_code_sizes, &mut rle_z_count);
+                    rle_zero_code_size(
+                        &mut self.m_huff_count[2],
+                        &mut packed_code_sizes,
+                        &mut num_packed_code_sizes,
+                        &mut rle_z_count,
+                    );
                 }
             } else {
-                rle_zero_code_size(&mut self.m_huff_count[2], &mut packed_code_sizes, &mut num_packed_code_sizes, &mut rle_z_count);
+                rle_zero_code_size(
+                    &mut self.m_huff_count[2],
+                    &mut packed_code_sizes,
+                    &mut num_packed_code_sizes,
+                    &mut rle_z_count,
+                );
                 if code_size != prev_code_size {
-                    rle_prev_code_size(&mut self.m_huff_count[2], &mut packed_code_sizes, &mut num_packed_code_sizes, &mut rle_repeat_count, prev_code_size);
-                    self.m_huff_count[2][usize::from(code_size)] = self.m_huff_count[2][usize::from(code_size)].wrapping_add(1);
+                    rle_prev_code_size(
+                        &mut self.m_huff_count[2],
+                        &mut packed_code_sizes,
+                        &mut num_packed_code_sizes,
+                        &mut rle_repeat_count,
+                        prev_code_size,
+                    );
+                    self.m_huff_count[2][usize::from(code_size)] =
+                        self.m_huff_count[2][usize::from(code_size)].wrapping_add(1);
                     packed_code_sizes[num_packed_code_sizes] = code_size;
                     num_packed_code_sizes += 1;
                 } else {
                     rle_repeat_count += 1;
                     if rle_repeat_count == 6 {
-                        rle_prev_code_size(&mut self.m_huff_count[2], &mut packed_code_sizes, &mut num_packed_code_sizes, &mut rle_repeat_count, prev_code_size);
+                        rle_prev_code_size(
+                            &mut self.m_huff_count[2],
+                            &mut packed_code_sizes,
+                            &mut num_packed_code_sizes,
+                            &mut rle_repeat_count,
+                            prev_code_size,
+                        );
                     }
                 }
             }
             prev_code_size = code_size;
         }
         if rle_repeat_count != 0 {
-            rle_prev_code_size(&mut self.m_huff_count[2], &mut packed_code_sizes, &mut num_packed_code_sizes, &mut rle_repeat_count, prev_code_size);
+            rle_prev_code_size(
+                &mut self.m_huff_count[2],
+                &mut packed_code_sizes,
+                &mut num_packed_code_sizes,
+                &mut rle_repeat_count,
+                prev_code_size,
+            );
         } else {
-            rle_zero_code_size(&mut self.m_huff_count[2], &mut packed_code_sizes, &mut num_packed_code_sizes, &mut rle_z_count);
+            rle_zero_code_size(
+                &mut self.m_huff_count[2],
+                &mut packed_code_sizes,
+                &mut num_packed_code_sizes,
+                &mut rle_z_count,
+            );
         }
 
         self.tdefl_optimize_huffman_table(2, TDEFL_MAX_HUFF_SYMBOLS_2, 7, false);
@@ -518,7 +601,10 @@ impl TdeflCompressor {
 
         let mut num_bit_lengths = 18i32;
         while num_bit_lengths >= 0 {
-            if self.m_huff_code_sizes[2][usize::from(S_TDEFL_PACKED_CODE_SIZE_SYMS_SWIZZLE[num_bit_lengths as usize])] != 0 {
+            if self.m_huff_code_sizes[2]
+                [usize::from(S_TDEFL_PACKED_CODE_SIZE_SYMS_SWIZZLE[num_bit_lengths as usize])]
+                != 0
+            {
                 break;
             }
             num_bit_lengths -= 1;
@@ -526,7 +612,13 @@ impl TdeflCompressor {
         let num_bit_lengths = 4.max(num_bit_lengths + 1) as usize;
         self.put_bits(num_bit_lengths as u32 - 4, 4);
         for i in 0..num_bit_lengths {
-            self.put_bits(u32::from(self.m_huff_code_sizes[2][usize::from(S_TDEFL_PACKED_CODE_SIZE_SYMS_SWIZZLE[i])]), 3);
+            self.put_bits(
+                u32::from(
+                    self.m_huff_code_sizes[2]
+                        [usize::from(S_TDEFL_PACKED_CODE_SIZE_SYMS_SWIZZLE[i])],
+                ),
+                3,
+            );
         }
 
         let mut packed_code_sizes_index = 0;
@@ -534,9 +626,15 @@ impl TdeflCompressor {
             let code = usize::from(packed_code_sizes[packed_code_sizes_index]);
             packed_code_sizes_index += 1;
             debug_assert!(code < TDEFL_MAX_HUFF_SYMBOLS_2);
-            self.put_bits(u32::from(self.m_huff_codes[2][code]), u32::from(self.m_huff_code_sizes[2][code]));
+            self.put_bits(
+                u32::from(self.m_huff_codes[2][code]),
+                u32::from(self.m_huff_code_sizes[2][code]),
+            );
             if code >= 16 {
-                self.put_bits(u32::from(packed_code_sizes[packed_code_sizes_index]), [2, 3, 7][code - 16]);
+                self.put_bits(
+                    u32::from(packed_code_sizes[packed_code_sizes_index]),
+                    [2, 3, 7][code - 16],
+                );
                 packed_code_sizes_index += 1;
             }
         }
@@ -567,32 +665,57 @@ impl TdeflCompressor {
             }
             if flags & 1 != 0 {
                 let match_len = usize::from(self.m_lz_code_buf[p_lz_codes]);
-                let match_dist = usize::from(self.m_lz_code_buf[p_lz_codes + 1]) | (usize::from(self.m_lz_code_buf[p_lz_codes + 2]) << 8);
+                let match_dist = usize::from(self.m_lz_code_buf[p_lz_codes + 1])
+                    | (usize::from(self.m_lz_code_buf[p_lz_codes + 2]) << 8);
                 p_lz_codes += 3;
 
                 let len_sym = usize::from(S_TDEFL_LEN_SYM[match_len]);
                 debug_assert!(self.m_huff_code_sizes[0][len_sym] != 0);
-                self.put_bits(u32::from(self.m_huff_codes[0][len_sym]), u32::from(self.m_huff_code_sizes[0][len_sym]));
-                self.put_bits(match_len as u32 & MZ_BITMASKS[usize::from(S_TDEFL_LEN_EXTRA[match_len])], u32::from(S_TDEFL_LEN_EXTRA[match_len]));
+                self.put_bits(
+                    u32::from(self.m_huff_codes[0][len_sym]),
+                    u32::from(self.m_huff_code_sizes[0][len_sym]),
+                );
+                self.put_bits(
+                    match_len as u32 & MZ_BITMASKS[usize::from(S_TDEFL_LEN_EXTRA[match_len])],
+                    u32::from(S_TDEFL_LEN_EXTRA[match_len]),
+                );
 
                 let (sym, num_extra_bits) = if match_dist < 512 {
-                    (usize::from(S_TDEFL_SMALL_DIST_SYM[match_dist]), u32::from(S_TDEFL_SMALL_DIST_EXTRA[match_dist]))
+                    (
+                        usize::from(S_TDEFL_SMALL_DIST_SYM[match_dist]),
+                        u32::from(S_TDEFL_SMALL_DIST_EXTRA[match_dist]),
+                    )
                 } else {
-                    (usize::from(S_TDEFL_LARGE_DIST_SYM[match_dist >> 8]), u32::from(S_TDEFL_LARGE_DIST_EXTRA[match_dist >> 8]))
+                    (
+                        usize::from(S_TDEFL_LARGE_DIST_SYM[match_dist >> 8]),
+                        u32::from(S_TDEFL_LARGE_DIST_EXTRA[match_dist >> 8]),
+                    )
                 };
                 debug_assert!(self.m_huff_code_sizes[1][sym] != 0);
-                self.put_bits(u32::from(self.m_huff_codes[1][sym]), u32::from(self.m_huff_code_sizes[1][sym]));
-                self.put_bits(match_dist as u32 & MZ_BITMASKS[num_extra_bits as usize], num_extra_bits);
+                self.put_bits(
+                    u32::from(self.m_huff_codes[1][sym]),
+                    u32::from(self.m_huff_code_sizes[1][sym]),
+                );
+                self.put_bits(
+                    match_dist as u32 & MZ_BITMASKS[num_extra_bits as usize],
+                    num_extra_bits,
+                );
             } else {
                 let lit = usize::from(self.m_lz_code_buf[p_lz_codes]);
                 p_lz_codes += 1;
                 debug_assert!(self.m_huff_code_sizes[0][lit] != 0);
-                self.put_bits(u32::from(self.m_huff_codes[0][lit]), u32::from(self.m_huff_code_sizes[0][lit]));
+                self.put_bits(
+                    u32::from(self.m_huff_codes[0][lit]),
+                    u32::from(self.m_huff_code_sizes[0][lit]),
+                );
             }
             flags >>= 1;
         }
 
-        self.put_bits(u32::from(self.m_huff_codes[0][256]), u32::from(self.m_huff_code_sizes[0][256]));
+        self.put_bits(
+            u32::from(self.m_huff_codes[0][256]),
+            u32::from(self.m_huff_code_sizes[0][256]),
+        );
 
         self.m_p_output_buf < self.m_p_output_buf_end
     }
@@ -610,13 +733,18 @@ impl TdeflCompressor {
     /// every block goes out whole.)
     fn tdefl_flush_block(&mut self, flush: TdeflFlush) -> i32 {
         let mut comp_block_succeeded = false;
-        let use_raw_block = (self.m_flags & TDEFL_FORCE_ALL_RAW_BLOCKS != 0) && self.m_lookahead_pos.wrapping_sub(self.m_lz_code_buf_dict_pos) <= self.m_dict_size;
+        let use_raw_block = (self.m_flags & TDEFL_FORCE_ALL_RAW_BLOCKS != 0)
+            && self
+                .m_lookahead_pos
+                .wrapping_sub(self.m_lz_code_buf_dict_pos)
+                <= self.m_dict_size;
 
         self.m_p_output_buf = 0;
         self.m_p_output_buf_end = TDEFL_OUT_BUF_SIZE - 16;
 
         // (All eight bits can be shifted out.)
-        self.m_lz_code_buf[self.m_p_lz_flags] = (u32::from(self.m_lz_code_buf[self.m_p_lz_flags]) >> self.m_num_flags_left) as u8;
+        self.m_lz_code_buf[self.m_p_lz_flags] =
+            (u32::from(self.m_lz_code_buf[self.m_p_lz_flags]) >> self.m_num_flags_left) as u8;
         self.m_p_lz_code_buf -= usize::from(self.m_num_flags_left == 8);
 
         if (self.m_flags & TDEFL_WRITE_ZLIB_HEADER != 0) && self.m_block_index == 0 {
@@ -655,11 +783,20 @@ impl TdeflCompressor {
         let saved_bits_in = self.m_bits_in;
 
         if !use_raw_block {
-            comp_block_succeeded = self.tdefl_compress_block((self.m_flags & TDEFL_FORCE_ALL_STATIC_BLOCKS != 0) || (self.m_total_lz_bytes < 48));
+            comp_block_succeeded = self.tdefl_compress_block(
+                (self.m_flags & TDEFL_FORCE_ALL_STATIC_BLOCKS != 0) || (self.m_total_lz_bytes < 48),
+            );
         }
 
         // If the block gets expanded, forget the current contents of the output buffer and send a raw block instead.
-        if (use_raw_block || (self.m_total_lz_bytes != 0 && (self.m_p_output_buf - p_saved_output_buf + 1) as u32 >= self.m_total_lz_bytes)) && self.m_lookahead_pos.wrapping_sub(self.m_lz_code_buf_dict_pos) <= self.m_dict_size {
+        if (use_raw_block
+            || (self.m_total_lz_bytes != 0
+                && (self.m_p_output_buf - p_saved_output_buf + 1) as u32 >= self.m_total_lz_bytes))
+            && self
+                .m_lookahead_pos
+                .wrapping_sub(self.m_lz_code_buf_dict_pos)
+                <= self.m_dict_size
+        {
             self.m_p_output_buf = p_saved_output_buf;
             self.m_bit_buffer = saved_bit_buf;
             self.m_bits_in = saved_bits_in;
@@ -672,7 +809,8 @@ impl TdeflCompressor {
                 self.m_total_lz_bytes ^= 0xFFFF;
             }
             for i in 0..self.m_total_lz_bytes {
-                let byte = self.m_dict[(self.m_lz_code_buf_dict_pos.wrapping_add(i) & TDEFL_LZ_DICT_SIZE_MASK) as usize];
+                let byte = self.m_dict[(self.m_lz_code_buf_dict_pos.wrapping_add(i)
+                    & TDEFL_LZ_DICT_SIZE_MASK) as usize];
                 self.put_bits(u32::from(byte), 8);
             }
         }
@@ -717,7 +855,9 @@ impl TdeflCompressor {
         self.m_p_lz_code_buf = 1;
         self.m_p_lz_flags = 0;
         self.m_num_flags_left = 8;
-        self.m_lz_code_buf_dict_pos = self.m_lz_code_buf_dict_pos.wrapping_add(self.m_total_lz_bytes);
+        self.m_lz_code_buf_dict_pos = self
+            .m_lz_code_buf_dict_pos
+            .wrapping_add(self.m_total_lz_bytes);
         self.m_total_lz_bytes = 0;
         self.m_block_index += 1;
 
@@ -730,7 +870,14 @@ impl TdeflCompressor {
     }
 
     #[inline]
-    fn tdefl_find_match(&self, lookahead_pos: u32, max_dist: u32, max_match_len: u32, p_match_dist: &mut u32, p_match_len: &mut u32) {
+    fn tdefl_find_match(
+        &self,
+        lookahead_pos: u32,
+        max_dist: u32,
+        max_match_len: u32,
+        p_match_dist: &mut u32,
+        p_match_len: &mut u32,
+    ) {
         let mut dist = 0u32;
         let pos = (lookahead_pos & TDEFL_LZ_DICT_SIZE_MASK) as usize;
         let mut match_len = *p_match_len;
@@ -761,7 +908,9 @@ impl TdeflCompressor {
                         return;
                     }
                     probe_pos = (next_probe_pos & TDEFL_LZ_DICT_SIZE_MASK) as usize;
-                    if dict[probe_pos + match_len as usize] == c0 && dict[probe_pos + match_len as usize - 1] == c1 {
+                    if dict[probe_pos + match_len as usize] == c0
+                        && dict[probe_pos + match_len as usize - 1] == c1
+                    {
                         found = true;
                         break;
                     }
@@ -805,12 +954,17 @@ impl TdeflCompressor {
             self.m_p_lz_flags = self.m_p_lz_code_buf;
             self.m_p_lz_code_buf += 1;
         }
-        self.m_huff_count[0][usize::from(lit)] = self.m_huff_count[0][usize::from(lit)].wrapping_add(1);
+        self.m_huff_count[0][usize::from(lit)] =
+            self.m_huff_count[0][usize::from(lit)].wrapping_add(1);
     }
 
     #[inline]
     fn tdefl_record_match(&mut self, match_len: u32, mut match_dist: u32) {
-        debug_assert!(match_len >= TDEFL_MIN_MATCH_LEN && match_dist >= 1 && match_dist <= TDEFL_LZ_DICT_SIZE as u32);
+        debug_assert!(
+            match_len >= TDEFL_MIN_MATCH_LEN
+                && match_dist >= 1
+                && match_dist <= TDEFL_LZ_DICT_SIZE as u32
+        );
 
         self.m_total_lz_bytes += match_len;
 
@@ -846,10 +1000,21 @@ impl TdeflCompressor {
         while src_buf_left != 0 || (flush != TdeflFlush::NoFlush && self.m_lookahead_size != 0) {
             // Update dictionary and hash chains. Keeps the lookahead size equal to TDEFL_MAX_MATCH_LEN.
             if self.m_lookahead_size + self.m_dict_size >= TDEFL_MIN_MATCH_LEN - 1 {
-                let mut dst_pos = (self.m_lookahead_pos.wrapping_add(self.m_lookahead_size) & TDEFL_LZ_DICT_SIZE_MASK) as usize;
-                let mut ins_pos = self.m_lookahead_pos.wrapping_add(self.m_lookahead_size).wrapping_sub(2);
-                let mut hash = (u32::from(self.m_dict[(ins_pos & TDEFL_LZ_DICT_SIZE_MASK) as usize]) << TDEFL_LZ_HASH_SHIFT) ^ u32::from(self.m_dict[(ins_pos.wrapping_add(1) & TDEFL_LZ_DICT_SIZE_MASK) as usize]);
-                let num_bytes_to_process = src_buf_left.min((TDEFL_MAX_MATCH_LEN - self.m_lookahead_size) as usize);
+                let mut dst_pos = (self.m_lookahead_pos.wrapping_add(self.m_lookahead_size)
+                    & TDEFL_LZ_DICT_SIZE_MASK) as usize;
+                let mut ins_pos = self
+                    .m_lookahead_pos
+                    .wrapping_add(self.m_lookahead_size)
+                    .wrapping_sub(2);
+                let mut hash =
+                    (u32::from(self.m_dict[(ins_pos & TDEFL_LZ_DICT_SIZE_MASK) as usize])
+                        << TDEFL_LZ_HASH_SHIFT)
+                        ^ u32::from(
+                            self.m_dict
+                                [(ins_pos.wrapping_add(1) & TDEFL_LZ_DICT_SIZE_MASK) as usize],
+                        );
+                let num_bytes_to_process =
+                    src_buf_left.min((TDEFL_MAX_MATCH_LEN - self.m_lookahead_size) as usize);
                 let p_src_end = p_src + num_bytes_to_process;
                 src_buf_left -= num_bytes_to_process;
                 self.m_lookahead_size += num_bytes_to_process as u32;
@@ -860,8 +1025,10 @@ impl TdeflCompressor {
                     if dst_pos < (TDEFL_MAX_MATCH_LEN - 1) as usize {
                         self.m_dict[TDEFL_LZ_DICT_SIZE + dst_pos] = c;
                     }
-                    hash = ((hash << TDEFL_LZ_HASH_SHIFT) ^ u32::from(c)) & (TDEFL_LZ_HASH_SIZE as u32 - 1);
-                    self.m_next[(ins_pos & TDEFL_LZ_DICT_SIZE_MASK) as usize] = self.m_hash[hash as usize];
+                    hash = ((hash << TDEFL_LZ_HASH_SHIFT) ^ u32::from(c))
+                        & (TDEFL_LZ_HASH_SIZE as u32 - 1);
+                    self.m_next[(ins_pos & TDEFL_LZ_DICT_SIZE_MASK) as usize] =
+                        self.m_hash[hash as usize];
                     self.m_hash[hash as usize] = ins_pos as u16;
                     dst_pos = (dst_pos + 1) & TDEFL_LZ_DICT_SIZE_MASK as usize;
                     ins_pos = ins_pos.wrapping_add(1);
@@ -870,7 +1037,8 @@ impl TdeflCompressor {
                 while src_buf_left != 0 && self.m_lookahead_size < TDEFL_MAX_MATCH_LEN {
                     let c = src[p_src];
                     p_src += 1;
-                    let dst_pos = (self.m_lookahead_pos.wrapping_add(self.m_lookahead_size) & TDEFL_LZ_DICT_SIZE_MASK) as usize;
+                    let dst_pos = (self.m_lookahead_pos.wrapping_add(self.m_lookahead_size)
+                        & TDEFL_LZ_DICT_SIZE_MASK) as usize;
                     src_buf_left -= 1;
                     self.m_dict[dst_pos] = c;
                     if dst_pos < (TDEFL_MAX_MATCH_LEN - 1) as usize {
@@ -878,14 +1046,27 @@ impl TdeflCompressor {
                     }
                     self.m_lookahead_size += 1;
                     if self.m_lookahead_size + self.m_dict_size >= TDEFL_MIN_MATCH_LEN {
-                        let ins_pos = self.m_lookahead_pos.wrapping_add(self.m_lookahead_size - 1).wrapping_sub(2);
-                        let hash = ((u32::from(self.m_dict[(ins_pos & TDEFL_LZ_DICT_SIZE_MASK) as usize]) << (TDEFL_LZ_HASH_SHIFT * 2)) ^ (u32::from(self.m_dict[(ins_pos.wrapping_add(1) & TDEFL_LZ_DICT_SIZE_MASK) as usize]) << TDEFL_LZ_HASH_SHIFT) ^ u32::from(c)) & (TDEFL_LZ_HASH_SIZE as u32 - 1);
-                        self.m_next[(ins_pos & TDEFL_LZ_DICT_SIZE_MASK) as usize] = self.m_hash[hash as usize];
+                        let ins_pos = self
+                            .m_lookahead_pos
+                            .wrapping_add(self.m_lookahead_size - 1)
+                            .wrapping_sub(2);
+                        let hash = ((u32::from(
+                            self.m_dict[(ins_pos & TDEFL_LZ_DICT_SIZE_MASK) as usize],
+                        ) << (TDEFL_LZ_HASH_SHIFT * 2))
+                            ^ (u32::from(
+                                self.m_dict
+                                    [(ins_pos.wrapping_add(1) & TDEFL_LZ_DICT_SIZE_MASK) as usize],
+                            ) << TDEFL_LZ_HASH_SHIFT)
+                            ^ u32::from(c))
+                            & (TDEFL_LZ_HASH_SIZE as u32 - 1);
+                        self.m_next[(ins_pos & TDEFL_LZ_DICT_SIZE_MASK) as usize] =
+                            self.m_hash[hash as usize];
                         self.m_hash[hash as usize] = ins_pos as u16;
                     }
                 }
             }
-            self.m_dict_size = (TDEFL_LZ_DICT_SIZE as u32 - self.m_lookahead_size).min(self.m_dict_size);
+            self.m_dict_size =
+                (TDEFL_LZ_DICT_SIZE as u32 - self.m_lookahead_size).min(self.m_dict_size);
             if flush == TdeflFlush::NoFlush && self.m_lookahead_size < TDEFL_MAX_MATCH_LEN {
                 break;
             }
@@ -893,11 +1074,16 @@ impl TdeflCompressor {
             // Simple lazy/greedy parsing state machine.
             let mut len_to_move = 1u32;
             let mut cur_match_dist = 0u32;
-            let mut cur_match_len = if self.m_saved_match_len != 0 { self.m_saved_match_len } else { TDEFL_MIN_MATCH_LEN - 1 };
+            let mut cur_match_len = if self.m_saved_match_len != 0 {
+                self.m_saved_match_len
+            } else {
+                TDEFL_MIN_MATCH_LEN - 1
+            };
             let cur_pos = self.m_lookahead_pos & TDEFL_LZ_DICT_SIZE_MASK;
             if self.m_flags & (TDEFL_RLE_MATCHES | TDEFL_FORCE_ALL_RAW_BLOCKS) != 0 {
                 if self.m_dict_size != 0 && (self.m_flags & TDEFL_FORCE_ALL_RAW_BLOCKS == 0) {
-                    let c = self.m_dict[(cur_pos.wrapping_sub(1) & TDEFL_LZ_DICT_SIZE_MASK) as usize];
+                    let c =
+                        self.m_dict[(cur_pos.wrapping_sub(1) & TDEFL_LZ_DICT_SIZE_MASK) as usize];
                     cur_match_len = 0;
                     while cur_match_len < self.m_lookahead_size {
                         if self.m_dict[(cur_pos + cur_match_len) as usize] != c {
@@ -912,9 +1098,18 @@ impl TdeflCompressor {
                     }
                 }
             } else {
-                self.tdefl_find_match(self.m_lookahead_pos, self.m_dict_size, self.m_lookahead_size, &mut cur_match_dist, &mut cur_match_len);
+                self.tdefl_find_match(
+                    self.m_lookahead_pos,
+                    self.m_dict_size,
+                    self.m_lookahead_size,
+                    &mut cur_match_dist,
+                    &mut cur_match_len,
+                );
             }
-            if (cur_match_len == TDEFL_MIN_MATCH_LEN && cur_match_dist >= 8 * 1024) || cur_pos == cur_match_dist || ((self.m_flags & TDEFL_FILTER_MATCHES != 0) && cur_match_len <= 5) {
+            if (cur_match_len == TDEFL_MIN_MATCH_LEN && cur_match_dist >= 8 * 1024)
+                || cur_pos == cur_match_dist
+                || ((self.m_flags & TDEFL_FILTER_MATCHES != 0) && cur_match_len <= 5)
+            {
                 cur_match_dist = 0;
                 cur_match_len = 0;
             }
@@ -938,7 +1133,10 @@ impl TdeflCompressor {
                 }
             } else if cur_match_dist == 0 {
                 self.tdefl_record_literal(self.m_dict[(cur_pos as usize).min(dict_last)]);
-            } else if self.m_greedy_parsing || (self.m_flags & TDEFL_RLE_MATCHES != 0) || cur_match_len >= 128 {
+            } else if self.m_greedy_parsing
+                || (self.m_flags & TDEFL_RLE_MATCHES != 0)
+                || cur_match_len >= 128
+            {
                 self.tdefl_record_match(cur_match_len, cur_match_dist);
                 len_to_move = cur_match_len;
             } else {
@@ -952,7 +1150,11 @@ impl TdeflCompressor {
             self.m_lookahead_size -= len_to_move;
             self.m_dict_size = (self.m_dict_size + len_to_move).min(TDEFL_LZ_DICT_SIZE as u32);
             // Check if it's time to flush the current LZ codes to the internal output buffer.
-            if self.m_p_lz_code_buf > TDEFL_LZ_CODE_BUF_SIZE - 8 || (self.m_total_lz_bytes > 31 * 1024 && ((((self.m_p_lz_code_buf as u32) * 115) >> 7) >= self.m_total_lz_bytes || (self.m_flags & TDEFL_FORCE_ALL_RAW_BLOCKS != 0))) {
+            if self.m_p_lz_code_buf > TDEFL_LZ_CODE_BUF_SIZE - 8
+                || (self.m_total_lz_bytes > 31 * 1024
+                    && ((((self.m_p_lz_code_buf as u32) * 115) >> 7) >= self.m_total_lz_bytes
+                        || (self.m_flags & TDEFL_FORCE_ALL_RAW_BLOCKS != 0)))
+            {
                 self.tdefl_flush_block(TdeflFlush::NoFlush);
             }
         }
@@ -967,7 +1169,9 @@ impl TdeflCompressor {
     pub fn compress_buffer(&mut self, in_buf: &[u8], flush: TdeflFlush) -> TdeflStatus {
         self.m_flush = flush;
 
-        if self.m_prev_return_status != TdeflStatus::Okay || (self.m_wants_to_finish && flush != TdeflFlush::Finish) {
+        if self.m_prev_return_status != TdeflStatus::Okay
+            || (self.m_wants_to_finish && flush != TdeflFlush::Finish)
+        {
             self.m_prev_return_status = TdeflStatus::BadParam;
             return self.m_prev_return_status;
         }
@@ -994,7 +1198,11 @@ impl TdeflCompressor {
             }
         }
 
-        self.m_prev_return_status = if self.m_finished { TdeflStatus::Done } else { TdeflStatus::Okay };
+        self.m_prev_return_status = if self.m_finished {
+            TdeflStatus::Done
+        } else {
+            TdeflStatus::Okay
+        };
         self.m_prev_return_status
     }
 }
@@ -1019,7 +1227,16 @@ pub fn tdefl_compress_mem_to_heap(src_buf: &[u8], flags: u32) -> Vec<u8> {
 /// (zlib). `strategy` may be either `MZ_DEFAULT_STRATEGY`, `MZ_FILTERED`, `MZ_HUFFMAN_ONLY`,
 /// `MZ_RLE`, or `MZ_FIXED`.
 pub fn tdefl_create_comp_flags_from_zip_params(level: i32, window_bits: i32, strategy: i32) -> u32 {
-    let mut comp_flags = S_TDEFL_NUM_PROBES[if level >= 0 { level.min(10) } else { MZ_DEFAULT_LEVEL } as usize] | if level <= 3 { TDEFL_GREEDY_PARSING_FLAG } else { 0 };
+    let mut comp_flags = S_TDEFL_NUM_PROBES[if level >= 0 {
+        level.min(10)
+    } else {
+        MZ_DEFAULT_LEVEL
+    } as usize]
+        | if level <= 3 {
+            TDEFL_GREEDY_PARSING_FLAG
+        } else {
+            0
+        };
     if window_bits > 0 {
         comp_flags |= TDEFL_WRITE_ZLIB_HEADER;
     }

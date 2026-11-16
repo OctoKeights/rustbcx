@@ -127,7 +127,10 @@ fn rle_compress(input: &[u8], out: &mut [u8]) -> usize {
     let at = |i: isize| input[i as usize];
 
     while run_start < in_end {
-        while run_end < in_end && at(run_start) == at(run_end) && run_end - run_start - 1 < MAX_RUN_LENGTH {
+        while run_end < in_end
+            && at(run_start) == at(run_end)
+            && run_end - run_start - 1 < MAX_RUN_LENGTH
+        {
             run_end += 1;
         }
 
@@ -140,7 +143,11 @@ fn rle_compress(input: &[u8], out: &mut [u8]) -> usize {
             run_start = run_end;
         } else {
             // Uncompressable run.
-            while run_end < in_end && ((run_end + 1 >= in_end || at(run_end) != at(run_end + 1)) || (run_end + 2 >= in_end || at(run_end + 1) != at(run_end + 2))) && run_end - run_start < MAX_RUN_LENGTH {
+            while run_end < in_end
+                && ((run_end + 1 >= in_end || at(run_end) != at(run_end + 1))
+                    || (run_end + 2 >= in_end || at(run_end + 1) != at(run_end + 2)))
+                && run_end - run_start < MAX_RUN_LENGTH
+            {
                 run_end += 1;
             }
 

@@ -28,9 +28,34 @@ mod tests {
     fn floor_is_the_standard_librarys_floor() {
         let same = |x: f32| {
             let (ours, theirs) = (floor(x), x.floor());
-            assert!(ours.to_bits() == theirs.to_bits() || (ours.is_nan() && theirs.is_nan()), "{x}: {ours} {theirs}");
+            assert!(
+                ours.to_bits() == theirs.to_bits() || (ours.is_nan() && theirs.is_nan()),
+                "{x}: {ours} {theirs}"
+            );
         };
-        for x in [0.0, -0.0, 0.5, -0.5, 1.0, -1.0, 0.99999994, -0.99999994, 8388607.5, -8388607.5, 8388608.0, -8388608.0, 1e30, -1e30, f32::INFINITY, f32::NEG_INFINITY, f32::NAN, f32::MIN_POSITIVE, -f32::MIN_POSITIVE, 1e-45, -1e-45] {
+        for x in [
+            0.0,
+            -0.0,
+            0.5,
+            -0.5,
+            1.0,
+            -1.0,
+            0.99999994,
+            -0.99999994,
+            8388607.5,
+            -8388607.5,
+            8388608.0,
+            -8388608.0,
+            1e30,
+            -1e30,
+            f32::INFINITY,
+            f32::NEG_INFINITY,
+            f32::NAN,
+            f32::MIN_POSITIVE,
+            -f32::MIN_POSITIVE,
+            1e-45,
+            -1e-45,
+        ] {
             same(x);
         }
         // A spread of every kind of float: one bit pattern in each 9,973.

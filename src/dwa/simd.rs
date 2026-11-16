@@ -210,8 +210,9 @@ pub(super) fn csc709_forward64(data: &mut [[f32; 64]], idx: [usize; 3]) {
 
 /// Where each value of a block in zig-zag order goes in the block.
 pub(super) const INV_REMAP: [usize; 64] = [
-    0, 1, 5, 6, 14, 15, 27, 28, 2, 4, 7, 13, 16, 26, 29, 42, 3, 8, 12, 17, 25, 30, 41, 43, 9, 11, 18, 24, 31, 40, 44, 53, 10, 19, 23, 32, 39, 45, 52, 54, 20, 22, 33, 38, 46, 51, 55, 60, 21, 34, 37, 47, 50, 56, 59, 61, 35, 36, 48, 49,
-    57, 58, 62, 63,
+    0, 1, 5, 6, 14, 15, 27, 28, 2, 4, 7, 13, 16, 26, 29, 42, 3, 8, 12, 17, 25, 30, 41, 43, 9, 11,
+    18, 24, 31, 40, 44, 53, 10, 19, 23, 32, 39, 45, 52, 54, 20, 22, 33, 38, 46, 51, 55, 60, 21, 34,
+    37, 47, 50, 56, 59, 61, 35, 36, 48, 49, 57, 58, 62, 63,
 ];
 
 /// `fromHalfZigZag_f16c`: a block of halves in zig-zag order, as floats in order.
@@ -253,8 +254,14 @@ pub(super) fn dct_inverse8x8_dc_only(data: &mut [f32; 64]) {
 fn idct_row(row: &[f32]) -> [f32; 8] {
     let mut out = [0f32; 8];
     for j in 0..4 {
-        let even = add(add(mul(M1[0][j], row[0]), mul(M1[1][j], row[2])), add(mul(M1[2][j], row[4]), mul(M1[3][j], row[6])));
-        let odd = add(add(mul(M2[0][j], row[1]), mul(M2[1][j], row[3])), add(mul(M2[2][j], row[5]), mul(M2[3][j], row[7])));
+        let even = add(
+            add(mul(M1[0][j], row[0]), mul(M1[1][j], row[2])),
+            add(mul(M1[2][j], row[4]), mul(M1[3][j], row[6])),
+        );
+        let odd = add(
+            add(mul(M2[0][j], row[1]), mul(M2[1][j], row[3])),
+            add(mul(M2[2][j], row[5]), mul(M2[3][j], row[7])),
+        );
         out[j] = add(even, odd);
         out[7 - j] = sub(even, odd);
     }
@@ -494,4 +501,3 @@ mod tests {
         assert_eq!((ours, f16c), (0x94a80fad4f52a325, 0xe063384da55e2325));
     }
 }
-

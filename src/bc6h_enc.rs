@@ -67,7 +67,11 @@ fn f16_to_int(f: u16, signed: bool) -> i32 {
     if signed {
         let s = input & F16S_MASK;
         input &= F16EM_MASK;
-        let magnitude = if i32::from(input) > F16MAX { F16MAX } else { i32::from(input) };
+        let magnitude = if i32::from(input) > F16MAX {
+            F16MAX
+        } else {
+            i32::from(input)
+        };
         out = if s != 0 { -magnitude } else { magnitude };
     } else if input & F16S_MASK != 0 {
         out = 0;
@@ -80,7 +84,11 @@ fn f16_to_int(f: u16, signed: bool) -> i32 {
 /// `INTColor::Set`: a pixel's floats as halves (rounded to the nearest, ties to even: what
 /// `XMStoreHalf4` does with F16C), and the halves as integers.
 fn int_color_set(c: &[f32; 3], signed: bool) -> IntColor {
-    [f16_to_int(float_to_half(c[0]), signed), f16_to_int(float_to_half(c[1]), signed), f16_to_int(float_to_half(c[2]), signed)]
+    [
+        f16_to_int(float_to_half(c[0]), signed),
+        f16_to_int(float_to_half(c[1]), signed),
+        f16_to_int(float_to_half(c[2]), signed),
+    ]
 }
 
 /// `INTColor::Clamp`
@@ -94,7 +102,11 @@ fn int_color_clamp(c: &mut IntColor, min: i32, max: i32) {
 fn int_color_sign_extend(c: &mut IntColor, prec: &[u8; 3]) {
     for (value, &nb) in c.iter_mut().zip(prec) {
         let nb = i32::from(nb);
-        *value |= if *value & (1 << (nb - 1)) != 0 { !0 ^ ((1 << nb) - 1) } else { 0 };
+        *value |= if *value & (1 << (nb - 1)) != 0 {
+            !0 ^ ((1 << nb) - 1)
+        } else {
+            0
+        };
     }
 }
 
@@ -109,10 +121,23 @@ struct ModeInfo {
     rgba_prec: [[[u8; 3]; 2]; BC6H_MAX_REGIONS],
 }
 
-const fn info(mode: u8, partitions: u8, transformed: bool, index_prec: u8, first: [u8; 3], rest: [u8; 3]) -> ModeInfo {
+const fn info(
+    mode: u8,
+    partitions: u8,
+    transformed: bool,
+    index_prec: u8,
+    first: [u8; 3],
+    rest: [u8; 3],
+) -> ModeInfo {
     // (A mode of one region has no second pair of endpoints, and none of their bits.)
     let second = if partitions != 0 { rest } else { [0, 0, 0] };
-    ModeInfo { mode, partitions, transformed, index_prec, rgba_prec: [[first, rest], [second, second]] }
+    ModeInfo {
+        mode,
+        partitions,
+        transformed,
+        index_prec,
+        rgba_prec: [[first, rest], [second, second]],
+    }
 }
 
 // Mode, Partitions, Transformed, IndexPrec, RGBAPrec
@@ -185,7 +210,15 @@ impl<'a> EncodeParams<'a> {
         for (pixel, color) in i_pixels.iter_mut().zip(original) {
             *pixel = int_color_set(&[color[0], color[1], color[2]], signed);
         }
-        EncodeParams { best_err: f32::MAX, signed, mode: 0, shape: 0, hdr_pixels: original, unq_end_pts: [[IntEndPntPair::default(); BC6H_MAX_REGIONS]; BC6H_MAX_SHAPES], i_pixels }
+        EncodeParams {
+            best_err: f32::MAX,
+            signed,
+            mode: 0,
+            shape: 0,
+            hdr_pixels: original,
+            unq_end_pts: [[IntEndPntPair::default(); BC6H_MAX_REGIONS]; BC6H_MAX_SHAPES],
+            i_pixels,
+        }
     }
 
     fn info(&self) -> &'static ModeInfo {
@@ -214,7 +247,11 @@ fn transform_forward(end_pts: &mut [IntEndPntPair; BC6H_MAX_REGIONS]) {
     }
 }
 
-fn transform_inverse(end_pts: &mut [IntEndPntPair; BC6H_MAX_REGIONS], prec: &[u8; 3], signed: bool) {
+fn transform_inverse(
+    end_pts: &mut [IntEndPntPair; BC6H_MAX_REGIONS],
+    prec: &[u8; 3],
+    signed: bool,
+) {
     for c in 0..3 {
         let wrap_mask = (1 << prec[c]) - 1;
         end_pts[0].b[c] += end_pts[0].a[c];
@@ -263,7 +300,11 @@ fn n_bits(mut n: i32, is_signed: bool) -> i32 {
 /// `OptimizeRGB`: the two ends of the line through the pixels named in `index` that a palette
 /// of `steps` colours along it fits best.
 fn optimize_rgb(points: &[HdrColorA; 16], steps: u32, index: &[usize]) -> ([f32; 3], [f32; 3]) {
-    let (p_c, p_d): (&[f32], &[f32]) = if steps == 3 { (&P_C3, &P_D3) } else { (&P_C4, &P_D4) };
+    let (p_c, p_d): (&[f32], &[f32]) = if steps == 3 {
+        (&P_C3, &P_D3)
+    } else {
+        (&P_C4, &P_D4)
+    };
 
     // Find Min and Max points, as starting point
     let mut x = [f32::MAX; 3];
@@ -297,12 +338,20 @@ fn optimize_rgb(points: &[HdrColorA; 16], steps: u32, index: &[usize]) -> ([f32;
 
     let mut dir = [ab[0] * f_ab_inv, ab[1] * f_ab_inv, ab[2] * f_ab_inv];
 
-    let mid = [(x[0] + y[0]) * 0.5, (x[1] + y[1]) * 0.5, (x[2] + y[2]) * 0.5];
+    let mid = [
+        (x[0] + y[0]) * 0.5,
+        (x[1] + y[1]) * 0.5,
+        (x[2] + y[2]) * 0.5,
+    ];
 
     let mut f_dir = [0.0f32; 4];
 
     for &i in index {
-        let pt = [(points[i][0] - mid[0]) * dir[0], (points[i][1] - mid[1]) * dir[1], (points[i][2] - mid[2]) * dir[2]];
+        let pt = [
+            (points[i][0] - mid[0]) * dir[0],
+            (points[i][1] - mid[1]) * dir[1],
+            (points[i][2] - mid[2]) * dir[2],
+        ];
 
         let mut f;
         f = pt[0] + pt[1] + pt[2];
@@ -372,7 +421,9 @@ fn optimize_rgb(points: &[HdrColorA; 16], steps: u32, index: &[usize]) -> ([f32;
         let (mut dx, mut dy) = ([0.0f32; 3], [0.0f32; 3]);
 
         for &i in index {
-            let f_dot = (points[i][0] - x[0]) * dir[0] + (points[i][1] - x[1]) * dir[1] + (points[i][2] - x[2]) * dir[2];
+            let f_dot = (points[i][0] - x[0]) * dir[0]
+                + (points[i][1] - x[1]) * dir[1]
+                + (points[i][2] - x[2]) * dir[2];
 
             let i_step = if f_dot <= 0.0 {
                 0
@@ -382,7 +433,11 @@ fn optimize_rgb(points: &[HdrColorA; 16], steps: u32, index: &[usize]) -> ([f32;
                 (f_dot + 0.5) as u32 as usize
             };
 
-            let diff = [p_steps[i_step][0] - points[i][0], p_steps[i_step][1] - points[i][1], p_steps[i_step][2] - points[i][2]];
+            let diff = [
+                p_steps[i_step][0] - points[i][0],
+                p_steps[i_step][1] - points[i][1],
+                p_steps[i_step][2] - points[i][2],
+            ];
 
             let f_c = p_c[i_step] * (1.0 / 8.0);
             let f_d = p_d[i_step] * (1.0 / 8.0);
@@ -415,7 +470,13 @@ fn optimize_rgb(points: &[HdrColorA; 16], steps: u32, index: &[usize]) -> ([f32;
             y[2] += dy[2] * f;
         }
 
-        if (dx[0] * dx[0] < F_EPSILON) && (dx[1] * dx[1] < F_EPSILON) && (dx[2] * dx[2] < F_EPSILON) && (dy[0] * dy[0] < F_EPSILON) && (dy[1] * dy[1] < F_EPSILON) && (dy[2] * dy[2] < F_EPSILON) {
+        if (dx[0] * dx[0] < F_EPSILON)
+            && (dx[1] * dx[1] < F_EPSILON)
+            && (dx[2] * dx[2] < F_EPSILON)
+            && (dy[0] * dy[0] < F_EPSILON)
+            && (dy[1] * dy[1] < F_EPSILON)
+            && (dy[2] * dy[2] < F_EPSILON)
+        {
             break;
         }
     }
@@ -475,14 +536,22 @@ fn quantize(mut value: i32, prec: i32, signed: bool) -> i32 {
             s = true;
             value = -value;
         }
-        q = if prec >= 16 { value } else { (value << (prec - 1)) / (F16MAX + 1) };
+        q = if prec >= 16 {
+            value
+        } else {
+            (value << (prec - 1)) / (F16MAX + 1)
+        };
         if s {
             q = -q;
         }
         debug_assert!(q > -(1 << (prec - 1)) && q < (1 << (prec - 1)));
     } else {
         debug_assert!((0..=F16MAX).contains(&value));
-        q = if prec >= 15 { value } else { (value << prec) / (F16MAX + 1) };
+        q = if prec >= 15 {
+            value
+        } else {
+            (value << prec) / (F16MAX + 1)
+        };
         debug_assert!(q >= 0 && q < (1 << prec));
     }
 
@@ -552,14 +621,18 @@ fn end_points_fit(ep: &EncodeParams, end_pts: &[IntEndPntPair; BC6H_MAX_REGIONS]
     let prec3 = &info.rgba_prec[1][1];
 
     for c in 0..3 {
-        if n_bits(end_pts[0].a[c], is_signed) > i32::from(prec0[c]) || n_bits(end_pts[0].b[c], transformed || is_signed) > i32::from(prec1[c]) {
+        if n_bits(end_pts[0].a[c], is_signed) > i32::from(prec0[c])
+            || n_bits(end_pts[0].b[c], transformed || is_signed) > i32::from(prec1[c])
+        {
             return false;
         }
     }
 
     if info.partitions != 0 {
         for c in 0..3 {
-            if n_bits(end_pts[1].a[c], transformed || is_signed) > i32::from(prec2[c]) || n_bits(end_pts[1].b[c], transformed || is_signed) > i32::from(prec3[c]) {
+            if n_bits(end_pts[1].a[c], transformed || is_signed) > i32::from(prec2[c])
+                || n_bits(end_pts[1].b[c], transformed || is_signed) > i32::from(prec3[c])
+            {
                 return false;
             }
         }
@@ -578,7 +651,11 @@ fn weights_of(index_prec: u8) -> &'static [i32] {
 }
 
 /// `D3DX_BC6H::GeneratePaletteQuantized`
-fn generate_palette_quantized(ep: &EncodeParams, end_pts: &IntEndPntPair, palette: &mut [IntColor; BC6H_MAX_INDICES]) {
+fn generate_palette_quantized(
+    ep: &EncodeParams,
+    end_pts: &IntEndPntPair,
+    palette: &mut [IntColor; BC6H_MAX_INDICES],
+) {
     let info = ep.info();
     let num_indices = 1usize << info.index_prec;
     let prec = &info.rgba_prec[0][0];
@@ -597,7 +674,13 @@ fn generate_palette_quantized(ep: &EncodeParams, end_pts: &IntEndPntPair, palett
 
     for i in 0..num_indices {
         for c in 0..3 {
-            palette[i][c] = finish_unquantize((unq_end_pts.a[c] * (BC6H_WEIGHT_MAX - weights[i]) + unq_end_pts.b[c] * weights[i] + BC6H_WEIGHT_ROUND) >> BC6H_WEIGHT_SHIFT, ep.signed);
+            palette[i][c] = finish_unquantize(
+                (unq_end_pts.a[c] * (BC6H_WEIGHT_MAX - weights[i])
+                    + unq_end_pts.b[c] * weights[i]
+                    + BC6H_WEIGHT_ROUND)
+                    >> BC6H_WEIGHT_SHIFT,
+                ep.signed,
+            );
         }
     }
 }
@@ -632,7 +715,15 @@ fn map_colors_quantized(ep: &EncodeParams, colors: &[IntColor], end_pts: &IntEnd
 }
 
 /// `D3DX_BC6H::PerturbOne`
-fn perturb_one(ep: &EncodeParams, colors: &[IntColor], ch: usize, old_end_pts: &IntEndPntPair, new_end_pts: &mut IntEndPntPair, old_err: f32, do_b: i32) -> f32 {
+fn perturb_one(
+    ep: &EncodeParams,
+    colors: &[IntColor],
+    ch: usize,
+    old_end_pts: &IntEndPntPair,
+    new_end_pts: &mut IntEndPntPair,
+    old_err: f32,
+    do_b: i32,
+) -> f32 {
     let prec = i32::from(ep.info().rgba_prec[0][0][ch]);
     let mut min_err = old_err;
     let mut beststep = 0;
@@ -680,7 +771,13 @@ fn perturb_one(ep: &EncodeParams, colors: &[IntColor], ch: usize, old_end_pts: &
 }
 
 /// `D3DX_BC6H::OptimizeOne`
-fn optimize_one(ep: &EncodeParams, colors: &[IntColor], org_err: f32, org_end_pts: &IntEndPntPair, opt_end_pts: &mut IntEndPntPair) {
+fn optimize_one(
+    ep: &EncodeParams,
+    colors: &[IntColor],
+    org_err: f32,
+    org_end_pts: &IntEndPntPair,
+    opt_end_pts: &mut IntEndPntPair,
+) {
     let mut opt_err = org_err;
     opt_end_pts.a = org_end_pts.a;
     opt_end_pts.b = org_end_pts.b;
@@ -732,7 +829,12 @@ fn optimize_one(ep: &EncodeParams, colors: &[IntColor], org_err: f32, org_end_pt
 }
 
 /// `D3DX_BC6H::OptimizeEndPoints`
-fn optimize_end_points(ep: &EncodeParams, org_err: &[f32; BC6H_MAX_REGIONS], org_end_pts: &[IntEndPntPair; BC6H_MAX_REGIONS], opt_end_pts: &mut [IntEndPntPair; BC6H_MAX_REGIONS]) {
+fn optimize_end_points(
+    ep: &EncodeParams,
+    org_err: &[f32; BC6H_MAX_REGIONS],
+    org_end_pts: &[IntEndPntPair; BC6H_MAX_REGIONS],
+    opt_end_pts: &mut [IntEndPntPair; BC6H_MAX_REGIONS],
+) {
     let partitions = usize::from(ep.info().partitions);
     let mut pixels = [[0i32; 3]; BC6H_NUM_PIXELS_PER_BLOCK];
 
@@ -748,13 +850,23 @@ fn optimize_end_points(ep: &EncodeParams, org_err: &[f32; BC6H_MAX_REGIONS], org
             }
         }
 
-        optimize_one(ep, &pixels[..np], org_err[p], &org_end_pts[p], &mut opt_end_pts[p]);
+        optimize_one(
+            ep,
+            &pixels[..np],
+            org_err[p],
+            &org_end_pts[p],
+            &mut opt_end_pts[p],
+        );
     }
 }
 
 // Swap endpoints as needed to ensure that the indices at fix up have a 0 high-order bit
 /// `D3DX_BC6H::SwapIndices`
-fn swap_indices(ep: &EncodeParams, end_pts: &mut [IntEndPntPair; BC6H_MAX_REGIONS], indices: &mut [usize; BC6H_NUM_PIXELS_PER_BLOCK]) {
+fn swap_indices(
+    ep: &EncodeParams,
+    end_pts: &mut [IntEndPntPair; BC6H_MAX_REGIONS],
+    indices: &mut [usize; BC6H_NUM_PIXELS_PER_BLOCK],
+) {
     let partitions = usize::from(ep.info().partitions);
     let num_indices = 1usize << ep.info().index_prec;
     let high_index_bit = num_indices >> 1;
@@ -777,7 +889,12 @@ fn swap_indices(ep: &EncodeParams, end_pts: &mut [IntEndPntPair; BC6H_MAX_REGION
 
 // assign indices given a tile, shape, and quantized endpoints, return toterr for each region
 /// `D3DX_BC6H::AssignIndices`
-fn assign_indices(ep: &EncodeParams, end_pts: &[IntEndPntPair; BC6H_MAX_REGIONS], indices: &mut [usize; BC6H_NUM_PIXELS_PER_BLOCK], tot_err: &mut [f32; BC6H_MAX_REGIONS]) {
+fn assign_indices(
+    ep: &EncodeParams,
+    end_pts: &[IntEndPntPair; BC6H_MAX_REGIONS],
+    indices: &mut [usize; BC6H_NUM_PIXELS_PER_BLOCK],
+    tot_err: &mut [f32; BC6H_MAX_REGIONS],
+) {
     let partitions = usize::from(ep.info().partitions);
     let num_indices = 1usize << ep.info().index_prec;
 
@@ -827,7 +944,12 @@ fn quantize_end_pts(ep: &EncodeParams, qnt_end_pts: &mut [IntEndPntPair; BC6H_MA
 }
 
 /// `D3DX_BC6H::EmitBlock`
-fn emit_block(block: &mut [u8; 16], ep: &EncodeParams, end_pts: &[IntEndPntPair; BC6H_MAX_REGIONS], indices: &[usize; BC6H_NUM_PIXELS_PER_BLOCK]) {
+fn emit_block(
+    block: &mut [u8; 16],
+    ep: &EncodeParams,
+    end_pts: &[IntEndPntPair; BC6H_MAX_REGIONS],
+    indices: &[usize; BC6H_NUM_PIXELS_PER_BLOCK],
+) {
     let info = ep.info();
     let real_mode = i32::from(info.mode);
     let partitions = usize::from(info.partitions);
@@ -874,8 +996,14 @@ fn refine(block: &mut [u8; 16], ep: &mut EncodeParams) {
 
     let transformed = ep.info().transformed;
     let (mut org_err, mut opt_err) = ([0.0f32; BC6H_MAX_REGIONS], [0.0f32; BC6H_MAX_REGIONS]);
-    let (mut org_end_pts, mut opt_end_pts) = ([IntEndPntPair::default(); BC6H_MAX_REGIONS], [IntEndPntPair::default(); BC6H_MAX_REGIONS]);
-    let (mut org_idx, mut opt_idx) = ([0usize; BC6H_NUM_PIXELS_PER_BLOCK], [0usize; BC6H_NUM_PIXELS_PER_BLOCK]);
+    let (mut org_end_pts, mut opt_end_pts) = (
+        [IntEndPntPair::default(); BC6H_MAX_REGIONS],
+        [IntEndPntPair::default(); BC6H_MAX_REGIONS],
+    );
+    let (mut org_idx, mut opt_idx) = (
+        [0usize; BC6H_NUM_PIXELS_PER_BLOCK],
+        [0usize; BC6H_NUM_PIXELS_PER_BLOCK],
+    );
 
     quantize_end_pts(ep, &mut org_end_pts);
     assign_indices(ep, &org_end_pts, &mut org_idx, &mut org_err);
@@ -901,7 +1029,10 @@ fn refine(block: &mut [u8; 16], ep: &mut EncodeParams) {
         if transformed {
             transform_forward(&mut opt_end_pts);
         }
-        if end_points_fit(ep, &opt_end_pts) && opt_tot_err < org_tot_err && opt_tot_err < ep.best_err {
+        if end_points_fit(ep, &opt_end_pts)
+            && opt_tot_err < org_tot_err
+            && opt_tot_err < ep.best_err
+        {
             ep.best_err = opt_tot_err;
             emit_block(block, ep, &opt_end_pts, &opt_idx);
         } else if org_tot_err < ep.best_err {
@@ -917,7 +1048,11 @@ fn refine(block: &mut [u8; 16], ep: &mut EncodeParams) {
 }
 
 /// `D3DX_BC6H::GeneratePaletteUnquantized`
-fn generate_palette_unquantized(ep: &EncodeParams, region: usize, palette: &mut [IntColor; BC6H_MAX_INDICES]) {
+fn generate_palette_unquantized(
+    ep: &EncodeParams,
+    region: usize,
+    palette: &mut [IntColor; BC6H_MAX_INDICES],
+) {
     let end_pts = &ep.unq_end_pts[ep.shape][region];
     let index_prec = ep.info().index_prec;
     let num_indices = 1usize << index_prec;
@@ -926,7 +1061,10 @@ fn generate_palette_unquantized(ep: &EncodeParams, region: usize, palette: &mut 
 
     for i in 0..num_indices {
         for c in 0..3 {
-            palette[i][c] = (end_pts.a[c] * (BC6H_WEIGHT_MAX - weights[i]) + end_pts.b[c] * weights[i] + BC6H_WEIGHT_ROUND) >> BC6H_WEIGHT_SHIFT;
+            palette[i][c] = (end_pts.a[c] * (BC6H_WEIGHT_MAX - weights[i])
+                + end_pts.b[c] * weights[i]
+                + BC6H_WEIGHT_ROUND)
+                >> BC6H_WEIGHT_SHIFT;
         }
     }
 }
@@ -986,7 +1124,10 @@ fn rough_mse(ep: &mut EncodeParams) -> f32 {
         }
 
         let (ep_a, ep_b) = optimize_rgb(ep.hdr_pixels, 4, &pix_idx[..np]);
-        let (mut a, mut b) = (int_color_set(&ep_a, ep.signed), int_color_set(&ep_b, ep.signed));
+        let (mut a, mut b) = (
+            int_color_set(&ep_a, ep.signed),
+            int_color_set(&ep_b, ep.signed),
+        );
         if ep.signed {
             int_color_clamp(&mut a, -F16MAX, F16MAX);
             int_color_clamp(&mut b, -F16MAX, F16MAX);
@@ -1024,7 +1165,16 @@ mod tests {
     use crate::bc6h::{half_to_float, unpack_bc6h_half};
 
     fn unpack(block: &[u8; 16], signed: bool) -> Vec<[f32; 3]> {
-        unpack_bc6h_half(block, signed).iter().map(|pixel| [half_to_float(pixel[0]), half_to_float(pixel[1]), half_to_float(pixel[2])]).collect()
+        unpack_bc6h_half(block, signed)
+            .iter()
+            .map(|pixel| {
+                [
+                    half_to_float(pixel[0]),
+                    half_to_float(pixel[1]),
+                    half_to_float(pixel[2]),
+                ]
+            })
+            .collect()
     }
 
     #[test]
@@ -1040,7 +1190,10 @@ mod tests {
         encode_bc6hs(&mut block, &pixels);
         for (a, b) in pixels.iter().zip(unpack(&block, true)) {
             for c in 0..3 {
-                assert!((a[c] - b[c]).abs() <= 0.04 + a[c].abs() * 0.04, "{a:?} {b:?}");
+                assert!(
+                    (a[c] - b[c]).abs() <= 0.04 + a[c].abs() * 0.04,
+                    "{a:?} {b:?}"
+                );
             }
         }
         // What was in the block before does not matter.
@@ -1059,7 +1212,10 @@ mod tests {
         let mut block = [0u8; 16];
         encode_bc6hu(&mut block, &pixels);
         for (a, b) in pixels.iter().zip(unpack(&block, false)) {
-            assert!((a[0] - b[0]).abs() <= 0.05 + a[0] * 0.04 && (a[1] - b[1]).abs() <= 0.1, "{a:?} {b:?}");
+            assert!(
+                (a[0] - b[0]).abs() <= 0.05 + a[0] * 0.04 && (a[1] - b[1]).abs() <= 0.1,
+                "{a:?} {b:?}"
+            );
             assert!(b[2].abs() <= 0.01, "{a:?} {b:?}");
         }
     }
@@ -1072,8 +1228,14 @@ mod tests {
             encode_bc6hs(&mut block, &pixels);
             let clamp = |v: f32| v.clamp(-65504.0, 65504.0);
             for pixel in unpack(&block, true) {
-                for (c, want) in [clamp(value), clamp(value * 0.5), clamp(-value)].into_iter().enumerate() {
-                    assert!((pixel[c] - want).abs() <= want.abs() * 0.04 + 1e-3, "{value}: {pixel:?}");
+                for (c, want) in [clamp(value), clamp(value * 0.5), clamp(-value)]
+                    .into_iter()
+                    .enumerate()
+                {
+                    assert!(
+                        (pixel[c] - want).abs() <= want.abs() * 0.04 + 1e-3,
+                        "{value}: {pixel:?}"
+                    );
                 }
             }
         }
@@ -1087,20 +1249,38 @@ mod tests {
         for i in 0..400 {
             let mut pixels = [[0.0f32; 4]; 16];
             for value in pixels.as_flattened_mut() {
-                state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                state = state
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
                 let bits = (state >> 32) as u32;
                 *value = match i % 4 {
                     0 => f32::from_bits(bits),
                     1 => f32::from_bits(bits | 0x7f00_0000),
-                    2 => [f32::INFINITY, f32::NEG_INFINITY, f32::NAN, f32::MAX, -f32::MAX, 0.0, -0.0, 1.0][(bits % 8) as usize],
+                    2 => [
+                        f32::INFINITY,
+                        f32::NEG_INFINITY,
+                        f32::NAN,
+                        f32::MAX,
+                        -f32::MAX,
+                        0.0,
+                        -0.0,
+                        1.0,
+                    ][(bits % 8) as usize],
                     _ => (bits % 2000) as f32 - 1000.0,
                 };
             }
             for signed in [false, true] {
                 let mut block = [0u8; 16];
                 encode(&mut block, signed, &pixels);
-                let mode = if block[0] & 2 != 0 { block[0] & 31 } else { block[0] & 3 };
-                assert!(MS_A_INFO.iter().any(|info| info.mode == mode), "{i} {signed}: {block:?}");
+                let mode = if block[0] & 2 != 0 {
+                    block[0] & 31
+                } else {
+                    block[0] & 3
+                };
+                assert!(
+                    MS_A_INFO.iter().any(|info| info.mode == mode),
+                    "{i} {signed}: {block:?}"
+                );
             }
         }
     }
@@ -1115,6 +1295,16 @@ mod tests {
         assert_eq!((at, bits[1]), (12, 0b1111_0101));
         set_bits(&mut bits, &mut at, 0, 0);
         assert_eq!(at, 12);
-        assert_eq!((n_bits(0, true), n_bits(5, false), n_bits(5, true), n_bits(-1, true), n_bits(-5, true), n_bits(-8, true)), (0, 3, 4, 1, 4, 4));
+        assert_eq!(
+            (
+                n_bits(0, true),
+                n_bits(5, false),
+                n_bits(5, true),
+                n_bits(-1, true),
+                n_bits(-5, true),
+                n_bits(-8, true)
+            ),
+            (0, 3, 4, 1, 4, 4)
+        );
     }
 }

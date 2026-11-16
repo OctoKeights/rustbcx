@@ -1,7 +1,10 @@
 //! The JPEG reader of `stb_image.h`: baseline and progressive, 8 bits a channel, with the
 //! original's plain C kernels (its `STBI_NO_SIMD` build).
 
-use super::{addints_valid, compute_y, mad2sizes_valid, mad3sizes_valid, mul2shorts_valid, Context, ImageType, Info, Scan, STBI_MAX_DIMENSIONS};
+use super::{
+    addints_valid, compute_y, mad2sizes_valid, mad3sizes_valid, mul2shorts_valid, Context,
+    ImageType, Info, Scan, STBI_MAX_DIMENSIONS,
+};
 
 // huffman decoding acceleration
 const FAST_BITS: usize = 9; // larger handles more cases; smaller stomps less cache
@@ -20,7 +23,14 @@ struct Huffman {
 
 impl Huffman {
     fn new() -> Huffman {
-        Huffman { fast: [0; 1 << FAST_BITS], code: [0; 256], values: [0; 256], size: [0; 257], maxcode: [0; 18], delta: [0; 17] }
+        Huffman {
+            fast: [0; 1 << FAST_BITS],
+            code: [0; 256],
+            values: [0; 256],
+            size: [0; 257],
+            maxcode: [0; 18],
+            delta: [0; 17],
+        }
     }
 }
 
@@ -94,8 +104,18 @@ impl Jpeg {
     /// (All zero, as the original's is after its `memset`.)
     fn new() -> Box<Jpeg> {
         Box::new(Jpeg {
-            huff_dc: [Huffman::new(), Huffman::new(), Huffman::new(), Huffman::new()],
-            huff_ac: [Huffman::new(), Huffman::new(), Huffman::new(), Huffman::new()],
+            huff_dc: [
+                Huffman::new(),
+                Huffman::new(),
+                Huffman::new(),
+                Huffman::new(),
+            ],
+            huff_ac: [
+                Huffman::new(),
+                Huffman::new(),
+                Huffman::new(),
+                Huffman::new(),
+            ],
             dequant: [[0; 64]; 4],
             fast_ac: [[0; 1 << FAST_BITS]; 4],
             img_h_max: 0,
@@ -105,7 +125,17 @@ impl Jpeg {
             img_mcu_w: 0,
             img_mcu_h: 0,
             img_comp: Default::default(),
-            e: Entropy { code_buffer: 0, code_bits: 0, marker: 0, nomore: false, spec_start: 0, spec_end: 0, succ_high: 0, succ_low: 0, eob_run: 0 },
+            e: Entropy {
+                code_buffer: 0,
+                code_bits: 0,
+                marker: 0,
+                nomore: false,
+                spec_start: 0,
+                spec_end: 0,
+                succ_high: 0,
+                succ_low: 0,
+                eob_run: 0,
+            },
             progressive: false,
             jfif: false,
             app14_color_transform: 0,
@@ -184,7 +214,8 @@ fn build_fast_ac(fast_ac: &mut [i16; 1 << FAST_BITS], h: &Huffman) {
 
             if magbits != 0 && len + magbits <= FAST_BITS as i32 {
                 // magnitude code followed by receive_extend code
-                let mut k = (((i as i32) << len) & ((1 << FAST_BITS) - 1)) >> (FAST_BITS as i32 - magbits);
+                let mut k =
+                    (((i as i32) << len) & ((1 << FAST_BITS) - 1)) >> (FAST_BITS as i32 - magbits);
                 let m = 1 << (magbits - 1);
                 if k < m {
                     k += ((!0u32 << magbits) as i32) + 1;
@@ -222,7 +253,9 @@ fn grow_buffer_unsafe(j: &mut Entropy, s: &mut Context) {
 }
 
 // (1 << n) - 1
-static STBI_BMASK: [u32; 17] = [0, 1, 3, 7, 15, 31, 63, 127, 255, 511, 1023, 2047, 4095, 8191, 16383, 32767, 65535];
+static STBI_BMASK: [u32; 17] = [
+    0, 1, 3, 7, 15, 31, 63, 127, 255, 511, 1023, 2047, 4095, 8191, 16383, 32767, 65535,
+];
 
 /// `stbi__jpeg_huff_decode`: decode a jpeg huffman value from the bitstream
 fn jpeg_huff_decode(j: &mut Entropy, s: &mut Context, h: &Huffman) -> i32 {
@@ -282,7 +315,9 @@ fn jpeg_huff_decode(j: &mut Entropy, s: &mut Context, h: &Huffman) -> i32 {
 }
 
 // bias[n] = (-1<<n) + 1
-static STBI_JBIAS: [i32; 16] = [0, -1, -3, -7, -15, -31, -63, -127, -255, -511, -1023, -2047, -4095, -8191, -16383, -32767];
+static STBI_JBIAS: [i32; 16] = [
+    0, -1, -3, -7, -15, -31, -63, -127, -255, -511, -1023, -2047, -4095, -8191, -16383, -32767,
+];
 
 /// `stbi__extend_receive`: combined JPEG 'receive' and JPEG 'extend', since baseline always
 /// extends everything it receives.
@@ -349,7 +384,16 @@ static STBI_JPEG_DEZIGZAG: [u8; 64 + 15] = [
 ];
 
 /// `stbi__jpeg_decode_block`: decode one 64-entry block--
-fn jpeg_decode_block(j: &mut Entropy, s: &mut Context, data: &mut [i16; 64], hdc: &Huffman, hac: &Huffman, fac: &[i16; 1 << FAST_BITS], dc_pred: &mut i32, dequant: &[u16; 64]) -> bool {
+fn jpeg_decode_block(
+    j: &mut Entropy,
+    s: &mut Context,
+    data: &mut [i16; 64],
+    hdc: &Huffman,
+    hac: &Huffman,
+    fac: &[i16; 1 << FAST_BITS],
+    dc_pred: &mut i32,
+    dequant: &[u16; 64],
+) -> bool {
     if j.code_bits < 16 {
         grow_buffer_unsafe(j, s);
     }
@@ -421,7 +465,13 @@ fn jpeg_decode_block(j: &mut Entropy, s: &mut Context, data: &mut [i16; 64], hdc
 }
 
 /// `stbi__jpeg_decode_block_prog_dc`
-fn jpeg_decode_block_prog_dc(j: &mut Entropy, s: &mut Context, data: &mut [i16], hdc: &Huffman, dc_pred: &mut i32) -> bool {
+fn jpeg_decode_block_prog_dc(
+    j: &mut Entropy,
+    s: &mut Context,
+    data: &mut [i16],
+    hdc: &Huffman,
+    dc_pred: &mut i32,
+) -> bool {
     if j.spec_end != 0 {
         return s.err("can't merge dc and ac");
     }
@@ -459,7 +509,13 @@ fn jpeg_decode_block_prog_dc(j: &mut Entropy, s: &mut Context, data: &mut [i16],
 /// `stbi__jpeg_decode_block_prog_ac`
 // @OPTIMIZE: store non-zigzagged during the decode passes,
 // and only de-zigzag when dequantizing
-fn jpeg_decode_block_prog_ac(j: &mut Entropy, s: &mut Context, data: &mut [i16], hac: &Huffman, fac: &[i16; 1 << FAST_BITS]) -> bool {
+fn jpeg_decode_block_prog_ac(
+    j: &mut Entropy,
+    s: &mut Context,
+    data: &mut [i16],
+    hac: &Huffman,
+    fac: &[i16; 1 << FAST_BITS],
+) -> bool {
     if j.spec_start == 0 {
         return s.err("can't merge dc and ac");
     }
@@ -700,7 +756,8 @@ fn idct_block(out: &mut [u8], out_stride: usize, data: &[i16; 64]) {
                 val[i + row * 8] = dcterm;
             }
         } else {
-            let [mut x0, mut x1, mut x2, mut x3, t0, t1, t2, t3] = idct_1d(d(0), d(1), d(2), d(3), d(4), d(5), d(6), d(7));
+            let [mut x0, mut x1, mut x2, mut x3, t0, t1, t2, t3] =
+                idct_1d(d(0), d(1), d(2), d(3), d(4), d(5), d(6), d(7));
             // constants scaled things up by 1<<12; let's bring them back
             // down, but keep 2 extra bits of precision
             x0 = add(x0, 512);
@@ -722,7 +779,8 @@ fn idct_block(out: &mut [u8], out_stride: usize, data: &[i16; 64]) {
         let v = &val[i * 8..i * 8 + 8];
         let o = &mut out[i * out_stride..i * out_stride + 8];
         // no fast case since the first 1D IDCT spread components out
-        let [mut x0, mut x1, mut x2, mut x3, t0, t1, t2, t3] = idct_1d(v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7]);
+        let [mut x0, mut x1, mut x2, mut x3, t0, t1, t2, t3] =
+            idct_1d(v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7]);
         // constants scaled things up by 1<<12, plus we had 1<<2 from first
         // loop, plus horizontal and vertical each scale by sqrt(8) so together
         // we've got an extra 1<<3, so 1<<17 total we need to remove.
@@ -784,7 +842,11 @@ fn jpeg_reset(j: &mut Jpeg) {
         comp.dc_pred = 0;
     }
     j.e.marker = STBI_MARKER_NONE;
-    j.todo = if j.restart_interval != 0 { j.restart_interval } else { 0x7fffffff };
+    j.todo = if j.restart_interval != 0 {
+        j.restart_interval
+    } else {
+        0x7fffffff
+    };
     j.e.eob_run = 0;
     // no more than 1<<31 MCUs if no restart_interal? that's plenty safe,
     // since we don't even allow 1<<30 pixels
@@ -825,11 +887,24 @@ fn parse_entropy_coded_data(z: &mut Jpeg, s: &mut Context) -> bool {
                 for i in 0..w {
                     let comp = &mut z.img_comp[n];
                     let ha = comp.ha as usize;
-                    if !jpeg_decode_block(&mut z.e, s, &mut data, &z.huff_dc[comp.hd as usize], &z.huff_ac[ha], &z.fast_ac[ha], &mut comp.dc_pred, &z.dequant[comp.tq as usize]) {
+                    if !jpeg_decode_block(
+                        &mut z.e,
+                        s,
+                        &mut data,
+                        &z.huff_dc[comp.hd as usize],
+                        &z.huff_ac[ha],
+                        &z.fast_ac[ha],
+                        &mut comp.dc_pred,
+                        &z.dequant[comp.tq as usize],
+                    ) {
                         return false;
                     }
                     let w2 = comp.w2 as usize;
-                    idct_block(&mut comp.data[w2 * j as usize * 8 + i as usize * 8..], w2, &data);
+                    idct_block(
+                        &mut comp.data[w2 * j as usize * 8 + i as usize * 8..],
+                        w2,
+                        &data,
+                    );
                     // every data block is an MCU, so countdown the restart interval
                     if count_down(z, s) {
                         return true;
@@ -853,7 +928,16 @@ fn parse_entropy_coded_data(z: &mut Jpeg, s: &mut Context) -> bool {
                                 let x2 = ((i * comp.h + x) * 8) as usize;
                                 let y2 = ((j * comp.v + y) * 8) as usize;
                                 let ha = comp.ha as usize;
-                                if !jpeg_decode_block(&mut z.e, s, &mut data, &z.huff_dc[comp.hd as usize], &z.huff_ac[ha], &z.fast_ac[ha], &mut comp.dc_pred, &z.dequant[comp.tq as usize]) {
+                                if !jpeg_decode_block(
+                                    &mut z.e,
+                                    s,
+                                    &mut data,
+                                    &z.huff_dc[comp.hd as usize],
+                                    &z.huff_ac[ha],
+                                    &z.fast_ac[ha],
+                                    &mut comp.dc_pred,
+                                    &z.dequant[comp.tq as usize],
+                                ) {
                                     return false;
                                 }
                                 let w2 = comp.w2 as usize;
@@ -887,12 +971,24 @@ fn parse_entropy_coded_data(z: &mut Jpeg, s: &mut Context) -> bool {
                 // progressive coeffs got initialized at setup so this is fine
                 if !z.e.nomore {
                     if z.e.spec_start == 0 {
-                        if !jpeg_decode_block_prog_dc(&mut z.e, s, data, &z.huff_dc[comp.hd as usize], &mut comp.dc_pred) {
+                        if !jpeg_decode_block_prog_dc(
+                            &mut z.e,
+                            s,
+                            data,
+                            &z.huff_dc[comp.hd as usize],
+                            &mut comp.dc_pred,
+                        ) {
                             return false;
                         }
                     } else {
                         let ha = comp.ha as usize;
-                        if !jpeg_decode_block_prog_ac(&mut z.e, s, data, &z.huff_ac[ha], &z.fast_ac[ha]) {
+                        if !jpeg_decode_block_prog_ac(
+                            &mut z.e,
+                            s,
+                            data,
+                            &z.huff_ac[ha],
+                            &z.fast_ac[ha],
+                        ) {
                             return false;
                         }
                     }
@@ -920,7 +1016,13 @@ fn parse_entropy_coded_data(z: &mut Jpeg, s: &mut Context) -> bool {
                             let y2 = j * comp.v + y;
                             let at = 64 * (x2 + y2 * comp.coeff_w) as usize;
                             let data = &mut comp.coeff[at..at + 64];
-                            if !jpeg_decode_block_prog_dc(&mut z.e, s, data, &z.huff_dc[comp.hd as usize], &mut comp.dc_pred) {
+                            if !jpeg_decode_block_prog_dc(
+                                &mut z.e,
+                                s,
+                                data,
+                                &z.huff_dc[comp.hd as usize],
+                                &mut comp.dc_pred,
+                            ) {
                                 return false;
                             }
                         }
@@ -959,7 +1061,11 @@ fn jpeg_finish(z: &mut Jpeg, s: &Context) {
                     let mut data = [0i16; 64];
                     data.copy_from_slice(&comp.coeff[at..at + 64]);
                     jpeg_dequantize(&mut data, &z.dequant[comp.tq as usize]);
-                    idct_block(&mut comp.data[w2 * j as usize * 8 + i as usize * 8..], w2, &data);
+                    idct_block(
+                        &mut comp.data[w2 * j as usize * 8 + i as usize * 8..],
+                        w2,
+                        &data,
+                    );
                 }
             }
         }
@@ -996,7 +1102,11 @@ fn process_marker(z: &mut Jpeg, s: &mut Context, m: u8) -> bool {
                 }
 
                 for i in 0..64 {
-                    z.dequant[t][usize::from(STBI_JPEG_DEZIGZAG[i])] = if sixteen { s.get16be() as u16 } else { u16::from(s.get8()) };
+                    z.dequant[t][usize::from(STBI_JPEG_DEZIGZAG[i])] = if sixteen {
+                        s.get16be() as u16
+                    } else {
+                        u16::from(s.get8())
+                    };
                 }
                 l -= if sixteen { 129 } else { 65 };
             }
@@ -1023,7 +1133,11 @@ fn process_marker(z: &mut Jpeg, s: &mut Context, m: u8) -> bool {
                     return s.err("bad DHT header"); // Loop over i < n would write past end of values!
                 }
                 l -= 17;
-                let table = if tc == 0 { &mut z.huff_dc[th] } else { &mut z.huff_ac[th] };
+                let table = if tc == 0 {
+                    &mut z.huff_dc[th]
+                } else {
+                    &mut z.huff_ac[th]
+                };
                 if !build_huffman(s, table, &sizes) {
                     return false;
                 }
@@ -1132,7 +1246,12 @@ fn process_scan_header(z: &mut Jpeg, s: &mut Context) -> bool {
         z.e.succ_high = aa >> 4;
         z.e.succ_low = aa & 15;
         if z.progressive {
-            if z.e.spec_start > 63 || z.e.spec_end > 63 || z.e.spec_start > z.e.spec_end || z.e.succ_high > 13 || z.e.succ_low > 13 {
+            if z.e.spec_start > 63
+                || z.e.spec_end > 63
+                || z.e.spec_start > z.e.spec_end
+                || z.e.succ_high > 13
+                || z.e.succ_low > 13
+            {
                 return s.err("bad SOS");
             }
         } else {
@@ -1498,7 +1617,9 @@ fn ycbcr_to_rgb_row(out: &mut [u8], y: &[u8], pcb: &[u8], pcr: &[u8], count: usi
         let cr = i32::from(pcr[i]) - 128;
         let cb = i32::from(pcb[i]) - 128;
         let mut r = y_fixed + cr * float2fixed(1.40200);
-        let mut g = y_fixed + (cr * -float2fixed(0.71414)) + ((cb * -float2fixed(0.34414)) & 0xffff0000u32 as i32);
+        let mut g = y_fixed
+            + (cr * -float2fixed(0.71414))
+            + ((cb * -float2fixed(0.34414)) & 0xffff0000u32 as i32);
         let mut b = y_fixed + cb * float2fixed(1.77200);
         r >>= 20;
         g >>= 20;
@@ -1576,7 +1697,11 @@ fn load_jpeg_image(z: &mut Jpeg, s: &mut Context, req_comp: i32) -> Option<(Vec<
 
     let is_rgb = s.img_n == 3 && (z.rgb == 3 || (z.app14_color_transform == 0 && !z.jfif));
 
-    let decode_n = if s.img_n == 3 && n < 3 && !is_rgb { 1 } else { s.img_n as usize };
+    let decode_n = if s.img_n == 3 && n < 3 && !is_rgb {
+        1
+    } else {
+        s.img_n as usize
+    };
 
     // nothing to do if no components requested; check this now to avoid
     // accessing uninitialized coutput[0] later
@@ -1625,7 +1750,11 @@ fn load_jpeg_image(z: &mut Jpeg, s: &mut Context, req_comp: i32) -> Option<(Vec<
             let r = &mut res_comp[k];
             let comp = &mut z.img_comp[k];
             let y_bot = r.ystep >= (r.vs >> 1);
-            let (near, far) = if y_bot { (r.line1, r.line0) } else { (r.line0, r.line1) };
+            let (near, far) = if y_bot {
+                (r.line1, r.line0)
+            } else {
+                (r.line0, r.line1)
+            };
             let (in_near, in_far) = (&comp.data[near..], &comp.data[far..]);
             let w = r.w_lores as usize;
             match r.resample {
@@ -1633,7 +1762,9 @@ fn load_jpeg_image(z: &mut Jpeg, s: &mut Context, req_comp: i32) -> Option<(Vec<
                 Resample::V2 => resample_row_v_2(&mut comp.linebuf, in_near, in_far, w),
                 Resample::H2 => resample_row_h_2(&mut comp.linebuf, in_near, w),
                 Resample::Hv2 => resample_row_hv_2(&mut comp.linebuf, in_near, in_far, w),
-                Resample::Generic => resample_row_generic(&mut comp.linebuf, in_near, w, r.hs as usize),
+                Resample::Generic => {
+                    resample_row_generic(&mut comp.linebuf, in_near, w, r.hs as usize)
+                }
             }
             r.ystep += 1;
             if r.ystep >= r.vs {
@@ -1697,11 +1828,19 @@ fn load_jpeg_image(z: &mut Jpeg, s: &mut Context, req_comp: i32) -> Option<(Vec<
         } else if is_rgb {
             if n == 1 {
                 for i in 0..img_x {
-                    out[i] = compute_y(i32::from(coutput(0)[i]), i32::from(coutput(1)[i]), i32::from(coutput(2)[i]));
+                    out[i] = compute_y(
+                        i32::from(coutput(0)[i]),
+                        i32::from(coutput(1)[i]),
+                        i32::from(coutput(2)[i]),
+                    );
                 }
             } else {
                 for i in 0..img_x {
-                    out[i * 2] = compute_y(i32::from(coutput(0)[i]), i32::from(coutput(1)[i]), i32::from(coutput(2)[i]));
+                    out[i * 2] = compute_y(
+                        i32::from(coutput(0)[i]),
+                        i32::from(coutput(1)[i]),
+                        i32::from(coutput(2)[i]),
+                    );
                     out[i * 2 + 1] = 255;
                 }
             }
@@ -1758,7 +1897,15 @@ pub(crate) fn jpeg_info(s: &mut Context) -> Option<Info> {
         s.rewind();
         return None;
     }
-    Some(Info { kind: ImageType::Jpeg, x: s.img_x as i32, y: s.img_y as i32, comp: if s.img_n >= 3 { 3 } else { 1 }, is_16_bit: false, is_hdr: false, is_iphone_png: false })
+    Some(Info {
+        kind: ImageType::Jpeg,
+        x: s.img_x as i32,
+        y: s.img_y as i32,
+        comp: if s.img_n >= 3 { 3 } else { 1 },
+        is_16_bit: false,
+        is_hdr: false,
+        is_iphone_png: false,
+    })
 }
 
 #[cfg(test)]
@@ -1769,7 +1916,9 @@ mod tests {
 
     fn picture(x: usize, y: usize, comp: usize) -> Vec<u8> {
         // Smooth, so that it comes back near what went in.
-        (0..x * y * comp).map(|i| (40 + (i / comp % x) * 2 + (i / comp / x) * 2 + i % comp * 20) as u8).collect()
+        (0..x * y * comp)
+            .map(|i| (40 + (i / comp % x) * 2 + (i / comp / x) * 2 + i % comp * 20) as u8)
+            .collect()
     }
 
     #[test]
@@ -1778,20 +1927,54 @@ mod tests {
         for (x, y) in [(1, 1), (8, 8), (17, 9), (40, 33)] {
             for quality in [90, 100] {
                 let pixels = picture(x, y, 3);
-                let file = write_jpg(x as i32, y as i32, 3, &pixels, quality, 0, &WriteOptions::default()).unwrap();
+                let file = write_jpg(
+                    x as i32,
+                    y as i32,
+                    3,
+                    &pixels,
+                    quality,
+                    0,
+                    &WriteOptions::default(),
+                )
+                .unwrap();
                 let info = info_from_memory(&file).unwrap();
-                assert_eq!((info.kind, info.x, info.y, info.comp), (ImageType::Jpeg, x as i32, y as i32, 3));
+                assert_eq!(
+                    (info.kind, info.x, info.y, info.comp),
+                    (ImageType::Jpeg, x as i32, y as i32, 3)
+                );
                 let loaded = load_from_memory(&file, 0, &options).unwrap();
-                assert_eq!((loaded.x, loaded.y, loaded.channels_in_file, loaded.data.len()), (x as i32, y as i32, 3, pixels.len()));
-                let worst = loaded.data.iter().zip(&pixels).map(|(&a, &b)| a.abs_diff(b)).max().unwrap();
+                assert_eq!(
+                    (
+                        loaded.x,
+                        loaded.y,
+                        loaded.channels_in_file,
+                        loaded.data.len()
+                    ),
+                    (x as i32, y as i32, 3, pixels.len())
+                );
+                let worst = loaded
+                    .data
+                    .iter()
+                    .zip(&pixels)
+                    .map(|(&a, &b)| a.abs_diff(b))
+                    .max()
+                    .unwrap();
                 assert!(worst <= 12, "{x} by {y} at {quality}: off by {worst}");
                 // As grey, with alpha, and as four channels.
                 let grey = load_from_memory(&file, 1, &options).unwrap();
                 assert_eq!(grey.data.len(), x * y);
                 let grey_alpha = load_from_memory(&file, 2, &options).unwrap();
-                assert!(grey_alpha.data.chunks(2).zip(&grey.data).all(|(pair, &value)| pair == [value, 255]));
+                assert!(grey_alpha
+                    .data
+                    .chunks(2)
+                    .zip(&grey.data)
+                    .all(|(pair, &value)| pair == [value, 255]));
                 let rgba = load_from_memory(&file, 4, &options).unwrap();
-                assert!(rgba.data.chunks(4).zip(loaded.data.chunks(3)).all(|(four, three)| &four[..3] == three && four[3] == 255));
+                assert!(rgba
+                    .data
+                    .chunks(4)
+                    .zip(loaded.data.chunks(3))
+                    .all(|(four, three)| &four[..3] == three && four[3] == 255));
             }
         }
         // A grey file.
@@ -1799,7 +1982,11 @@ mod tests {
         let file = write_jpg(20, 20, 1, &pixels, 95, 0, &WriteOptions::default()).unwrap();
         let loaded = load_from_memory(&file, 1, &options).unwrap();
         assert_eq!(loaded.channels_in_file, 3); // (the writer always writes three components)
-        assert!(loaded.data.iter().zip(&pixels).all(|(&a, &b)| a.abs_diff(b) <= 6));
+        assert!(loaded
+            .data
+            .iter()
+            .zip(&pixels)
+            .all(|(&a, &b)| a.abs_diff(b) <= 6));
     }
 
     #[test]
@@ -1843,7 +2030,10 @@ mod tests {
         let refused = |file: &[u8]| load_from_memory(file, 0, &options).unwrap_err();
         // Cut short anywhere, it is refused.
         assert_eq!(refused(&file[..2]), LoadError("expected marker"));
-        assert_eq!(refused(&file[..file.len() - 2]), LoadError("expected marker"));
+        assert_eq!(
+            refused(&file[..file.len() - 2]),
+            LoadError("expected marker")
+        );
         assert!(load_from_memory(&file[..file.len() / 2], 0, &options).is_err());
         // Twelve bits a sample; no width.
         let frame = 25 + 64 + 1 + 64;

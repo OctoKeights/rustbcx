@@ -2,7 +2,9 @@
 //! `LossyDctDecoder` (`internal_dwa_decoder.h`) of OpenEXRCore.
 
 use super::simd::{
-    convert_float_to_half64, csc709_forward64, csc709_inverse, csc709_inverse64, dct_forward8x8, dct_inverse8x8, dct_inverse8x8_dc_only, float_to_half, from_half_zig_zag, half_to_float, INV_REMAP,
+    convert_float_to_half64, csc709_forward64, csc709_inverse, csc709_inverse64, dct_forward8x8,
+    dct_inverse8x8, dct_inverse8x8_dc_only, float_to_half, from_half_zig_zag, half_to_float,
+    INV_REMAP,
 };
 use super::{to_linear, to_nonlinear, Code, CORRUPT_CHUNK, PIXEL_FLOAT};
 
@@ -46,12 +48,24 @@ struct Search {
 
 impl Search {
     fn new(abssrc: u32, err_tol: f32, src_float: f32) -> Search {
-        Search { smallest: abssrc, smallbits: count_set_bits(abssrc), smalldelta: err_tol, err_tol, src_float }
+        Search {
+            smallest: abssrc,
+            smallbits: count_set_bits(abssrc),
+            smalldelta: err_tol,
+            err_tol,
+            src_float,
+        }
     }
 
     fn test(&mut self, alt: u32, large: bool) {
         let bits = count_set_bits(alt);
-        let delta = || if large { half_to_float(alt as u16) - self.src_float } else { self.src_float - half_to_float(alt as u16) };
+        let delta = || {
+            if large {
+                half_to_float(alt as u16) - self.src_float
+            } else {
+                self.src_float - half_to_float(alt as u16)
+            }
+        };
         if bits < self.smallbits {
             let delta = delta();
             if delta < self.err_tol {
@@ -191,7 +205,14 @@ fn handle_quantize_close_exp(abssrc: u32, tol_sig: u32, err_tol: f32, src_float:
 
 /// `handleQuantizeLargerSig` and `handleQuantizeSmallerSig`, which differ in the first
 /// alternate's mask.
-fn handle_quantize_larger_or_smaller_sig(abssrc: u32, npow2: u32, mask0: u32, mask: u32, err_tol: f32, src_float: f32) -> u32 {
+fn handle_quantize_larger_or_smaller_sig(
+    abssrc: u32,
+    npow2: u32,
+    mask0: u32,
+    mask: u32,
+    err_tol: f32,
+    src_float: f32,
+) -> u32 {
     let alt0 = abssrc & mask0;
     let alt1 = (abssrc + npow2) & mask;
     let bits0 = count_set_bits(alt0);
@@ -231,7 +252,13 @@ fn handle_quantize_larger_or_smaller_sig(abssrc: u32, npow2: u32, mask0: u32, ma
     abssrc
 }
 
-fn handle_quantize_equal_sig(abssrc: u32, npow2: u32, mask: u32, err_tol: f32, src_float: f32) -> u32 {
+fn handle_quantize_equal_sig(
+    abssrc: u32,
+    npow2: u32,
+    mask: u32,
+    err_tol: f32,
+    src_float: f32,
+) -> u32 {
     let mut alt0 = abssrc & mask;
     let alt1 = (abssrc + npow2) & mask;
 
@@ -279,9 +306,13 @@ fn handle_quantize_default(abssrc: u32, tol_sig: u32, err_tol: f32, src_float: f
 
     if src_masked_val > tol_sig {
         let mask2 = mask ^ (npow2 | (npow2 >> 1));
-        return handle_quantize_larger_or_smaller_sig(abssrc, npow2, mask2, mask, err_tol, src_float);
+        return handle_quantize_larger_or_smaller_sig(
+            abssrc, npow2, mask2, mask, err_tol, src_float,
+        );
     } else if src_masked_val < tol_sig {
-        return handle_quantize_larger_or_smaller_sig(abssrc, npow2, mask, mask, err_tol, src_float);
+        return handle_quantize_larger_or_smaller_sig(
+            abssrc, npow2, mask, mask, err_tol, src_float,
+        );
     }
     handle_quantize_equal_sig(abssrc, npow2, mask, err_tol, src_float)
 }
@@ -341,10 +372,20 @@ fn algo_quantize(src: u32, herr_tol: u32, err_tol: f32, src_float: f32) -> u16 {
 }
 
 /// `quantizeCoeffAndZigXDR`.
-fn quantize_coeff_and_zig(half_zig: &mut [u16; 64], dct: &[f32; 64], tolerances: &[f32; 64], halftols: &[u16; 64]) {
+fn quantize_coeff_and_zig(
+    half_zig: &mut [u16; 64],
+    dct: &[f32; 64],
+    tolerances: &[f32; 64],
+    halftols: &[u16; 64],
+) {
     for i in 0..64 {
         let src = float_to_half(dct[i]);
-        let quantized = algo_quantize(u32::from(src), u32::from(halftols[i]), tolerances[i], half_to_float(src));
+        let quantized = algo_quantize(
+            u32::from(src),
+            u32::from(halftols[i]),
+            tolerances[i],
+            half_to_float(src),
+        );
         half_zig[INV_REMAP[i]] = quantized;
     }
 }
@@ -386,16 +427,31 @@ pub(super) struct Source {
 /// `LossyDctEncoder_execute`: one channel, or three (red, green and blue, converted to
 /// Y'CbCr), of `raw` coded, their AC coefficients added to `packed_ac` and their DC ones to
 /// `packed_dc`. `nonlinear` is whether the values go through `toNonlinear` first.
-pub(super) fn encode(raw: &[u8], sources: &[Source], quant_base_error: f32, nonlinear: bool, width: usize, height: usize, packed_ac: &mut Vec<u16>, packed_dc: &mut Vec<u16>) {
-    let quant_base_error = if quant_base_error < 0.0 { 0.0 } else { quant_base_error };
+pub(super) fn encode(
+    raw: &[u8],
+    sources: &[Source],
+    quant_base_error: f32,
+    nonlinear: bool,
+    width: usize,
+    height: usize,
+    packed_ac: &mut Vec<u16>,
+    packed_dc: &mut Vec<u16>,
+) {
+    let quant_base_error = if quant_base_error < 0.0 {
+        0.0
+    } else {
+        quant_base_error
+    };
     let mut quant_table_y = [0f32; 64];
     let mut hquant_table_y = [0u16; 64];
     let mut quant_table_cbcr = [0f32; 64];
     let mut hquant_table_cbcr = [0u16; 64];
     for idx in 0..64 {
-        quant_table_y[idx] = quant_base_error * JPEG_QUANT_TABLE_Y[idx] as f32 / JPEG_QUANT_TABLE_Y_MIN as f32;
+        quant_table_y[idx] =
+            quant_base_error * JPEG_QUANT_TABLE_Y[idx] as f32 / JPEG_QUANT_TABLE_Y_MIN as f32;
         hquant_table_y[idx] = float_to_half(quant_table_y[idx]);
-        quant_table_cbcr[idx] = quant_base_error * JPEG_QUANT_TABLE_CBCR[idx] as f32 / JPEG_QUANT_TABLE_CBCR_MIN as f32;
+        quant_table_cbcr[idx] =
+            quant_base_error * JPEG_QUANT_TABLE_CBCR[idx] as f32 / JPEG_QUANT_TABLE_CBCR_MIN as f32;
         hquant_table_cbcr[idx] = float_to_half(quant_table_cbcr[idx]);
     }
 
@@ -413,7 +469,13 @@ pub(super) fn encode(raw: &[u8], sources: &[Source], quant_base_error: f32, nonl
                     if source.pixel_type == PIXEL_FLOAT {
                         let at = row + 4 * x;
                         // Clamp to half ranges, instead of just casting. (A NaN stays one.)
-                        let src = f32::from_bits(u32::from_le_bytes([raw[at], raw[at + 1], raw[at + 2], raw[at + 3]])).clamp(-65504.0, 65504.0);
+                        let src = f32::from_bits(u32::from_le_bytes([
+                            raw[at],
+                            raw[at + 1],
+                            raw[at + 2],
+                            raw[at + 3],
+                        ]))
+                        .clamp(-65504.0, 65504.0);
                         halves.push(float_to_half(src));
                     } else {
                         let at = row + 2 * x;
@@ -465,9 +527,19 @@ pub(super) fn encode(raw: &[u8], sources: &[Source], quant_base_error: f32, nonl
             for chan in 0..num_comp {
                 dct_forward8x8(&mut dct_data[chan]);
                 if chan == 0 {
-                    quantize_coeff_and_zig(&mut half_zig, &dct_data[chan], &quant_table_y, &hquant_table_y);
+                    quantize_coeff_and_zig(
+                        &mut half_zig,
+                        &dct_data[chan],
+                        &quant_table_y,
+                        &hquant_table_y,
+                    );
                 } else {
-                    quantize_coeff_and_zig(&mut half_zig, &dct_data[chan], &quant_table_cbcr, &hquant_table_cbcr);
+                    quantize_coeff_and_zig(
+                        &mut half_zig,
+                        &dct_data[chan],
+                        &quant_table_cbcr,
+                        &hquant_table_cbcr,
+                    );
                 }
                 dc[chan].push(half_zig[0]);
                 rle_ac(&half_zig, packed_ac);
@@ -501,12 +573,23 @@ pub(super) struct Decoder {
 
 impl Decoder {
     pub(super) fn new(channels: usize) -> Decoder {
-        Decoder { dct: vec![[0f32; 64]; channels], half_zig: vec![[0u16; 64]; channels], ac_count: 0, dc_count: 0 }
+        Decoder {
+            dct: vec![[0f32; 64]; channels],
+            half_zig: vec![[0u16; 64]; channels],
+            ac_count: 0,
+            dc_count: 0,
+        }
     }
 
     /// `LossyDctDecoder_unRleAc`: the AC values of a block from `packed_ac[*at..end]`, and
     /// the index of the last that is not zero.
-    fn un_rle_ac(&mut self, channel: usize, packed_ac: &[u16], at: &mut usize, end: u64) -> Result<usize, Code> {
+    fn un_rle_ac(
+        &mut self,
+        channel: usize,
+        packed_ac: &[u16],
+        at: &mut usize,
+        end: u64,
+    ) -> Result<usize, Code> {
         let mut dct_comp = 1usize;
         let mut ac = *at;
         let mut lnz = 0usize;
@@ -517,7 +600,9 @@ impl Decoder {
             }
             // (Past the coefficients there are, which takes damaged counters and rules
             // together, the original reads on into whatever follows them.)
-            let Some(&val) = packed_ac.get(ac) else { return Err(CORRUPT_CHUNK) };
+            let Some(&val) = packed_ac.get(ac) else {
+                return Err(CORRUPT_CHUNK);
+            };
             if (val & 0xff00) == 0xff00 {
                 let count = usize::from(val & 0xff);
                 dct_comp += if count == 0 { 64 } else { count };
@@ -568,13 +653,19 @@ impl Decoder {
 
         let block_row = num_blocks_x * 64;
         let mut row_block = vec![0u16; num_comp * block_row];
-        let mut curr_dc: Vec<usize> = (0..num_comp).map(|comp| dc_at + comp * num_blocks_x * num_blocks_y).collect();
+        let mut curr_dc: Vec<usize> = (0..num_comp)
+            .map(|comp| dc_at + comp * num_blocks_x * num_blocks_y)
+            .collect();
         let mut curr_ac = ac_at;
         let ac_end = ac_at as u64 + rem_ac;
 
         for blocky in 0..num_blocks_y {
             let mut max_x = 8;
-            let max_y = if blocky == num_blocks_y - 1 { leftover_y } else { 8 };
+            let max_y = if blocky == num_blocks_y - 1 {
+                leftover_y
+            } else {
+                8
+            };
 
             for blockx in 0..num_blocks_x {
                 let mut block_is_constant = true;
@@ -625,7 +716,8 @@ impl Decoder {
                 }
 
                 for (comp, target) in targets.iter().enumerate() {
-                    let dst = &mut row_block[comp * block_row + blockx * 64..comp * block_row + blockx * 64 + 64];
+                    let dst = &mut row_block
+                        [comp * block_row + blockx * 64..comp * block_row + blockx * 64 + 64];
                     if !block_is_constant {
                         convert_float_to_half64(dst, &self.dct[target.channel]);
                     } else {
@@ -643,14 +735,16 @@ impl Decoder {
                         let src = comp * block_row + blockx * 64 + (y & 7) * 8;
                         for x in 0..8 {
                             let at = row + 2 * (8 * blockx + x);
-                            out[at..at + 2].copy_from_slice(&convert(row_block[src + x]).to_le_bytes());
+                            out[at..at + 2]
+                                .copy_from_slice(&convert(row_block[src + x]).to_le_bytes());
                         }
                     }
                     if num_full_blocks_x != num_blocks_x {
                         let src = comp * block_row + num_full_blocks_x * 64 + (y & 7) * 8;
                         for x in 0..max_x {
                             let at = row + 2 * (8 * num_full_blocks_x + x);
-                            out[at..at + 2].copy_from_slice(&convert(row_block[src + x]).to_le_bytes());
+                            out[at..at + 2]
+                                .copy_from_slice(&convert(row_block[src + x]).to_le_bytes());
                         }
                     }
                 }

@@ -1,7 +1,9 @@
 //! The PSD reader: `stbi__psd_*`, by Thatcher Ulrich, integration by Nicolas Schulz, tweaked by
 //! stb. The merged image of an RGB file only.
 
-use super::{convert_format, mad3sizes_valid, Context, ImageType, Info, Pixels, STBI_MAX_DIMENSIONS};
+use super::{
+    convert_format, mad3sizes_valid, Context, ImageType, Info, Pixels, STBI_MAX_DIMENSIONS,
+};
 
 /// `stbi__psd_test`
 pub(crate) fn psd_test(s: &mut Context) -> bool {
@@ -290,7 +292,15 @@ pub(crate) fn psd_info(s: &mut Context) -> Option<Info> {
         s.rewind();
         return None;
     }
-    Some(Info { kind: ImageType::Psd, x, y, comp: 4, is_16_bit: depth == 16, is_hdr: false, is_iphone_png: false })
+    Some(Info {
+        kind: ImageType::Psd,
+        x,
+        y,
+        comp: 4,
+        is_16_bit: depth == 16,
+        is_hdr: false,
+        is_iphone_png: false,
+    })
 }
 
 #[cfg(test)]

@@ -1,6 +1,8 @@
 //! The TGA reader: `stbi__tga_*`, Targa Truevision, by Jonathan Dummer.
 
-use super::{convert_format, mad3sizes_valid, vertical_flip, Context, ImageType, Info, STBI_MAX_DIMENSIONS};
+use super::{
+    convert_format, mad3sizes_valid, vertical_flip, Context, ImageType, Info, STBI_MAX_DIMENSIONS,
+};
 
 /// `stbi__tga_get_comp`: returns STBI_rgb or whatever, 0 on error; with it, whether the pixels
 /// are 15 or 16 bits of RGB.
@@ -43,7 +45,11 @@ fn tga_info_impl(s: &mut Context) -> Option<(i32, i32, i32)> {
         i32::from(sz)
     } else {
         // "normal" image w/o colormap - only RGB or grey allowed, +/- RLE
-        if tga_image_type != 2 && tga_image_type != 3 && tga_image_type != 10 && tga_image_type != 11 {
+        if tga_image_type != 2
+            && tga_image_type != 3
+            && tga_image_type != 10
+            && tga_image_type != 11
+        {
             return None; // only RGB or grey allowed, +/- RLE
         }
         s.skip(9); // skip colormap specification and image x/y origin
@@ -63,7 +69,11 @@ fn tga_info_impl(s: &mut Context) -> Option<(i32, i32, i32)> {
         }
         tga_get_comp(tga_colormap_bpp, false).0
     } else {
-        tga_get_comp(tga_bits_per_pixel, tga_image_type == 3 || tga_image_type == 11).0
+        tga_get_comp(
+            tga_bits_per_pixel,
+            tga_image_type == 3 || tga_image_type == 11,
+        )
+        .0
     };
     if tga_comp == 0 {
         return None;
@@ -77,7 +87,15 @@ pub(crate) fn tga_info(s: &mut Context) -> Option<Info> {
         s.rewind();
         return None;
     };
-    Some(Info { kind: ImageType::Tga, x, y, comp, is_16_bit: false, is_hdr: false, is_iphone_png: false })
+    Some(Info {
+        kind: ImageType::Tga,
+        x,
+        y,
+        comp,
+        is_16_bit: false,
+        is_hdr: false,
+        is_iphone_png: false,
+    })
 }
 
 /// `stbi__tga_test`
@@ -137,7 +155,11 @@ pub(crate) fn tga_load(s: &mut Context, req_comp: i32) -> Option<(Vec<u8>, i32)>
     }
 
     //   If I'm paletted, then I'll use the number of bits from the palette
-    let (tga_comp, tga_rgb16) = if tga_indexed { tga_get_comp(tga_palette_bits, false) } else { tga_get_comp(tga_bits_per_pixel, tga_image_type == 3) };
+    let (tga_comp, tga_rgb16) = if tga_indexed {
+        tga_get_comp(tga_palette_bits, false)
+    } else {
+        tga_get_comp(tga_bits_per_pixel, tga_image_type == 3)
+    };
 
     if tga_comp == 0 {
         // shouldn't really happen, stbi__tga_test() should have ensured basic consistency
@@ -209,7 +231,11 @@ pub(crate) fn tga_load(s: &mut Context, req_comp: i32) -> Option<(Vec<u8>, i32)>
                 //   load however much data we did have
                 if tga_indexed {
                     // read in index, then perform the lookup
-                    let mut pal_idx = if tga_bits_per_pixel == 8 { i32::from(s.get8()) } else { s.get16le() };
+                    let mut pal_idx = if tga_bits_per_pixel == 8 {
+                        i32::from(s.get8())
+                    } else {
+                        s.get16le()
+                    };
                     if pal_idx >= tga_palette_len {
                         // invalid index
                         pal_idx = 0;
@@ -262,7 +288,14 @@ pub(crate) fn tga_load(s: &mut Context, req_comp: i32) -> Option<(Vec<u8>, i32)>
 
     // convert to target component count
     if req_comp != 0 && req_comp != tga_comp {
-        tga_data = convert_format(s, tga_data, tga_comp, req_comp, tga_width as u32, tga_height as u32)?;
+        tga_data = convert_format(
+            s,
+            tga_data,
+            tga_comp,
+            req_comp,
+            tga_width as u32,
+            tga_height as u32,
+        )?;
     }
 
     //   OK, done

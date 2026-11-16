@@ -1,7 +1,9 @@
 //! The Radiance `.hdr` reader: `stbi__hdr_*`, originally by Nicolas Schulz; and the conversions
 //! between floats and 8 bits a channel, `stbi__hdr_to_ldr` and `stbi__ldr_to_hdr`.
 
-use super::{mad3sizes_valid, mad4sizes_valid, Context, ImageType, Info, LoadOptions, STBI_MAX_DIMENSIONS};
+use super::{
+    mad3sizes_valid, mad4sizes_valid, Context, ImageType, Info, LoadOptions, STBI_MAX_DIMENSIONS,
+};
 
 /// `stbi__hdr_test_core`
 fn hdr_test_core(s: &mut Context, signature: &[u8]) -> bool {
@@ -64,7 +66,11 @@ fn strtol(token: &[u8], start: usize) -> (i64, usize) {
         p += 1;
     }
     let digits = p;
-    let limit = if negative { 1u64 << 63 } else { (1u64 << 63) - 1 };
+    let limit = if negative {
+        1u64 << 63
+    } else {
+        (1u64 << 63) - 1
+    };
     let mut magnitude = 0u64;
     let mut overflow = false;
     while p < token.len() && token[p].is_ascii_digit() {
@@ -129,7 +135,9 @@ fn hdr_makelut(req_comp: i32) -> [f32; 256] {
 fn hdr_convert(output: &mut [f32], input: &[u8], req_comp: i32, explut: &[f32; 256]) {
     let scale = explut[input[3] as usize];
     if req_comp <= 2 {
-        output[0] = ((i32::from(input[0]) + i32::from(input[1]) + i32::from(input[2])) as f32 + 1.5) * scale;
+        output[0] = ((i32::from(input[0]) + i32::from(input[1]) + i32::from(input[2])) as f32
+            + 1.5)
+            * scale;
         if req_comp == 2 {
             output[1] = 1.0;
         }
@@ -144,7 +152,15 @@ fn hdr_convert(output: &mut [f32], input: &[u8], req_comp: i32, explut: &[f32; 2
 }
 
 /// `stbi__hdr_load_pixels`
-fn hdr_load_pixels(s: &mut Context, hdr_data: &mut [f32], width: i32, height: i32, req_comp: i32, mut isrle: bool, scanline: &mut [u8]) -> bool {
+fn hdr_load_pixels(
+    s: &mut Context,
+    hdr_data: &mut [f32],
+    width: i32,
+    height: i32,
+    req_comp: i32,
+    mut isrle: bool,
+    scanline: &mut [u8],
+) -> bool {
     let explut = hdr_makelut(req_comp);
     let (w, n) = (width as usize, req_comp as usize);
 
@@ -199,7 +215,12 @@ fn hdr_load_pixels(s: &mut Context, hdr_data: &mut [f32], width: i32, height: i3
         }
         for x in 0..w {
             let at = (y * w + x) * n;
-            hdr_convert(&mut hdr_data[at..at + n], &scanline[x * 4..x * 4 + 4], req_comp, &explut);
+            hdr_convert(
+                &mut hdr_data[at..at + n],
+                &scanline[x * 4..x * 4 + 4],
+                req_comp,
+                &explut,
+            );
         }
     }
 
@@ -241,7 +262,11 @@ pub(crate) fn hdr_load(s: &mut Context, mut req_comp: i32) -> Option<(Vec<f32>, 
         return s.errp("unsupported data layout");
     };
 
-    if width <= 0 || width > STBI_MAX_DIMENSIONS as i32 || height <= 0 || height > STBI_MAX_DIMENSIONS as i32 {
+    if width <= 0
+        || width > STBI_MAX_DIMENSIONS as i32
+        || height <= 0
+        || height > STBI_MAX_DIMENSIONS as i32
+    {
         return s.errp("invalid size");
     }
 
@@ -263,7 +288,15 @@ pub(crate) fn hdr_load(s: &mut Context, mut req_comp: i32) -> Option<(Vec<f32>, 
     let isrle = (8..32768).contains(&width);
     let mut scanline = vec![0u8; if isrle { width as usize * 4 } else { 0 }];
 
-    if !hdr_load_pixels(s, &mut hdr_data, width, height, req_comp, isrle, &mut scanline) {
+    if !hdr_load_pixels(
+        s,
+        &mut hdr_data,
+        width,
+        height,
+        req_comp,
+        isrle,
+        &mut scanline,
+    ) {
         return None;
     }
 
@@ -297,12 +330,27 @@ pub(crate) fn hdr_info(s: &mut Context) -> Option<Info> {
         return None;
     };
 
-    Some(Info { kind: ImageType::Hdr, x, y, comp: 3, is_16_bit: false, is_hdr: true, is_iphone_png: false })
+    Some(Info {
+        kind: ImageType::Hdr,
+        x,
+        y,
+        comp: 3,
+        is_16_bit: false,
+        is_hdr: true,
+        is_iphone_png: false,
+    })
 }
 
 /// `stbi__hdr_to_ldr`: floats to 8 bits a channel, by [`LoadOptions::hdr_to_ldr_gamma`] and
 /// [`LoadOptions::hdr_to_ldr_scale`]; alpha in a straight line.
-pub(crate) fn hdr_to_ldr(s: &mut Context, data: Vec<f32>, x: i32, y: i32, comp: i32, options: &LoadOptions) -> Option<Vec<u8>> {
+pub(crate) fn hdr_to_ldr(
+    s: &mut Context,
+    data: Vec<f32>,
+    x: i32,
+    y: i32,
+    comp: i32,
+    options: &LoadOptions,
+) -> Option<Vec<u8>> {
     if !mad3sizes_valid(x, y, comp, 0) {
         return s.errp("outofmem");
     }
@@ -341,7 +389,14 @@ fn float_to_u8(mut z: f32) -> u8 {
 
 /// `stbi__ldr_to_hdr`: 8 bits a channel to floats, by [`LoadOptions::ldr_to_hdr_gamma`] and
 /// [`LoadOptions::ldr_to_hdr_scale`]; alpha in a straight line.
-pub(crate) fn ldr_to_hdr(s: &mut Context, data: Vec<u8>, x: i32, y: i32, comp: i32, options: &LoadOptions) -> Option<Vec<f32>> {
+pub(crate) fn ldr_to_hdr(
+    s: &mut Context,
+    data: Vec<u8>,
+    x: i32,
+    y: i32,
+    comp: i32,
+    options: &LoadOptions,
+) -> Option<Vec<f32>> {
     if !mad4sizes_valid(x, y, comp, 4, 0) {
         return s.errp("outofmem");
     }
@@ -351,7 +406,9 @@ pub(crate) fn ldr_to_hdr(s: &mut Context, data: Vec<u8>, x: i32, y: i32, comp: i
     let n = if comp & 1 != 0 { comp } else { comp - 1 };
     for (pixel, out) in data.chunks_exact(comp).zip(output.chunks_exact_mut(comp)) {
         for k in 0..n {
-            out[k] = (f64::from(f32::from(pixel[k]) / 255.0).powf(f64::from(options.ldr_to_hdr_gamma)) * f64::from(options.ldr_to_hdr_scale)) as f32;
+            out[k] = (f64::from(f32::from(pixel[k]) / 255.0)
+                .powf(f64::from(options.ldr_to_hdr_gamma))
+                * f64::from(options.ldr_to_hdr_scale)) as f32;
         }
         if n < comp {
             out[n] = f32::from(pixel[n]) / 255.0;
@@ -362,7 +419,10 @@ pub(crate) fn ldr_to_hdr(s: &mut Context, data: Vec<u8>, x: i32, y: i32, comp: i
 
 #[cfg(test)]
 mod tests {
-    use super::super::{info_from_memory, is_hdr_from_memory, load_from_memory, loadf_from_memory, ImageType, LoadOptions};
+    use super::super::{
+        info_from_memory, is_hdr_from_memory, load_from_memory, loadf_from_memory, ImageType,
+        LoadOptions,
+    };
     use super::strtol;
 
     #[test]
@@ -380,10 +440,16 @@ mod tests {
         file.extend_from_slice(&[128, 64, 0, 129, 0, 0, 0, 0]);
         assert!(is_hdr_from_memory(&file));
         let info = info_from_memory(&file).unwrap();
-        assert_eq!((info.kind, info.x, info.y, info.comp, info.is_hdr), (ImageType::Hdr, 2, 1, 3, true));
+        assert_eq!(
+            (info.kind, info.x, info.y, info.comp, info.is_hdr),
+            (ImageType::Hdr, 2, 1, 3, true)
+        );
         let image = loadf_from_memory(&file, 0, &LoadOptions::default()).unwrap();
         assert_eq!((image.x, image.y, image.channels_in_file), (2, 1, 3));
-        assert_eq!(image.data, [128.5 / 128.0, 64.5 / 128.0, 0.5 / 128.0, 0.0, 0.0, 0.0]);
+        assert_eq!(
+            image.data,
+            [128.5 / 128.0, 64.5 / 128.0, 0.5 / 128.0, 0.0, 0.0, 0.0]
+        );
         let image = load_from_memory(&file, 0, &LoadOptions::default()).unwrap();
         assert_eq!(image.data[3..], [0, 0, 0]);
     }

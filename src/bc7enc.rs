@@ -11,7 +11,10 @@
 //! costs, `compute_match_cost_estimate`, `tracked_stat`, `compute_block_max_std_dev` and
 //! `bc7_block`. They are not here.)
 
-use crate::bc7decomp::{ColorRgba, ANCHOR_INDEX_SECOND_SUBSET, ANCHOR_INDEX_THIRD_SUBSET_1, ANCHOR_INDEX_THIRD_SUBSET_2, PARTITION2, PARTITION3};
+use crate::bc7decomp::{
+    ColorRgba, ANCHOR_INDEX_SECOND_SUBSET, ANCHOR_INDEX_THIRD_SUBSET_1,
+    ANCHOR_INDEX_THIRD_SUBSET_2, PARTITION2, PARTITION3,
+};
 use crate::fmath;
 use std::fmt;
 
@@ -150,21 +153,48 @@ impl fmt::Display for CompressBlockParams {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "Mode mask: 0x{:X}", self.mode_mask)?;
         writeln!(f, "Max partitions: {}", self.max_partitions)?;
-        writeln!(f, "Weights: {} {} {} {}", self.weights[0], self.weights[1], self.weights[2], self.weights[3])?;
+        writeln!(
+            f,
+            "Weights: {} {} {} {}",
+            self.weights[0], self.weights[1], self.weights[2], self.weights[3]
+        )?;
         writeln!(f, "Uber level: {}", self.uber_level)?;
         writeln!(f, "Perceptual: {}", u32::from(self.perceptual))?;
-        writeln!(f, "Try least squares: {}", u32::from(self.try_least_squares))?;
-        writeln!(f, "Mode 1/7 partition estimation filterbank: {}", u32::from(self.mode17_partition_estimation_filterbank))?;
+        writeln!(
+            f,
+            "Try least squares: {}",
+            u32::from(self.try_least_squares)
+        )?;
+        writeln!(
+            f,
+            "Mode 1/7 partition estimation filterbank: {}",
+            u32::from(self.mode17_partition_estimation_filterbank)
+        )?;
         writeln!(f, "Force alpha: {}", u32::from(self.force_alpha))?;
-        writeln!(f, "Quant mode 6 endpoints: {}", u32::from(self.quant_mode6_endpoints))?;
-        writeln!(f, "Bias mode 1 p-bits: {}", u32::from(self.bias_mode1_pbits))?;
+        writeln!(
+            f,
+            "Quant mode 6 endpoints: {}",
+            u32::from(self.quant_mode6_endpoints)
+        )?;
+        writeln!(
+            f,
+            "Bias mode 1 p-bits: {}",
+            u32::from(self.bias_mode1_pbits)
+        )?;
         writeln!(f, "p-bit 1 weight: {:.6}", self.pbit1_weight)?;
         writeln!(
             f,
             "Mode error weights: {:.6} {:.6} {:.6} {:.6}",
-            self.mode1_error_weight, self.mode5_error_weight, self.mode6_error_weight, self.mode7_error_weight
+            self.mode1_error_weight,
+            self.mode5_error_weight,
+            self.mode6_error_weight,
+            self.mode7_error_weight
         )?;
-        writeln!(f, "Low frequency partition weight: {:.6}", self.low_frequency_partition_weight)
+        writeln!(
+            f,
+            "Low frequency partition weight: {:.6}",
+            self.low_frequency_partition_weight
+        )
     }
 }
 
@@ -256,7 +286,12 @@ type Vec4F = [f32; 4];
 
 #[inline]
 fn color_quad_u8_set_clamped(r: i32, g: i32, b: i32, a: i32) -> ColorRgba {
-    [clampi(r, 0, 255) as u8, clampi(g, 0, 255) as u8, clampi(b, 0, 255) as u8, clampi(a, 0, 255) as u8]
+    [
+        clampi(r, 0, 255) as u8,
+        clampi(g, 0, 255) as u8,
+        clampi(b, 0, 255) as u8,
+        clampi(a, 0, 255) as u8,
+    ]
 }
 
 #[inline]
@@ -267,7 +302,12 @@ fn color_quad_u8_set(r: u32, g: u32, b: u32, a: u32) -> ColorRgba {
 
 #[inline]
 fn vec4f_saturate(v: &Vec4F) -> Vec4F {
-    [saturate(v[0]), saturate(v[1]), saturate(v[2]), saturate(v[3])]
+    [
+        saturate(v[0]),
+        saturate(v[1]),
+        saturate(v[2]),
+        saturate(v[3]),
+    ]
 }
 
 #[inline]
@@ -277,12 +317,22 @@ fn vec4f_from_color(c: &ColorRgba) -> Vec4F {
 
 #[inline]
 fn vec4f_add(lhs: &Vec4F, rhs: &Vec4F) -> Vec4F {
-    [lhs[0] + rhs[0], lhs[1] + rhs[1], lhs[2] + rhs[2], lhs[3] + rhs[3]]
+    [
+        lhs[0] + rhs[0],
+        lhs[1] + rhs[1],
+        lhs[2] + rhs[2],
+        lhs[3] + rhs[3],
+    ]
 }
 
 #[inline]
 fn vec4f_sub(lhs: &Vec4F, rhs: &Vec4F) -> Vec4F {
-    [lhs[0] - rhs[0], lhs[1] - rhs[1], lhs[2] - rhs[2], lhs[3] - rhs[3]]
+    [
+        lhs[0] - rhs[0],
+        lhs[1] - rhs[1],
+        lhs[2] - rhs[2],
+        lhs[3] - rhs[3],
+    ]
 }
 
 #[inline]
@@ -383,7 +433,13 @@ impl Default for Bc7Enc {
     }
 }
 
-fn compute_least_squares_endpoints_rgba(selectors: &[u8], selector_weights: &[f32], xl: &mut Vec4F, xh: &mut Vec4F, colors: &[ColorRgba]) {
+fn compute_least_squares_endpoints_rgba(
+    selectors: &[u8],
+    selector_weights: &[f32],
+    xl: &mut Vec4F,
+    xh: &mut Vec4F,
+    colors: &[ColorRgba],
+) {
     // Least squares using normal equations: http://www.cs.cornell.edu/~bindel/class/cs3220-s12/notes/lec10.pdf
     // I did this in matrix form first, expanded out all the ops, then optimized it a bit.
     let (mut z00, mut z10, mut z11) = (0.0f32, 0.0f32, 0.0f32);
@@ -448,7 +504,13 @@ fn compute_least_squares_endpoints_rgba(selectors: &[u8], selector_weights: &[f3
     }
 }
 
-fn compute_least_squares_endpoints_rgb(selectors: &[u8], selector_weights: &[f32], xl: &mut Vec4F, xh: &mut Vec4F, colors: &[ColorRgba]) {
+fn compute_least_squares_endpoints_rgb(
+    selectors: &[u8],
+    selector_weights: &[f32],
+    xl: &mut Vec4F,
+    xh: &mut Vec4F,
+    colors: &[ColorRgba],
+) {
     let (mut z00, mut z10, mut z11) = (0.0f32, 0.0f32, 0.0f32);
     let (mut q00_r, mut t_r) = (0.0f32, 0.0f32);
     let (mut q00_g, mut t_g) = (0.0f32, 0.0f32);
@@ -508,7 +570,11 @@ fn compute_least_squares_endpoints_rgb(selectors: &[u8], selector_weights: &[f32
 }
 
 /// The low and the high alpha.
-fn compute_least_squares_endpoints_a(selectors: &[u8], selector_weights: &[f32], colors: &[ColorRgba]) -> (f32, f32) {
+fn compute_least_squares_endpoints_a(
+    selectors: &[u8],
+    selector_weights: &[f32],
+    colors: &[ColorRgba],
+) -> (f32, f32) {
     // Least squares using normal equations: http://www.cs.cornell.edu/~bindel/class/cs3220-s12/notes/lec10.pdf
     // I did this in matrix form first, expanded out all the ops, then optimized it a bit.
     let (mut z00, mut z10, mut z11) = (0.0f32, 0.0f32, 0.0f32);
@@ -582,7 +648,13 @@ struct ColorCellCompressorResults {
 
 impl ColorCellCompressorResults {
     fn new() -> Self {
-        ColorCellCompressorResults { best_overall_err: 0, low_endpoint: [0; 4], high_endpoint: [0; 4], pbits: [0; 2], selectors: [0; 16] }
+        ColorCellCompressorResults {
+            best_overall_err: 0,
+            low_endpoint: [0; 4],
+            high_endpoint: [0; 4],
+            pbits: [0; 2],
+            selectors: [0; 16],
+        }
     }
 }
 
@@ -613,7 +685,12 @@ fn scale_color(c: &ColorRgba, params: &ColorCellCompressorParams) -> ColorRgba {
 }
 
 #[inline]
-fn compute_color_distance_rgb(e1: &ColorRgba, e2: &ColorRgba, perceptual: bool, weights: &[u32; 4]) -> u64 {
+fn compute_color_distance_rgb(
+    e1: &ColorRgba,
+    e2: &ColorRgba,
+    perceptual: bool,
+    weights: &[u32; 4],
+) -> u64 {
     let (dr, dg, db);
 
     if perceptual {
@@ -633,13 +710,22 @@ fn compute_color_distance_rgb(e1: &ColorRgba, e2: &ColorRgba, perceptual: bool, 
     }
 
     // (The sum is of 32 bits in the C++.)
-    weights[0].wrapping_mul((dr * dr) as u32).wrapping_add(weights[1].wrapping_mul((dg * dg) as u32)).wrapping_add(weights[2].wrapping_mul((db * db) as u32)) as u64
+    weights[0]
+        .wrapping_mul((dr * dr) as u32)
+        .wrapping_add(weights[1].wrapping_mul((dg * dg) as u32))
+        .wrapping_add(weights[2].wrapping_mul((db * db) as u32)) as u64
 }
 
 #[inline]
-fn compute_color_distance_rgba(e1: &ColorRgba, e2: &ColorRgba, perceptual: bool, weights: &[u32; 4]) -> u64 {
+fn compute_color_distance_rgba(
+    e1: &ColorRgba,
+    e2: &ColorRgba,
+    perceptual: bool,
+    weights: &[u32; 4],
+) -> u64 {
     let da = e1[3] as i32 - e2[3] as i32;
-    compute_color_distance_rgb(e1, e2, perceptual, weights) + weights[3].wrapping_mul((da * da) as u32) as u64
+    compute_color_distance_rgb(e1, e2, perceptual, weights)
+        + weights[3].wrapping_mul((da * da) as u32) as u64
 }
 
 fn evaluate_solution(
@@ -683,8 +769,11 @@ fn evaluate_solution(
     let nc = if params.has_alpha { 4 } else { 3 };
     for i in 1..(n - 1) {
         for j in 0..nc {
-            weighted_colors[i][j] =
-                ((actual_min_color[j] as u32 * (64 - params.selector_weights[i]) + actual_max_color[j] as u32 * params.selector_weights[i] + 32) >> 6) as u8;
+            weighted_colors[i][j] = ((actual_min_color[j] as u32
+                * (64 - params.selector_weights[i])
+                + actual_max_color[j] as u32 * params.selector_weights[i]
+                + 32)
+                >> 6) as u8;
         }
     }
 
@@ -704,9 +793,19 @@ fn evaluate_solution(
             let best_sel = comp_params.selectors[i] as usize;
 
             let best_err = if params.has_alpha {
-                compute_color_distance_rgba(&weighted_colors[best_sel], pixel, params.perceptual, &params.weights)
+                compute_color_distance_rgba(
+                    &weighted_colors[best_sel],
+                    pixel,
+                    params.perceptual,
+                    &params.weights,
+                )
             } else {
-                compute_color_distance_rgb(&weighted_colors[best_sel], pixel, params.perceptual, &params.weights)
+                compute_color_distance_rgb(
+                    &weighted_colors[best_sel],
+                    pixel,
+                    params.perceptual,
+                    &params.weights,
+                )
             };
 
             total_err += best_err;
@@ -718,7 +817,8 @@ fn evaluate_solution(
             let la = actual_min_color[3] as i32;
             let da = actual_max_color[3] as i32 - la;
 
-            let f = n as f32 / ((squarei(dr) + squarei(dg) + squarei(db) + squarei(da)) as f32 + 0.00000125f32);
+            let f = n as f32
+                / ((squarei(dr) + squarei(dg) + squarei(db) + squarei(da)) as f32 + 0.00000125f32);
 
             for (i, c) in pixels.iter().enumerate() {
                 let r = c[0] as i32;
@@ -726,11 +826,25 @@ fn evaluate_solution(
                 let b = c[2] as i32;
                 let a = c[3] as i32;
 
-                let mut best_sel = f2i(((r - lr) * dr + (g - lg) * dg + (b - lb) * db + (a - la) * da) as f32 * f + 0.5);
+                let mut best_sel =
+                    f2i(
+                        ((r - lr) * dr + (g - lg) * dg + (b - lb) * db + (a - la) * da) as f32 * f
+                            + 0.5,
+                    );
                 best_sel = clampi(best_sel, 1, n as i32 - 1);
 
-                let err0 = compute_color_distance_rgba(&weighted_colors[best_sel as usize - 1], c, false, &params.weights);
-                let mut err1 = compute_color_distance_rgba(&weighted_colors[best_sel as usize], c, false, &params.weights);
+                let err0 = compute_color_distance_rgba(
+                    &weighted_colors[best_sel as usize - 1],
+                    c,
+                    false,
+                    &params.weights,
+                );
+                let mut err1 = compute_color_distance_rgba(
+                    &weighted_colors[best_sel as usize],
+                    c,
+                    false,
+                    &params.weights,
+                );
 
                 if err1 > err0 {
                     err1 = err0;
@@ -751,8 +865,18 @@ fn evaluate_solution(
                 let mut sel = f2i(((r - lr) * dr + (g - lg) * dg + (b - lb) * db) as f32 * f + 0.5);
                 sel = clampi(sel, 1, n as i32 - 1);
 
-                let err0 = compute_color_distance_rgb(&weighted_colors[sel as usize - 1], c, false, &params.weights);
-                let err1 = compute_color_distance_rgb(&weighted_colors[sel as usize], c, false, &params.weights);
+                let err0 = compute_color_distance_rgb(
+                    &weighted_colors[sel as usize - 1],
+                    c,
+                    false,
+                    &params.weights,
+                );
+                let err1 = compute_color_distance_rgb(
+                    &weighted_colors[sel as usize],
+                    c,
+                    false,
+                    &params.weights,
+                );
 
                 let mut best_sel = sel;
                 let mut best_err = err1;
@@ -774,7 +898,12 @@ fn evaluate_solution(
 
             if params.has_alpha {
                 for j in 0..n {
-                    let err = compute_color_distance_rgba(&weighted_colors[j], pixel, true, &params.weights);
+                    let err = compute_color_distance_rgba(
+                        &weighted_colors[j],
+                        pixel,
+                        true,
+                        &params.weights,
+                    );
                     if err < best_err {
                         best_err = err;
                         best_sel = j;
@@ -782,7 +911,12 @@ fn evaluate_solution(
                 }
             } else {
                 for j in 0..n {
-                    let err = compute_color_distance_rgb(&weighted_colors[j], pixel, true, &params.weights);
+                    let err = compute_color_distance_rgb(
+                        &weighted_colors[j],
+                        pixel,
+                        true,
+                        &params.weights,
+                    );
                     if err < best_err {
                         best_err = err;
                         best_sel = j;
@@ -811,7 +945,15 @@ fn evaluate_solution(
     total_err
 }
 
-fn fix_degenerate_endpoints(mode: u32, trial_min_color: &mut ColorRgba, trial_max_color: &mut ColorRgba, xl: &Vec4F, xh: &Vec4F, iscale: u32, comp_params: &CompressBlockParams) {
+fn fix_degenerate_endpoints(
+    mode: u32,
+    trial_min_color: &mut ColorRgba,
+    trial_max_color: &mut ColorRgba,
+    xl: &Vec4F,
+    xh: &Vec4F,
+    iscale: u32,
+    comp_params: &CompressBlockParams,
+) {
     if mode == 1 || (mode == 6 && comp_params.quant_mode6_endpoints) {
         // fix degenerate case where the input collapses to a single colorspace voxel, and we
         // loose all freedom (test with grayscale ramps)
@@ -864,7 +1006,8 @@ impl Bc7Enc {
                 vh |= vh >> 6;
                 let hi = vh as f32 / 255.0;
 
-                tables.mode7_rgba_midpoints[i as usize][p as usize] = if i == 31 { 1.0 } else { (lo + hi) / 2.0 };
+                tables.mode7_rgba_midpoints[i as usize][p as usize] =
+                    if i == 31 { 1.0 } else { (lo + hi) / 2.0 };
             }
         }
 
@@ -879,7 +1022,8 @@ impl Bc7Enc {
                 vh |= vh >> 7;
                 let hi = vh as f32 / 255.0;
 
-                tables.mode1_rgba_midpoints[i as usize][p as usize] = if i == 63 { 1.0 } else { (lo + hi) / 2.0 };
+                tables.mode1_rgba_midpoints[i as usize][p as usize] =
+                    if i == 63 { 1.0 } else { (lo + hi) / 2.0 };
             }
         }
 
@@ -920,7 +1064,11 @@ impl Bc7Enc {
         // Mode 1
         for c in 0..256i32 {
             for lp in 0..2u32 {
-                let mut best = EndpointErr { error: u16::MAX, lo: 0, hi: 0 };
+                let mut best = EndpointErr {
+                    error: u16::MAX,
+                    lo: 0,
+                    hi: 0,
+                };
 
                 for l in 0..64u32 {
                     let mut low = ((l << 1) | lp) << 1;
@@ -930,7 +1078,10 @@ impl Bc7Enc {
                         let mut high = ((h << 1) | lp) << 1;
                         high |= high >> 7;
 
-                        let k = ((low * (64 - WEIGHTS3[MODE_1_OPTIMAL_INDEX as usize]) + high * WEIGHTS3[MODE_1_OPTIMAL_INDEX as usize] + 32) >> 6) as i32;
+                        let k = ((low * (64 - WEIGHTS3[MODE_1_OPTIMAL_INDEX as usize])
+                            + high * WEIGHTS3[MODE_1_OPTIMAL_INDEX as usize]
+                            + 32)
+                            >> 6) as i32;
 
                         let err = (k - c) * (k - c);
                         if err < best.error as i32 {
@@ -949,7 +1100,11 @@ impl Bc7Enc {
         for c in 0..256i32 {
             for hp in 0..2u32 {
                 for lp in 0..2u32 {
-                    let mut best = EndpointErr { error: u16::MAX, lo: 0, hi: 0 };
+                    let mut best = EndpointErr {
+                        error: u16::MAX,
+                        lo: 0,
+                        hi: 0,
+                    };
 
                     for l in 0..32u32 {
                         let mut low = ((l << 1) | lp) << 2;
@@ -959,7 +1114,10 @@ impl Bc7Enc {
                             let mut high = ((h << 1) | hp) << 2;
                             high |= high >> 6;
 
-                            let k = ((low * (64 - WEIGHTS2[MODE_7_OPTIMAL_INDEX as usize]) + high * WEIGHTS2[MODE_7_OPTIMAL_INDEX as usize] + 32) >> 6) as i32;
+                            let k = ((low * (64 - WEIGHTS2[MODE_7_OPTIMAL_INDEX as usize])
+                                + high * WEIGHTS2[MODE_7_OPTIMAL_INDEX as usize]
+                                + 32)
+                                >> 6) as i32;
 
                             let err = (k - c) * (k - c);
                             if err < best.error as i32 {
@@ -978,7 +1136,14 @@ impl Bc7Enc {
         tables
     }
 
-    fn pack_mode1_to_one_color(&self, params: &ColorCellCompressorParams, pixels: &[ColorRgba], r: u32, g: u32, b: u32) -> OneColor {
+    fn pack_mode1_to_one_color(
+        &self,
+        params: &ColorCellCompressorParams,
+        pixels: &[ColorRgba],
+        r: u32,
+        g: u32,
+        b: u32,
+    ) -> OneColor {
         let table = &self.mode_1_optimal_endpoints;
         let (r, g, b) = (r as usize, g as usize, b as usize);
 
@@ -986,7 +1151,8 @@ impl Bc7Enc {
         let mut best_p = 0usize;
 
         for p in 0..2 {
-            let err = table[r][p].error as u32 + table[g][p].error as u32 + table[b][p].error as u32;
+            let err =
+                table[r][p].error as u32 + table[g][p].error as u32 + table[b][p].error as u32;
             if err < best_err {
                 best_err = err;
                 best_p = p;
@@ -1014,7 +1180,10 @@ impl Bc7Enc {
             let mut high = (((high_endpoint[i] as u32) << 1) | pbits[0]) << 1;
             high |= high >> 7;
 
-            p[i] = ((low * (64 - WEIGHTS3[MODE_1_OPTIMAL_INDEX as usize]) + high * WEIGHTS3[MODE_1_OPTIMAL_INDEX as usize] + 32) >> 6) as u8;
+            p[i] = ((low * (64 - WEIGHTS3[MODE_1_OPTIMAL_INDEX as usize])
+                + high * WEIGHTS3[MODE_1_OPTIMAL_INDEX as usize]
+                + 32)
+                >> 6) as u8;
         }
 
         p[3] = 255;
@@ -1024,10 +1193,23 @@ impl Bc7Enc {
             total_err += compute_color_distance_rgb(&p, pixel, params.perceptual, &params.weights);
         }
 
-        OneColor { low_endpoint, high_endpoint, pbits, total_err }
+        OneColor {
+            low_endpoint,
+            high_endpoint,
+            pbits,
+            total_err,
+        }
     }
 
-    fn pack_mode7_to_one_color(&self, params: &ColorCellCompressorParams, pixels: &[ColorRgba], r: u32, g: u32, b: u32, a: u32) -> OneColor {
+    fn pack_mode7_to_one_color(
+        &self,
+        params: &ColorCellCompressorParams,
+        pixels: &[ColorRgba],
+        r: u32,
+        g: u32,
+        b: u32,
+        a: u32,
+    ) -> OneColor {
         let table = &self.mode_7_optimal_endpoints;
         let (r, g, b, a) = (r as usize, g as usize, b as usize, a as usize);
 
@@ -1037,7 +1219,10 @@ impl Bc7Enc {
         for p in 0..4usize {
             let hi_p = p >> 1;
             let lo_p = p & 1;
-            let err = table[r][hi_p][lo_p].error as u32 + table[g][hi_p][lo_p].error as u32 + table[b][hi_p][lo_p].error as u32 + table[a][hi_p][lo_p].error as u32;
+            let err = table[r][hi_p][lo_p].error as u32
+                + table[g][hi_p][lo_p].error as u32
+                + table[b][hi_p][lo_p].error as u32
+                + table[a][hi_p][lo_p].error as u32;
             if err < best_err {
                 best_err = err;
                 best_p = p;
@@ -1055,8 +1240,10 @@ impl Bc7Enc {
         let eb = &table[b][best_hi_p][best_lo_p];
         let ea = &table[a][best_hi_p][best_lo_p];
 
-        let low_endpoint = color_quad_u8_set(er.lo as u32, eg.lo as u32, eb.lo as u32, ea.lo as u32);
-        let high_endpoint = color_quad_u8_set(er.hi as u32, eg.hi as u32, eb.hi as u32, ea.hi as u32);
+        let low_endpoint =
+            color_quad_u8_set(er.lo as u32, eg.lo as u32, eb.lo as u32, ea.lo as u32);
+        let high_endpoint =
+            color_quad_u8_set(er.hi as u32, eg.hi as u32, eb.hi as u32, ea.hi as u32);
 
         let pbits = [best_lo_p as u32, best_hi_p as u32];
 
@@ -1069,7 +1256,10 @@ impl Bc7Enc {
             low = (low << 2) | (low >> 6);
             high = (high << 2) | (high >> 6);
 
-            p[i] = ((low * (64 - WEIGHTS2[MODE_7_OPTIMAL_INDEX as usize]) + high * WEIGHTS2[MODE_7_OPTIMAL_INDEX as usize] + 32) >> 6) as u8;
+            p[i] = ((low * (64 - WEIGHTS2[MODE_7_OPTIMAL_INDEX as usize])
+                + high * WEIGHTS2[MODE_7_OPTIMAL_INDEX as usize]
+                + 32)
+                >> 6) as u8;
         }
 
         let mut total_err = 0u64;
@@ -1077,7 +1267,12 @@ impl Bc7Enc {
             total_err += compute_color_distance_rgba(&p, pixel, params.perceptual, &params.weights);
         }
 
-        OneColor { low_endpoint, high_endpoint, pbits, total_err }
+        OneColor {
+            low_endpoint,
+            high_endpoint,
+            pbits,
+            total_err,
+        }
     }
 
     fn find_optimal_solution(
@@ -1107,12 +1302,14 @@ impl Bc7Enc {
                 if params.comp_bits == 7 && comp_params.quant_mode6_endpoints {
                     best_pbits[0] = 0;
                     for c in 0..4 {
-                        best_min_color[c] = self.mode6_reduced_quant[f2i((xl[c] * 2047.0) + 0.5) as usize][0];
+                        best_min_color[c] =
+                            self.mode6_reduced_quant[f2i((xl[c] * 2047.0) + 0.5) as usize][0];
                     }
 
                     best_pbits[1] = 1;
                     for c in 0..4 {
-                        best_max_color[c] = self.mode6_reduced_quant[f2i((xh[c] * 2047.0) + 0.5) as usize][1];
+                        best_max_color[c] =
+                            self.mode6_reduced_quant[f2i((xh[c] * 2047.0) + 0.5) as usize][1];
                     }
                 } else {
                     let mut best_err0 = 1e+9f32;
@@ -1130,17 +1327,29 @@ impl Bc7Enc {
                         if params.comp_bits == 5 {
                             for c in 0..4 {
                                 let mut vl = f2i(xl[c] * 31.0);
-                                vl += i32::from(xl[c] > self.mode7_rgba_midpoints[vl as usize][p as usize]);
+                                vl += i32::from(
+                                    xl[c] > self.mode7_rgba_midpoints[vl as usize][p as usize],
+                                );
                                 x_min_color[c] = clampi(vl * 2 + p, p, 63 - 1 + p) as u8;
 
                                 let mut vh = f2i(xh[c] * 31.0);
-                                vh += i32::from(xh[c] > self.mode7_rgba_midpoints[vh as usize][p as usize]);
+                                vh += i32::from(
+                                    xh[c] > self.mode7_rgba_midpoints[vh as usize][p as usize],
+                                );
                                 x_max_color[c] = clampi(vh * 2 + p, p, 63 - 1 + p) as u8;
                             }
                         } else {
                             for c in 0..4 {
-                                x_min_color[c] = clampi(f2i((xl[c] * scalep - p as f32) / 2.0 + 0.5) * 2 + p, p, iscalep - 1 + p) as u8;
-                                x_max_color[c] = clampi(f2i((xh[c] * scalep - p as f32) / 2.0 + 0.5) * 2 + p, p, iscalep - 1 + p) as u8;
+                                x_min_color[c] = clampi(
+                                    f2i((xl[c] * scalep - p as f32) / 2.0 + 0.5) * 2 + p,
+                                    p,
+                                    iscalep - 1 + p,
+                                ) as u8;
+                                x_max_color[c] = clampi(
+                                    f2i((xh[c] * scalep - p as f32) / 2.0 + 0.5) * 2 + p,
+                                    p,
+                                    iscalep - 1 + p,
+                                ) as u8;
                             }
                         }
 
@@ -1217,17 +1426,29 @@ impl Bc7Enc {
                     if params.comp_bits == 6 {
                         for c in 0..4 {
                             let mut vl = f2i(xl[c] * 63.0);
-                            vl += i32::from(xl[c] > self.mode1_rgba_midpoints[vl as usize][p as usize]);
+                            vl += i32::from(
+                                xl[c] > self.mode1_rgba_midpoints[vl as usize][p as usize],
+                            );
                             x_min_color[c] = clampi(vl * 2 + p, p, 127 - 1 + p) as u8;
 
                             let mut vh = f2i(xh[c] * 63.0);
-                            vh += i32::from(xh[c] > self.mode1_rgba_midpoints[vh as usize][p as usize]);
+                            vh += i32::from(
+                                xh[c] > self.mode1_rgba_midpoints[vh as usize][p as usize],
+                            );
                             x_max_color[c] = clampi(vh * 2 + p, p, 127 - 1 + p) as u8;
                         }
                     } else {
                         for c in 0..4 {
-                            x_min_color[c] = clampi(f2i((xl[c] * scalep - p as f32) / 2.0 + 0.5) * 2 + p, p, iscalep - 1 + p) as u8;
-                            x_max_color[c] = clampi(f2i((xh[c] * scalep - p as f32) / 2.0 + 0.5) * 2 + p, p, iscalep - 1 + p) as u8;
+                            x_min_color[c] = clampi(
+                                f2i((xl[c] * scalep - p as f32) / 2.0 + 0.5) * 2 + p,
+                                p,
+                                iscalep - 1 + p,
+                            ) as u8;
+                            x_max_color[c] = clampi(
+                                f2i((xh[c] * scalep - p as f32) / 2.0 + 0.5) * 2 + p,
+                                p,
+                                iscalep - 1 + p,
+                            ) as u8;
                         }
                     }
 
@@ -1236,7 +1457,8 @@ impl Bc7Enc {
 
                     let mut err = 0.0f32;
                     for i in 0..total_comps {
-                        err += squaref((scaled_low[i] as f32 / 255.0) - xl[i]) + squaref((scaled_high[i] as f32 / 255.0) - xh[i]);
+                        err += squaref((scaled_low[i] as f32 / 255.0) - xl[i])
+                            + squaref((scaled_high[i] as f32 / 255.0) - xh[i]);
                     }
 
                     if p == 1 {
@@ -1255,7 +1477,15 @@ impl Bc7Enc {
                 }
             }
 
-            fix_degenerate_endpoints(mode, &mut best_min_color, &mut best_max_color, &xl, &xh, (iscalep >> 1) as u32, comp_params);
+            fix_degenerate_endpoints(
+                mode,
+                &mut best_min_color,
+                &mut best_max_color,
+                &xl,
+                &xh,
+                (iscalep >> 1) as u32,
+                comp_params,
+            );
 
             if results.best_overall_err == u64::MAX
                 || best_min_color != results.low_endpoint
@@ -1263,7 +1493,15 @@ impl Bc7Enc {
                 || best_pbits[0] != results.pbits[0]
                 || best_pbits[1] != results.pbits[1]
             {
-                evaluate_solution(&best_min_color, &best_max_color, &best_pbits, params, pixels, results, comp_params);
+                evaluate_solution(
+                    &best_min_color,
+                    &best_max_color,
+                    &best_pbits,
+                    params,
+                    pixels,
+                    results,
+                    comp_params,
+                );
             }
         } else {
             let iscale = (1i32 << params.comp_bits) - 1;
@@ -1282,22 +1520,58 @@ impl Bc7Enc {
                     trial_max_color[c] = clampi(vh, 0, 127) as u8;
                 }
             } else {
-                trial_min_color = color_quad_u8_set_clamped(f2i(xl[0] * scale + 0.5), f2i(xl[1] * scale + 0.5), f2i(xl[2] * scale + 0.5), f2i(xl[3] * scale + 0.5));
-                trial_max_color = color_quad_u8_set_clamped(f2i(xh[0] * scale + 0.5), f2i(xh[1] * scale + 0.5), f2i(xh[2] * scale + 0.5), f2i(xh[3] * scale + 0.5));
+                trial_min_color = color_quad_u8_set_clamped(
+                    f2i(xl[0] * scale + 0.5),
+                    f2i(xl[1] * scale + 0.5),
+                    f2i(xl[2] * scale + 0.5),
+                    f2i(xl[3] * scale + 0.5),
+                );
+                trial_max_color = color_quad_u8_set_clamped(
+                    f2i(xh[0] * scale + 0.5),
+                    f2i(xh[1] * scale + 0.5),
+                    f2i(xh[2] * scale + 0.5),
+                    f2i(xh[3] * scale + 0.5),
+                );
             }
 
-            fix_degenerate_endpoints(mode, &mut trial_min_color, &mut trial_max_color, &xl, &xh, iscale as u32, comp_params);
+            fix_degenerate_endpoints(
+                mode,
+                &mut trial_min_color,
+                &mut trial_max_color,
+                &xl,
+                &xh,
+                iscale as u32,
+                comp_params,
+            );
 
-            if results.best_overall_err == u64::MAX || trial_min_color != results.low_endpoint || trial_max_color != results.high_endpoint {
+            if results.best_overall_err == u64::MAX
+                || trial_min_color != results.low_endpoint
+                || trial_max_color != results.high_endpoint
+            {
                 let pbits = results.pbits;
-                evaluate_solution(&trial_min_color, &trial_max_color, &pbits, params, pixels, results, comp_params);
+                evaluate_solution(
+                    &trial_min_color,
+                    &trial_max_color,
+                    &pbits,
+                    params,
+                    pixels,
+                    results,
+                    comp_params,
+                );
             }
         }
 
         results.best_overall_err
     }
 
-    fn color_cell_compression(&self, mode: u32, params: &ColorCellCompressorParams, pixels: &[ColorRgba], results: &mut ColorCellCompressorResults, comp_params: &CompressBlockParams) -> u64 {
+    fn color_cell_compression(
+        &self,
+        mode: u32,
+        params: &ColorCellCompressorParams,
+        pixels: &[ColorRgba],
+        results: &mut ColorCellCompressorResults,
+        comp_params: &CompressBlockParams,
+    ) -> u64 {
         debug_assert!(mode == 6 || mode == 7 || !params.has_alpha);
 
         let num_pixels = pixels.len();
@@ -1308,10 +1582,13 @@ impl Bc7Enc {
         if mode == 1 {
             let (cr, cg, cb) = (pixels[0][0], pixels[0][1], pixels[0][2]);
 
-            let all_same = pixels[1..].iter().all(|pixel| cr == pixel[0] && cg == pixel[1] && cb == pixel[2]);
+            let all_same = pixels[1..]
+                .iter()
+                .all(|pixel| cr == pixel[0] && cg == pixel[1] && cb == pixel[2]);
 
             if all_same {
-                let one = self.pack_mode1_to_one_color(params, pixels, cr as u32, cg as u32, cb as u32);
+                let one =
+                    self.pack_mode1_to_one_color(params, pixels, cr as u32, cg as u32, cb as u32);
                 results.low_endpoint = one.low_endpoint;
                 results.high_endpoint = one.high_endpoint;
                 results.pbits = one.pbits;
@@ -1325,7 +1602,14 @@ impl Bc7Enc {
             let all_same = pixels[1..].iter().all(|pixel| *pixel == first);
 
             if all_same {
-                let one = self.pack_mode7_to_one_color(params, pixels, first[0] as u32, first[1] as u32, first[2] as u32, first[3] as u32);
+                let one = self.pack_mode7_to_one_color(
+                    params,
+                    pixels,
+                    first[0] as u32,
+                    first[1] as u32,
+                    first[2] as u32,
+                    first[3] as u32,
+                );
                 results.low_endpoint = one.low_endpoint;
                 results.high_endpoint = one.high_endpoint;
                 results.pbits = one.pbits;
@@ -1421,7 +1705,12 @@ impl Bc7Enc {
 
         if vec4f_dot(&axis, &axis) < 0.5 {
             if params.perceptual {
-                axis = [0.213, 0.715, 0.072, if params.has_alpha { 0.715 } else { 0.0 }];
+                axis = [
+                    0.213,
+                    0.715,
+                    0.072,
+                    if params.has_alpha { 0.715 } else { 0.0 },
+                ];
             } else {
                 axis = [1.0, 1.0, 1.0, if params.has_alpha { 1.0 } else { 0.0 }];
             }
@@ -1456,7 +1745,16 @@ impl Bc7Enc {
         }
 
         // First find a solution using the block's PCA.
-        if self.find_optimal_solution(mode, min_color, max_color, params, pixels, results, comp_params) == 0 {
+        if self.find_optimal_solution(
+            mode,
+            min_color,
+            max_color,
+            params,
+            pixels,
+            results,
+            comp_params,
+        ) == 0
+        {
             return 0;
         }
 
@@ -1464,12 +1762,27 @@ impl Bc7Enc {
             let mut xl = [0.0f32; 4];
             let mut xh = [0.0f32; 4];
             if params.has_alpha {
-                compute_least_squares_endpoints_rgba(selectors, params.selector_weightsx, &mut xl, &mut xh, pixels);
+                compute_least_squares_endpoints_rgba(
+                    selectors,
+                    params.selector_weightsx,
+                    &mut xl,
+                    &mut xh,
+                    pixels,
+                );
             } else {
-                compute_least_squares_endpoints_rgb(selectors, params.selector_weightsx, &mut xl, &mut xh, pixels);
+                compute_least_squares_endpoints_rgb(
+                    selectors,
+                    params.selector_weightsx,
+                    &mut xl,
+                    &mut xh,
+                    pixels,
+                );
             }
 
-            (vec4f_mul(&xl, 1.0f32 / 255.0f32), vec4f_mul(&xh, 1.0f32 / 255.0f32))
+            (
+                vec4f_mul(&xl, 1.0f32 / 255.0f32),
+                vec4f_mul(&xh, 1.0f32 / 255.0f32),
+            )
         };
 
         if comp_params.try_least_squares {
@@ -1541,7 +1854,11 @@ impl Bc7Enc {
             // In uber levels 2+, try taking more advantage of endpoint extrapolation by scaling the selectors in one direction or another.
             let uber_err_thresh = (num_pixels as u32 * 56) >> 4;
             if comp_params.uber_level >= 2 && results.best_overall_err > uber_err_thresh as u64 {
-                let q = if comp_params.uber_level >= 4 { (comp_params.uber_level - 2) as i32 } else { 1 };
+                let q = if comp_params.uber_level >= 4 {
+                    (comp_params.uber_level - 2) as i32
+                } else {
+                    1
+                };
                 for ly in -q..=1 {
                     for hy in (max_selector - 1)..=(max_selector + q) {
                         if ly == 0 && hy == max_selector {
@@ -1549,12 +1866,28 @@ impl Bc7Enc {
                         }
 
                         for i in 0..num_pixels {
-                            selectors_temp1[i] =
-                                clampf(fmath::floor(max_selector as f32 * (selectors_temp[i] as f32 - ly as f32) / (hy as f32 - ly as f32) + 0.5), 0.0, max_selector as f32) as u8;
+                            selectors_temp1[i] = clampf(
+                                fmath::floor(
+                                    max_selector as f32 * (selectors_temp[i] as f32 - ly as f32)
+                                        / (hy as f32 - ly as f32)
+                                        + 0.5,
+                                ),
+                                0.0,
+                                max_selector as f32,
+                            ) as u8;
                         }
 
                         let (xl, xh) = least_squares(&selectors_temp1);
-                        if self.find_optimal_solution(mode, xl, xh, params, pixels, results, comp_params) == 0 {
+                        if self.find_optimal_solution(
+                            mode,
+                            xl,
+                            xh,
+                            params,
+                            pixels,
+                            results,
+                            comp_params,
+                        ) == 0
+                        {
                             return 0;
                         }
                     }
@@ -1597,7 +1930,12 @@ impl Bc7Enc {
     }
 }
 
-fn color_cell_compression_est_mode1(pixels: &[ColorRgba], perceptual: bool, pweights: &[u32; 4], best_err_so_far: u64) -> u64 {
+fn color_cell_compression_est_mode1(
+    pixels: &[ColorRgba],
+    perceptual: bool,
+    pweights: &[u32; 4],
+    best_err_so_far: u64,
+) -> u64 {
     // Find RGB bounds as an approximation of the block's principle axis
     let (mut lr, mut lg, mut lb) = (255u32, 255u32, 255u32);
     let (mut hr, mut hg, mut hb) = (0u32, 0u32, 0u32);
@@ -1633,7 +1971,10 @@ fn color_cell_compression_est_mode1(pixels: &[ColorRgba], perceptual: bool, pwei
     weighted_colors[N - 1] = high_color;
     for i in 1..(N - 1) {
         for c in 0..3 {
-            weighted_colors[i][c] = ((low_color[c] as u32 * (64 - WEIGHTS3[i]) + high_color[c] as u32 * WEIGHTS3[i] + 32) >> 6) as u8;
+            weighted_colors[i][c] = ((low_color[c] as u32 * (64 - WEIGHTS3[i])
+                + high_color[c] as u32 * WEIGHTS3[i]
+                + 32)
+                >> 6) as u8;
         }
     }
 
@@ -1644,7 +1985,9 @@ fn color_cell_compression_est_mode1(pixels: &[ColorRgba], perceptual: bool, pwei
 
     let mut dots = [0i32; N];
     for i in 0..N {
-        dots[i] = weighted_colors[i][0] as i32 * ar + weighted_colors[i][1] as i32 * ag + weighted_colors[i][2] as i32 * ab;
+        dots[i] = weighted_colors[i][0] as i32 * ar
+            + weighted_colors[i][1] as i32 * ag
+            + weighted_colors[i][2] as i32 * ab;
     }
 
     let mut thresh = [0i32; N - 1];
@@ -1705,8 +2048,16 @@ fn color_cell_compression_est_mode1(pixels: &[ColorRgba], perceptual: bool, pwei
             let ie = pweights[0]
                 .wrapping_mul(dl as u32)
                 .wrapping_mul(dl as u32)
-                .wrapping_add(pweights[1].wrapping_mul(dcr as u32).wrapping_mul(dcr as u32))
-                .wrapping_add(pweights[2].wrapping_mul(dcb as u32).wrapping_mul(dcb as u32)) as i32;
+                .wrapping_add(
+                    pweights[1]
+                        .wrapping_mul(dcr as u32)
+                        .wrapping_mul(dcr as u32),
+                )
+                .wrapping_add(
+                    pweights[2]
+                        .wrapping_mul(dcb as u32)
+                        .wrapping_mul(dcb as u32),
+                ) as i32;
 
             total_err = total_err.wrapping_add(ie as i64 as u64);
             if total_err > best_err_so_far {
@@ -1726,7 +2077,11 @@ fn color_cell_compression_est_mode1(pixels: &[ColorRgba], perceptual: bool, pwei
             let dg = e1[1] as i32 - c[1] as i32;
             let db = e1[2] as i32 - c[2] as i32;
 
-            total_err += pweights[0].wrapping_mul((dr * dr) as u32).wrapping_add(pweights[1].wrapping_mul((dg * dg) as u32)).wrapping_add(pweights[2].wrapping_mul((db * db) as u32)) as u64;
+            total_err += pweights[0]
+                .wrapping_mul((dr * dr) as u32)
+                .wrapping_add(pweights[1].wrapping_mul((dg * dg) as u32))
+                .wrapping_add(pweights[2].wrapping_mul((db * db) as u32))
+                as u64;
             if total_err > best_err_so_far {
                 break;
             }
@@ -1736,7 +2091,12 @@ fn color_cell_compression_est_mode1(pixels: &[ColorRgba], perceptual: bool, pwei
     total_err
 }
 
-fn color_cell_compression_est_mode7(pixels: &[ColorRgba], perceptual: bool, pweights: &[u32; 4], best_err_so_far: u64) -> u64 {
+fn color_cell_compression_est_mode7(
+    pixels: &[ColorRgba],
+    perceptual: bool,
+    pweights: &[u32; 4],
+    best_err_so_far: u64,
+) -> u64 {
     // Find RGB bounds as an approximation of the block's principle axis
     let (mut lr, mut lg, mut lb, mut la) = (255u32, 255u32, 255u32, 255u32);
     let (mut hr, mut hg, mut hb, mut ha) = (0u32, 0u32, 0u32, 0u32);
@@ -1778,7 +2138,10 @@ fn color_cell_compression_est_mode7(pixels: &[ColorRgba], perceptual: bool, pwei
     weighted_colors[N - 1] = high_color;
     for i in 1..(N - 1) {
         for c in 0..4 {
-            weighted_colors[i][c] = ((low_color[c] as u32 * (64 - WEIGHTS2[i]) + high_color[c] as u32 * WEIGHTS2[i] + 32) >> 6) as u8;
+            weighted_colors[i][c] = ((low_color[c] as u32 * (64 - WEIGHTS2[i])
+                + high_color[c] as u32 * WEIGHTS2[i]
+                + 32)
+                >> 6) as u8;
         }
     }
 
@@ -1790,7 +2153,10 @@ fn color_cell_compression_est_mode7(pixels: &[ColorRgba], perceptual: bool, pwei
 
     let mut dots = [0i32; N];
     for i in 0..N {
-        dots[i] = weighted_colors[i][0] as i32 * ar + weighted_colors[i][1] as i32 * ag + weighted_colors[i][2] as i32 * ab + weighted_colors[i][3] as i32 * aa;
+        dots[i] = weighted_colors[i][0] as i32 * ar
+            + weighted_colors[i][1] as i32 * ag
+            + weighted_colors[i][2] as i32 * ab
+            + weighted_colors[i][3] as i32 * aa;
     }
 
     let mut thresh = [0i32; N - 1];
@@ -1844,9 +2210,21 @@ fn color_cell_compression_est_mode7(pixels: &[ColorRgba], perceptual: bool, pwei
             let ie = pweights[0]
                 .wrapping_mul(dl as u32)
                 .wrapping_mul(dl as u32)
-                .wrapping_add(pweights[1].wrapping_mul(dcr as u32).wrapping_mul(dcr as u32))
-                .wrapping_add(pweights[2].wrapping_mul(dcb as u32).wrapping_mul(dcb as u32))
-                .wrapping_add(pweights[3].wrapping_mul(dca as u32).wrapping_mul(dca as u32)) as i32;
+                .wrapping_add(
+                    pweights[1]
+                        .wrapping_mul(dcr as u32)
+                        .wrapping_mul(dcr as u32),
+                )
+                .wrapping_add(
+                    pweights[2]
+                        .wrapping_mul(dcb as u32)
+                        .wrapping_mul(dcb as u32),
+                )
+                .wrapping_add(
+                    pweights[3]
+                        .wrapping_mul(dca as u32)
+                        .wrapping_mul(dca as u32),
+                ) as i32;
 
             total_err = total_err.wrapping_add(ie as i64 as u64);
             if total_err > best_err_so_far {
@@ -1871,7 +2249,8 @@ fn color_cell_compression_est_mode7(pixels: &[ColorRgba], perceptual: bool, pwei
                 .wrapping_mul((dr * dr) as u32)
                 .wrapping_add(pweights[1].wrapping_mul((dg * dg) as u32))
                 .wrapping_add(pweights[2].wrapping_mul((db * db) as u32))
-                .wrapping_add(pweights[3].wrapping_mul((da * da) as u32)) as u64;
+                .wrapping_add(pweights[3].wrapping_mul((da * da) as u32))
+                as u64;
             if total_err > best_err_so_far {
                 break;
             }
@@ -1948,7 +2327,11 @@ struct Subsets {
 impl Subsets {
     fn new(pixels: &[ColorRgba; 16], partition: u32) -> Self {
         let table = &PARTITION2[partition as usize * 16..partition as usize * 16 + 16];
-        let mut subsets = Subsets { colors: [[[0; 4]; 16]; 2], total_colors: [0; 2], pixel_index: [[0; 16]; 2] };
+        let mut subsets = Subsets {
+            colors: [[[0; 4]; 16]; 2],
+            total_colors: [0; 2],
+            pixel_index: [[0; 16]; 2],
+        };
         for index in 0..16 {
             let p = table[index] as usize;
             subsets.colors[p][subsets.total_colors[p]] = pixels[index];
@@ -1964,7 +2347,12 @@ impl Subsets {
 }
 
 // Estimate the partition used by modes 1/7. This scans through each partition and computes an approximate error for each.
-fn estimate_partition(pixels: &[ColorRgba; 16], comp_params: &CompressBlockParams, pweights: &[u32; 4], mode: u32) -> u32 {
+fn estimate_partition(
+    pixels: &[ColorRgba; 16],
+    comp_params: &CompressBlockParams,
+    pweights: &[u32; 4],
+    mode: u32,
+) -> u32 {
     let total_partitions = comp_params.max_partitions.min(MAX_PARTITIONS);
     if total_partitions <= 1 {
         return 0;
@@ -1982,7 +2370,8 @@ fn estimate_partition(pixels: &[ColorRgba; 16], comp_params: &CompressBlockParam
         let partition = SORTED_PARTITION_ORDER[partition_iter as usize] as u32;
 
         // Check to see if we should bother evaluating this partition at all, depending on the best partition found from the first 14.
-        if comp_params.mode17_partition_estimation_filterbank && (14..=34).contains(&partition_iter) {
+        if comp_params.mode17_partition_estimation_filterbank && (14..=34).contains(&partition_iter)
+        {
             let best_key_partition_bitmask = 1u32 << (best_key_partition + 1);
             if (PARTITION_PREDICTORS[partition as usize] & best_key_partition_bitmask) == 0 {
                 if partition_iter == 34 {
@@ -2001,15 +2390,27 @@ fn estimate_partition(pixels: &[ColorRgba; 16], comp_params: &CompressBlockParam
         let mut subset = 0;
         while subset < 2 && total_subset_err < best_err {
             if mode == 7 {
-                total_subset_err = total_subset_err.wrapping_add(color_cell_compression_est_mode7(subsets.pixels(subset), comp_params.perceptual, pweights, best_err));
+                total_subset_err = total_subset_err.wrapping_add(color_cell_compression_est_mode7(
+                    subsets.pixels(subset),
+                    comp_params.perceptual,
+                    pweights,
+                    best_err,
+                ));
             } else {
-                total_subset_err = total_subset_err.wrapping_add(color_cell_compression_est_mode1(subsets.pixels(subset), comp_params.perceptual, pweights, best_err));
+                total_subset_err = total_subset_err.wrapping_add(color_cell_compression_est_mode1(
+                    subsets.pixels(subset),
+                    comp_params.perceptual,
+                    pweights,
+                    best_err,
+                ));
             }
             subset += 1;
         }
 
         if partition < 16 {
-            total_subset_err = (total_subset_err as f64 * comp_params.low_frequency_partition_weight as f64 + 0.5f32 as f64) as u64;
+            total_subset_err = (total_subset_err as f64
+                * comp_params.low_frequency_partition_weight as f64
+                + 0.5f32 as f64) as u64;
         }
 
         if total_subset_err < best_err {
@@ -2121,7 +2522,8 @@ pub fn encode_bc7_block(block: &mut [u8; 16], results: &OptimizationResults) {
         if (color_selectors[anchor_index] as u32 & (num_color_indices >> 1)) != 0 {
             for i in 0..16 {
                 if partition[i] as usize == k {
-                    color_selectors[i] = ((num_color_indices - 1).wrapping_sub(color_selectors[i] as u32)) as u8;
+                    color_selectors[i] =
+                        ((num_color_indices - 1).wrapping_sub(color_selectors[i] as u32)) as u8;
                 }
             }
 
@@ -2145,7 +2547,8 @@ pub fn encode_bc7_block(block: &mut [u8; 16], results: &OptimizationResults) {
             if (alpha_selectors[anchor_index] as u32 & (num_alpha_indices >> 1)) != 0 {
                 for i in 0..16 {
                     if partition[i] as usize == k {
-                        alpha_selectors[i] = ((num_alpha_indices - 1).wrapping_sub(alpha_selectors[i] as u32)) as u8;
+                        alpha_selectors[i] =
+                            ((num_alpha_indices - 1).wrapping_sub(alpha_selectors[i] as u32)) as u8;
                     }
                 }
 
@@ -2169,13 +2572,22 @@ pub fn encode_bc7_block(block: &mut [u8; 16], results: &OptimizationResults) {
     }
 
     if total_partitions > 1 {
-        set_block_bits(block, results.partition, if total_partitions == 64 { 6 } else { 4 }, &mut cur_bit_ofs);
+        set_block_bits(
+            block,
+            results.partition,
+            if total_partitions == 64 { 6 } else { 4 },
+            &mut cur_bit_ofs,
+        );
     }
 
     let total_comps = if best_mode >= 4 { 4 } else { 3 };
     for comp in 0..total_comps {
         for subset in 0..total_subsets as usize {
-            let bits = if comp == 3 { ALPHA_PRECISION_TABLE[best_mode as usize] } else { COLOR_PRECISION_TABLE[best_mode as usize] } as u32;
+            let bits = if comp == 3 {
+                ALPHA_PRECISION_TABLE[best_mode as usize]
+            } else {
+                COLOR_PRECISION_TABLE[best_mode as usize]
+            } as u32;
             set_block_bits(block, low[subset][comp] as u32, bits, &mut cur_bit_ofs);
             set_block_bits(block, high[subset][comp] as u32, bits, &mut cur_bit_ofs);
         }
@@ -2194,14 +2606,26 @@ pub fn encode_bc7_block(block: &mut [u8; 16], results: &OptimizationResults) {
         for x in 0..4 {
             let idx = x + y * 4;
 
-            let mut n =
-                if results.index_selector != 0 { get_bc7_alpha_index_size(best_mode, results.index_selector) } else { get_bc7_color_index_size(best_mode, results.index_selector) };
+            let mut n = if results.index_selector != 0 {
+                get_bc7_alpha_index_size(best_mode, results.index_selector)
+            } else {
+                get_bc7_color_index_size(best_mode, results.index_selector)
+            };
 
             if idx == anchor[0] || idx == anchor[1] || idx == anchor[2] {
                 n -= 1;
             }
 
-            set_block_bits(block, if results.index_selector != 0 { alpha_selectors[idx as usize] } else { color_selectors[idx as usize] } as u32, n, &mut cur_bit_ofs);
+            set_block_bits(
+                block,
+                if results.index_selector != 0 {
+                    alpha_selectors[idx as usize]
+                } else {
+                    color_selectors[idx as usize]
+                } as u32,
+                n,
+                &mut cur_bit_ofs,
+            );
         }
     }
 
@@ -2210,14 +2634,26 @@ pub fn encode_bc7_block(block: &mut [u8; 16], results: &OptimizationResults) {
             for x in 0..4 {
                 let idx = x + y * 4;
 
-                let mut n =
-                    if results.index_selector != 0 { get_bc7_color_index_size(best_mode, results.index_selector) } else { get_bc7_alpha_index_size(best_mode, results.index_selector) };
+                let mut n = if results.index_selector != 0 {
+                    get_bc7_color_index_size(best_mode, results.index_selector)
+                } else {
+                    get_bc7_alpha_index_size(best_mode, results.index_selector)
+                };
 
                 if idx == anchor[0] || idx == anchor[1] || idx == anchor[2] {
                     n -= 1;
                 }
 
-                set_block_bits(block, if results.index_selector != 0 { color_selectors[idx as usize] } else { alpha_selectors[idx as usize] } as u32, n, &mut cur_bit_ofs);
+                set_block_bits(
+                    block,
+                    if results.index_selector != 0 {
+                        color_selectors[idx as usize]
+                    } else {
+                        alpha_selectors[idx as usize]
+                    } as u32,
+                    n,
+                    &mut cur_bit_ofs,
+                );
             }
         }
     }
@@ -2256,7 +2692,8 @@ impl Bc7Enc {
 
         let mut results5 = ColorCellCompressorResults::new();
 
-        let mut mode5_err = self.color_cell_compression(5, params, pixels, &mut results5, comp_params);
+        let mut mode5_err =
+            self.color_cell_compression(5, params, pixels, &mut results5, comp_params);
         debug_assert!(mode5_err == results5.best_overall_err);
 
         opt_results5.selectors = results5.selectors;
@@ -2324,7 +2761,11 @@ impl Bc7Enc {
                 }
 
                 if pass != total_passes - 1 {
-                    let (xl, xh) = compute_least_squares_endpoints_a(&trial_alpha_selectors, &WEIGHTS2X, pixels);
+                    let (xl, xh) = compute_least_squares_endpoints_a(
+                        &trial_alpha_selectors,
+                        &WEIGHTS2X,
+                        pixels,
+                    );
 
                     let mut new_lo_a = clampi(f2i(fmath::floor(xl + 0.5)), 0, 255) as u32;
                     let mut new_hi_a = clampi(f2i(fmath::floor(xh + 0.5)), 0, 255) as u32;
@@ -2347,9 +2788,17 @@ impl Bc7Enc {
         (mode5_err, mode5_alpha_err)
     }
 
-    fn handle_alpha_block(&self, block: &mut [u8; 16], pixels: &[ColorRgba; 16], comp_params: &CompressBlockParams, params: &mut ColorCellCompressorParams) {
+    fn handle_alpha_block(
+        &self,
+        block: &mut [u8; 16],
+        pixels: &[ColorRgba; 16],
+        comp_params: &CompressBlockParams,
+        params: &mut ColorCellCompressorParams,
+    ) {
         assert!(
-            (comp_params.mode_mask & (1 << 6)) != 0 || (comp_params.mode_mask & (1 << 5)) != 0 || (comp_params.mode_mask & (1 << 7)) != 0,
+            (comp_params.mode_mask & (1 << 6)) != 0
+                || (comp_params.mode_mask & (1 << 5)) != 0
+                || (comp_params.mode_mask & (1 << 7)) != 0,
             "a block with alpha needs mode 5, 6 or 7 in the mode mask"
         );
 
@@ -2373,7 +2822,10 @@ impl Bc7Enc {
         let mut best_mode = 0u32;
 
         if (comp_params.mode_mask & (1 << 6)) != 0 {
-            best_err = weighted_error(self.color_cell_compression(6, params, pixels, &mut results6, comp_params), comp_params.mode6_error_weight);
+            best_err = weighted_error(
+                self.color_cell_compression(6, params, pixels, &mut results6, comp_params),
+                comp_params.mode6_error_weight,
+            );
             opt_results6.selectors = results6.selectors;
             best_mode = 6;
         }
@@ -2386,7 +2838,14 @@ impl Bc7Enc {
                 hi_a = hi_a.max(a);
             }
 
-            let (mode5_err, _mode5_alpha_err) = self.handle_alpha_block_mode5(pixels, comp_params, params, lo_a, hi_a, &mut opt_results5);
+            let (mode5_err, _mode5_alpha_err) = self.handle_alpha_block_mode5(
+                pixels,
+                comp_params,
+                params,
+                lo_a,
+                hi_a,
+                &mut opt_results5,
+            );
 
             let mode5_err = weighted_error(mode5_err, comp_params.mode5_error_weight);
 
@@ -2413,7 +2872,13 @@ impl Bc7Enc {
 
             let mut trial_err = 0u64;
             for subset in 0..2 {
-                let err = self.color_cell_compression(7, params, subsets.pixels(subset), &mut subset_results7[subset], comp_params);
+                let err = self.color_cell_compression(
+                    7,
+                    params,
+                    subsets.pixels(subset),
+                    &mut subset_results7[subset],
+                    comp_params,
+                );
                 trial_err += err;
                 if weighted_error(trial_err, comp_params.mode7_error_weight) > best_err {
                     break;
@@ -2430,7 +2895,8 @@ impl Bc7Enc {
                 opt_results7.rotation = 0;
                 for subset in 0..2 {
                     for i in 0..subsets.total_colors[subset] {
-                        opt_results7.selectors[subsets.pixel_index[subset][i] as usize] = subset_results7[subset].selectors[i];
+                        opt_results7.selectors[subsets.pixel_index[subset][i] as usize] =
+                            subset_results7[subset].selectors[i];
                     }
                     opt_results7.low[subset] = subset_results7[subset].low_endpoint;
                     opt_results7.high[subset] = subset_results7[subset].high_endpoint;
@@ -2465,8 +2931,17 @@ impl Bc7Enc {
         }
     }
 
-    fn handle_opaque_block(&self, block: &mut [u8; 16], pixels: &[ColorRgba; 16], comp_params: &CompressBlockParams, params: &mut ColorCellCompressorParams) {
-        assert!((comp_params.mode_mask & (1 << 6)) != 0 || (comp_params.mode_mask & (1 << 1)) != 0, "an opaque block needs mode 1 or 6 in the mode mask");
+    fn handle_opaque_block(
+        &self,
+        block: &mut [u8; 16],
+        pixels: &[ColorRgba; 16],
+        comp_params: &CompressBlockParams,
+        params: &mut ColorCellCompressorParams,
+    ) {
+        assert!(
+            (comp_params.mode_mask & (1 << 6)) != 0 || (comp_params.mode_mask & (1 << 1)) != 0,
+            "an opaque block needs mode 1 or 6 in the mode mask"
+        );
 
         let mut opt_results = OptimizationResults::default();
         // (The C++ leaves the mode unset until one is chosen.)
@@ -2493,7 +2968,10 @@ impl Bc7Enc {
 
             let mut results6 = ColorCellCompressorResults::new();
 
-            best_err = weighted_error(self.color_cell_compression(6, params, pixels, &mut results6, comp_params), comp_params.mode6_error_weight);
+            best_err = weighted_error(
+                self.color_cell_compression(6, params, pixels, &mut results6, comp_params),
+                comp_params.mode6_error_weight,
+            );
 
             opt_results.mode = 6;
             opt_results.selectors = results6.selectors;
@@ -2505,7 +2983,8 @@ impl Bc7Enc {
         }
 
         // Mode 1
-        if best_err > 0 && comp_params.max_partitions > 0 && (comp_params.mode_mask & (1 << 1)) != 0 {
+        if best_err > 0 && comp_params.max_partitions > 0 && (comp_params.mode_mask & (1 << 1)) != 0
+        {
             let trial_partition = estimate_partition(pixels, comp_params, &params.weights, 1);
 
             params.selector_weights = &WEIGHTS3;
@@ -2522,7 +3001,13 @@ impl Bc7Enc {
 
             let mut trial_err = 0u64;
             for subset in 0..2 {
-                let err = self.color_cell_compression(1, params, subsets.pixels(subset), &mut subset_results1[subset], comp_params);
+                let err = self.color_cell_compression(
+                    1,
+                    params,
+                    subsets.pixels(subset),
+                    &mut subset_results1[subset],
+                    comp_params,
+                );
                 trial_err += err;
                 if weighted_error(trial_err, comp_params.mode1_error_weight) > best_err {
                     break;
@@ -2536,7 +3021,8 @@ impl Bc7Enc {
                 opt_results.partition = trial_partition;
                 for subset in 0..2 {
                     for i in 0..subsets.total_colors[subset] {
-                        opt_results.selectors[subsets.pixel_index[subset][i] as usize] = subset_results1[subset].selectors[i];
+                        opt_results.selectors[subsets.pixel_index[subset][i] as usize] =
+                            subset_results1[subset].selectors[i];
                     }
                     opt_results.low[subset] = subset_results1[subset].low_endpoint;
                     opt_results.high[subset] = subset_results1[subset].high_endpoint;
@@ -2563,7 +3049,12 @@ impl Bc7Enc {
     /// If the mode mask has none of the modes the block needs (1 or 6 for an opaque block; 5,
     /// 6 or 7 for one with alpha), or mode 1 is the only one and `max_partitions` is 0. Also
     /// if a forced selector is 16 or more.
-    pub fn compress_block(&self, block: &mut [u8; 16], pixels: &[ColorRgba; 16], comp_params: &CompressBlockParams) -> bool {
+    pub fn compress_block(
+        &self,
+        block: &mut [u8; 16],
+        pixels: &[ColorRgba; 16],
+        comp_params: &CompressBlockParams,
+    ) -> bool {
         debug_assert!(self.mode_1_optimal_endpoints[255][0].hi != 0);
 
         let mut params = ColorCellCompressorParams {
@@ -2643,8 +3134,17 @@ mod tests {
         assert_eq!(params.mode_mask, u32::MAX);
         assert_eq!(params.max_partitions, 64);
         assert_eq!(params.weights, [128, 64, 16, 32]);
-        assert!(params.perceptual && params.try_least_squares && params.mode17_partition_estimation_filterbank);
-        assert!(!params.force_alpha && !params.force_selectors && !params.quant_mode6_endpoints && !params.bias_mode1_pbits);
+        assert!(
+            params.perceptual
+                && params.try_least_squares
+                && params.mode17_partition_estimation_filterbank
+        );
+        assert!(
+            !params.force_alpha
+                && !params.force_selectors
+                && !params.quant_mode6_endpoints
+                && !params.bias_mode1_pbits
+        );
         assert_eq!(params.uber_level, 0);
         assert_eq!(params, CompressBlockParams::default());
 
@@ -2654,7 +3154,10 @@ mod tests {
         assert_eq!(linear.weights, [1, 1, 1, 1]);
 
         let text = params.to_string();
-        assert!(text.starts_with("Mode mask: 0xFFFFFFFF\nMax partitions: 64\nWeights: 128 64 16 32\n"), "{text}");
+        assert!(
+            text.starts_with("Mode mask: 0xFFFFFFFF\nMax partitions: 64\nWeights: 128 64 16 32\n"),
+            "{text}"
+        );
         assert!(text.ends_with("Mode error weights: 1.000000 1.000000 1.000000 1.000000\nLow frequency partition weight: 1.000000\n"), "{text}");
     }
 
@@ -2666,12 +3169,19 @@ mod tests {
             let mut params = CompressBlockParams::new();
             params.uber_level = uber_level;
             let mut block = [0u8; 16];
-            assert!(!encoder.compress_block(&mut block, &source, &params), "no pixel has alpha");
+            assert!(
+                !encoder.compress_block(&mut block, &source, &params),
+                "no pixel has alpha"
+            );
             assert!(matches!(mode_of(&block), 1 | 6));
             let mut pixels = [[0u8; 4]; 16];
             assert!(unpack_bc7(&block, &mut pixels));
             assert!(pixels.iter().all(|pixel| pixel[3] == 255));
-            assert!(worst_difference(&pixels, &source) <= 4, "uber level {uber_level}: {}", worst_difference(&pixels, &source));
+            assert!(
+                worst_difference(&pixels, &source) <= 4,
+                "uber level {uber_level}: {}",
+                worst_difference(&pixels, &source)
+            );
         }
     }
 
@@ -2685,11 +3195,18 @@ mod tests {
             let mut block = [0u8; 16];
             assert!(encoder.compress_block(&mut block, &source, &params));
             let mode = mode_of(&block);
-            assert!(matches!(mode, 5..=7) && mask & (1 << mode) != 0, "mode {mode} with mask {mask:#x}");
+            assert!(
+                matches!(mode, 5..=7) && mask & (1 << mode) != 0,
+                "mode {mode} with mask {mask:#x}"
+            );
             let mut pixels = [[0u8; 4]; 16];
             assert!(unpack_bc7(&block, &mut pixels));
             // (Mode 5 has four steps for the colours and four for the alpha.)
-            assert!(worst_difference(&pixels, &source) <= 40, "mask {mask:#x}: {}", worst_difference(&pixels, &source));
+            assert!(
+                worst_difference(&pixels, &source) <= 40,
+                "mask {mask:#x}: {}",
+                worst_difference(&pixels, &source)
+            );
         }
 
         // Opaque pixels packed as a block with alpha when that is forced.
@@ -2704,13 +3221,27 @@ mod tests {
     fn one_colour_comes_back_within_a_step() {
         let encoder = Bc7Enc::new();
         let params = CompressBlockParams::new();
-        for color in [[0u8, 0, 0, 255], [255, 255, 255, 255], [1, 2, 3, 255], [200, 100, 50, 255], [17, 34, 51, 68], [255, 0, 255, 0]] {
+        for color in [
+            [0u8, 0, 0, 255],
+            [255, 255, 255, 255],
+            [1, 2, 3, 255],
+            [200, 100, 50, 255],
+            [17, 34, 51, 68],
+            [255, 0, 255, 0],
+        ] {
             let source = [color; 16];
             let mut block = [0u8; 16];
-            assert_eq!(encoder.compress_block(&mut block, &source, &params), color[3] < 255);
+            assert_eq!(
+                encoder.compress_block(&mut block, &source, &params),
+                color[3] < 255
+            );
             let mut pixels = [[0u8; 4]; 16];
             assert!(unpack_bc7(&block, &mut pixels));
-            assert!(worst_difference(&pixels, &source) <= 1, "{color:?} came back as {:?}", pixels[0]);
+            assert!(
+                worst_difference(&pixels, &source) <= 1,
+                "{color:?} came back as {:?}",
+                pixels[0]
+            );
         }
     }
 
@@ -2763,10 +3294,17 @@ mod tests {
         // Each mode with its lowest and highest endpoints and every selector 0: all pixels
         // are the low endpoint, which unpacks to black with whatever alpha the mode gives.
         for mode in 0..8u32 {
-            let mut results = OptimizationResults { mode, ..Default::default() };
+            let mut results = OptimizationResults {
+                mode,
+                ..Default::default()
+            };
             for k in 0..3 {
                 for c in 0..4 {
-                    let bits = if c == 3 { ALPHA_PRECISION_TABLE[mode as usize] } else { COLOR_PRECISION_TABLE[mode as usize] };
+                    let bits = if c == 3 {
+                        ALPHA_PRECISION_TABLE[mode as usize]
+                    } else {
+                        COLOR_PRECISION_TABLE[mode as usize]
+                    };
                     results.high[k][c] = ((1u32 << bits) - 1) as u8;
                 }
             }
@@ -2804,7 +3342,9 @@ mod tests {
         let encoder = Bc7Enc::new();
         let mut state = 0x1234_5678_9ABC_DEF0u64;
         let mut next = || {
-            state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            state = state
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             (state >> 32) as u32
         };
         let mut hash = 14695981039346656037u64;
@@ -2816,7 +3356,8 @@ mod tests {
             for pixel in &mut pixels {
                 let t = next() % 256;
                 for c in 0..4 {
-                    let value = (from[c] as u32 * (255 - t) + to[c] as u32 * t) / 255 + next() % (noise + 1);
+                    let value = (from[c] as u32 * (255 - t) + to[c] as u32 * t) / 255
+                        + next() % (noise + 1);
                     pixel[c] = value.min(255) as u8;
                 }
                 if i % 2 == 0 {
@@ -2836,7 +3377,10 @@ mod tests {
 
             let mut block = [0u8; 16];
             let alpha = encoder.compress_block(&mut block, &pixels, &params);
-            assert_eq!(alpha, i % 2 == 1 && pixels.iter().any(|pixel| pixel[3] < 255));
+            assert_eq!(
+                alpha,
+                i % 2 == 1 && pixels.iter().any(|pixel| pixel[3] < 255)
+            );
             modes[mode_of(&block) as usize] += 1;
             for byte in block {
                 hash = (hash ^ byte as u64).wrapping_mul(1099511628211);

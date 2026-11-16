@@ -32,19 +32,49 @@ pub fn unpack_bc2_alpha(block: &[u8; 8], pixels: &mut [u8], stride: usize) {
 /// packs them at `level` without three-colour blocks, the alphas by [`encode_bc2_alpha`].
 pub fn encode_bc2(encoder: &Rgbcx, level: u32, dst: &mut [u8; 16], pixels: &[Color32; 16]) {
     let (alpha, color) = dst.split_at_mut(8);
-    encode_bc2_alpha(alpha.try_into().expect("8 bytes"), &pixels.as_flattened()[3..], 4);
-    encoder.encode_bc1(level, color.try_into().expect("8 bytes"), pixels, false, false, None);
+    encode_bc2_alpha(
+        alpha.try_into().expect("8 bytes"),
+        &pixels.as_flattened()[3..],
+        4,
+    );
+    encoder.encode_bc1(
+        level,
+        color.try_into().expect("8 bytes"),
+        pixels,
+        false,
+        false,
+        None,
+    );
 }
 
 /// The low-level BC2 encoder: the BC1 flags and total orderings to try given directly, as for
 /// [`Rgbcx::encode_bc3_with_flags`].
-pub fn encode_bc2_with_flags(encoder: &Rgbcx, dst: &mut [u8; 16], pixels: &[Color32; 16], flags: u32, total_orderings_to_try: u32) {
+pub fn encode_bc2_with_flags(
+    encoder: &Rgbcx,
+    dst: &mut [u8; 16],
+    pixels: &[Color32; 16],
+    flags: u32,
+    total_orderings_to_try: u32,
+) {
     // 3-color blocks are not allowed with BC2, as with BC3.
-    let flags = flags & !(rgbcx::ENCODE_BC1_USE_3COLOR_BLOCKS_FOR_BLACK_PIXELS | rgbcx::ENCODE_BC1_USE_3COLOR_BLOCKS);
+    let flags = flags
+        & !(rgbcx::ENCODE_BC1_USE_3COLOR_BLOCKS_FOR_BLACK_PIXELS
+            | rgbcx::ENCODE_BC1_USE_3COLOR_BLOCKS);
 
     let (alpha, color) = dst.split_at_mut(8);
-    encode_bc2_alpha(alpha.try_into().expect("8 bytes"), &pixels.as_flattened()[3..], 4);
-    encoder.encode_bc1_with_flags(color.try_into().expect("8 bytes"), pixels, flags, total_orderings_to_try, rgbcx::DEFAULT_TOTAL_ORDERINGS_TO_TRY3, None);
+    encode_bc2_alpha(
+        alpha.try_into().expect("8 bytes"),
+        &pixels.as_flattened()[3..],
+        4,
+    );
+    encoder.encode_bc1_with_flags(
+        color.try_into().expect("8 bytes"),
+        pixels,
+        flags,
+        total_orderings_to_try,
+        rgbcx::DEFAULT_TOTAL_ORDERINGS_TO_TRY3,
+        None,
+    );
 }
 
 /// The four colours of the colour half of a BC2 block, all opaque. A BC2 block always has
@@ -63,7 +93,16 @@ pub fn unpack_bc2_block_colors(color_block: &[u8; 8], mode: Bc1ApproxMode) -> [C
     } else {
         // The other way round BC1 would give three colours: unpack with the endpoints
         // exchanged and put the four back in their places.
-        let exchanged = [color_block[2], color_block[3], color_block[0], color_block[1], 0, 0, 0, 0];
+        let exchanged = [
+            color_block[2],
+            color_block[3],
+            color_block[0],
+            color_block[1],
+            0,
+            0,
+            0,
+            0,
+        ];
         rgbcx::unpack_bc1_block_colors(&exchanged, &mut colors, mode);
         colors = [colors[1], colors[0], colors[3], colors[2]];
     }
@@ -78,7 +117,11 @@ pub fn unpack_bc2(block: &[u8; 16], pixels: &mut [Color32; 16], mode: Bc1ApproxM
     for (i, pixel) in pixels.iter_mut().enumerate() {
         *pixel = colors[usize::from((color[4 + i / 4] >> ((i % 4) * 2)) & 3)];
     }
-    unpack_bc2_alpha(alpha.try_into().expect("8 bytes"), &mut pixels.as_flattened_mut()[3..], 4);
+    unpack_bc2_alpha(
+        alpha.try_into().expect("8 bytes"),
+        &mut pixels.as_flattened_mut()[3..],
+        4,
+    );
 }
 
 #[cfg(test)]
@@ -92,7 +135,10 @@ mod tests {
             encode_bc2_alpha(&mut block, &[alpha; 16], 1);
             let mut back = [0u8; 16];
             unpack_bc2_alpha(&block, &mut back, 1);
-            let nearest = (0..16).map(|level| level * 17).min_by_key(|&level: &i32| (level - i32::from(alpha)).abs()).unwrap();
+            let nearest = (0..16)
+                .map(|level| level * 17)
+                .min_by_key(|&level: &i32| (level - i32::from(alpha)).abs())
+                .unwrap();
             assert_eq!(back, [nearest as u8; 16], "{alpha}");
         }
     }
@@ -119,14 +165,23 @@ mod tests {
             let mut block = [0u8; 16];
             encode_bc2(&encoder, level, &mut block, &pixels);
             let mut with_flags = [0u8; 16];
-            encode_bc2_with_flags(&encoder, &mut with_flags, &pixels, rgbcx::ENCODE_BC1_USE_3COLOR_BLOCKS, 4);
+            encode_bc2_with_flags(
+                &encoder,
+                &mut with_flags,
+                &pixels,
+                rgbcx::ENCODE_BC1_USE_3COLOR_BLOCKS,
+                4,
+            );
             for packed in [block, with_flags] {
                 let mut back = [[0u8; 4]; 16];
                 unpack_bc2(&packed, &mut back, Bc1ApproxMode::Ideal);
                 for (a, b) in pixels.iter().zip(&back) {
                     assert_eq!(a[3], b[3]);
                     for c in 0..3 {
-                        assert!((i32::from(a[c]) - i32::from(b[c])).abs() <= 12, "{a:?} {b:?}");
+                        assert!(
+                            (i32::from(a[c]) - i32::from(b[c])).abs() <= 12,
+                            "{a:?} {b:?}"
+                        );
                     }
                 }
             }
@@ -136,22 +191,40 @@ mod tests {
     #[test]
     fn a_block_has_four_colours_whatever_the_order_of_its_endpoints() {
         // White and black; the selectors 0, 1, 2, 3 in each row.
-        let forward = [0u8, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, 0, 0, 0xe4, 0xe4, 0xe4, 0xe4];
-        let backward = [0u8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, 0xe4, 0xe4, 0xe4, 0xe4];
-        for mode in [Bc1ApproxMode::Ideal, Bc1ApproxMode::IdealRound4, Bc1ApproxMode::NVidia, Bc1ApproxMode::Amd] {
+        let forward = [
+            0u8, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, 0, 0, 0xe4, 0xe4, 0xe4, 0xe4,
+        ];
+        let backward = [
+            0u8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, 0xe4, 0xe4, 0xe4, 0xe4,
+        ];
+        for mode in [
+            Bc1ApproxMode::Ideal,
+            Bc1ApproxMode::IdealRound4,
+            Bc1ApproxMode::NVidia,
+            Bc1ApproxMode::Amd,
+        ] {
             let (mut a, mut b) = ([[0u8; 4]; 16], [[0u8; 4]; 16]);
             unpack_bc2(&forward, &mut a, mode);
             unpack_bc2(&backward, &mut b, mode);
             // The same four colours from the other end, none of them the black of BC1's
             // three-colour blocks where it should be a third of the way.
-            assert_eq!([a[0], a[1], a[2], a[3]], [b[1], b[0], b[3], b[2]], "{mode:?}");
+            assert_eq!(
+                [a[0], a[1], a[2], a[3]],
+                [b[1], b[0], b[3], b[2]],
+                "{mode:?}"
+            );
             assert!(b[2][0] > 60 && b[3][0] > 150, "{mode:?} {b:?}");
             assert!(a.iter().chain(&b).all(|pixel| pixel[3] == 0));
         }
         // Two endpoints the same: that colour for every selector.
-        let same = [0xffu8, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x34, 0x12, 0x34, 0x12, 0xe4, 0xe4, 0xe4, 0xe4];
+        let same = [
+            0xffu8, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x34, 0x12, 0x34, 0x12, 0xe4, 0xe4,
+            0xe4, 0xe4,
+        ];
         let mut pixels = [[0u8; 4]; 16];
         unpack_bc2(&same, &mut pixels, Bc1ApproxMode::NVidia);
-        assert!(pixels.iter().all(|pixel| *pixel == pixels[0] && pixel[3] == 255));
+        assert!(pixels
+            .iter()
+            .all(|pixel| *pixel == pixels[0] && pixel[3] == 255));
     }
 }

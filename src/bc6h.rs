@@ -122,7 +122,11 @@ fn finish_unquantize(mut val: i32, is_signed: bool) -> u16 {
     if !is_signed {
         ((val * 31) >> 6) as u16 // scale the magnitude by 31 / 64
     } else {
-        val = if val < 0 { -(((-val) * 31) >> 5) } else { (val * 31) >> 5 }; // scale the magnitude by 31 / 32
+        val = if val < 0 {
+            -(((-val) * 31) >> 5)
+        } else {
+            (val * 31) >> 5
+        }; // scale the magnitude by 31 / 32
         let mut s = 0;
         if val < 0 {
             s = 0x8000;
@@ -166,7 +170,13 @@ pub fn float_to_half(value: f32) -> u16 {
 
     if exponent == 255 {
         // Infinity, or not a number (kept not a number).
-        return sign | 0x7c00 | if mantissa != 0 { 0x200 | (mantissa >> 13) as u16 } else { 0 };
+        return sign
+            | 0x7c00
+            | if mantissa != 0 {
+                0x200 | (mantissa >> 13) as u16
+            } else {
+                0
+            };
     }
 
     let half_exponent = exponent - 127 + 15;
@@ -253,7 +263,10 @@ static A_WEIGHT4: [i32; 16] = [0, 4, 9, 13, 17, 21, 26, 30, 34, 38, 43, 47, 51, 
 pub fn unpack_bc6h_half(block: &[u8; 16], is_signed: bool) -> [RgbHalf; 16] {
     let mut decompressed = [[0u16; 3]; 16];
 
-    let mut bstream = Bitstream { low: u64::from_le_bytes(block[..8].try_into().expect("eight bytes")), high: u64::from_le_bytes(block[8..].try_into().expect("eight bytes")) };
+    let mut bstream = Bitstream {
+        low: u64::from_le_bytes(block[..8].try_into().expect("eight bytes")),
+        high: u64::from_le_bytes(block[8..].try_into().expect("eight bytes")),
+    };
 
     let (mut r, mut g, mut b) = ([0i32; 4], [0i32; 4], [0i32; 4]); // wxyz
 
@@ -267,7 +280,7 @@ pub fn unpack_bc6h_half(block: &[u8; 16], is_signed: bool) -> [RgbHalf; 16] {
     let mode: usize;
 
     match mode_bits {
-            // mode 1
+        // mode 1
         0b00 => {
             // Partitition indices: 46 bits
             // Partition: 5 bits
@@ -294,7 +307,7 @@ pub fn unpack_bc6h_half(block: &[u8; 16], is_signed: bool) -> [RgbHalf; 16] {
             partition = bstream.read_bits(5); // d[4:0]
             mode = 0;
         }
-            // mode 2
+        // mode 2
         0b01 => {
             // Partitition indices: 46 bits
             // Partition: 5 bits
@@ -325,7 +338,7 @@ pub fn unpack_bc6h_half(block: &[u8; 16], is_signed: bool) -> [RgbHalf; 16] {
             partition = bstream.read_bits(5); // d[4:0]
             mode = 1;
         }
-            // mode 3
+        // mode 3
         0b00010 => {
             // Partitition indices: 46 bits
             // Partition: 5 bits
@@ -351,7 +364,7 @@ pub fn unpack_bc6h_half(block: &[u8; 16], is_signed: bool) -> [RgbHalf; 16] {
             partition = bstream.read_bits(5); // d[4:0]
             mode = 2;
         }
-            // mode 4
+        // mode 4
         0b00110 => {
             // Partitition indices: 46 bits
             // Partition: 5 bits
@@ -379,7 +392,7 @@ pub fn unpack_bc6h_half(block: &[u8; 16], is_signed: bool) -> [RgbHalf; 16] {
             partition = bstream.read_bits(5); // d[4:0]
             mode = 3;
         }
-            // mode 5
+        // mode 5
         0b01010 => {
             // Partitition indices: 46 bits
             // Partition: 5 bits
@@ -407,7 +420,7 @@ pub fn unpack_bc6h_half(block: &[u8; 16], is_signed: bool) -> [RgbHalf; 16] {
             partition = bstream.read_bits(5); // d[4:0]
             mode = 4;
         }
-            // mode 6
+        // mode 6
         0b01110 => {
             // Partitition indices: 46 bits
             // Partition: 5 bits
@@ -434,7 +447,7 @@ pub fn unpack_bc6h_half(block: &[u8; 16], is_signed: bool) -> [RgbHalf; 16] {
             partition = bstream.read_bits(5); // d[4:0]
             mode = 5;
         }
-            // mode 7
+        // mode 7
         0b10010 => {
             // Partitition indices: 46 bits
             // Partition: 5 bits
@@ -461,7 +474,7 @@ pub fn unpack_bc6h_half(block: &[u8; 16], is_signed: bool) -> [RgbHalf; 16] {
             partition = bstream.read_bits(5); // d[4:0]
             mode = 6;
         }
-            // mode 8
+        // mode 8
         0b10110 => {
             // Partitition indices: 46 bits
             // Partition: 5 bits
@@ -490,7 +503,7 @@ pub fn unpack_bc6h_half(block: &[u8; 16], is_signed: bool) -> [RgbHalf; 16] {
             partition = bstream.read_bits(5); // d[4:0]
             mode = 7;
         }
-            // mode 9
+        // mode 9
         0b11010 => {
             // Partitition indices: 46 bits
             // Partition: 5 bits
@@ -519,7 +532,7 @@ pub fn unpack_bc6h_half(block: &[u8; 16], is_signed: bool) -> [RgbHalf; 16] {
             partition = bstream.read_bits(5); // d[4:0]
             mode = 8;
         }
-            // mode 10
+        // mode 10
         0b11110 => {
             // Partitition indices: 46 bits
             // Partition: 5 bits
@@ -550,7 +563,7 @@ pub fn unpack_bc6h_half(block: &[u8; 16], is_signed: bool) -> [RgbHalf; 16] {
             partition = bstream.read_bits(5); // d[4:0]
             mode = 9;
         }
-            // mode 11
+        // mode 11
         0b00011 => {
             // Partitition indices: 63 bits
             // Partition: 0 bits
@@ -563,7 +576,7 @@ pub fn unpack_bc6h_half(block: &[u8; 16], is_signed: bool) -> [RgbHalf; 16] {
             b[1] |= bstream.read_bits(10); // bx[9:0]
             mode = 10;
         }
-            // mode 12
+        // mode 12
         0b00111 => {
             // Partitition indices: 63 bits
             // Partition: 0 bits
@@ -579,7 +592,7 @@ pub fn unpack_bc6h_half(block: &[u8; 16], is_signed: bool) -> [RgbHalf; 16] {
             b[0] |= bstream.read_bit() << 10; // bw[10]
             mode = 11;
         }
-            // mode 13
+        // mode 13
         0b01011 => {
             // Partitition indices: 63 bits
             // Partition: 0 bits
@@ -595,7 +608,7 @@ pub fn unpack_bc6h_half(block: &[u8; 16], is_signed: bool) -> [RgbHalf; 16] {
             b[0] |= bstream.read_bits_r(2) << 10; // bx[10:11]
             mode = 12;
         }
-            // mode 14
+        // mode 14
         0b01111 => {
             // Partitition indices: 63 bits
             // Partition: 0 bits
@@ -748,27 +761,57 @@ pub struct Bc6hEncSettings {
 impl Bc6hEncSettings {
     /// `GetProfile_bc6h_veryfast`: one subset only.
     pub fn veryfast() -> Self {
-        Bc6hEncSettings { slow_mode: false, fast_mode: true, fast_skip_threshold: 0, refine_iterations_1p: 0, refine_iterations_2p: 0 }
+        Bc6hEncSettings {
+            slow_mode: false,
+            fast_mode: true,
+            fast_skip_threshold: 0,
+            refine_iterations_1p: 0,
+            refine_iterations_2p: 0,
+        }
     }
 
     /// `GetProfile_bc6h_fast`.
     pub fn fast() -> Self {
-        Bc6hEncSettings { slow_mode: false, fast_mode: true, fast_skip_threshold: 2, refine_iterations_1p: 0, refine_iterations_2p: 1 }
+        Bc6hEncSettings {
+            slow_mode: false,
+            fast_mode: true,
+            fast_skip_threshold: 2,
+            refine_iterations_1p: 0,
+            refine_iterations_2p: 1,
+        }
     }
 
     /// `GetProfile_bc6h_basic`.
     pub fn basic() -> Self {
-        Bc6hEncSettings { slow_mode: false, fast_mode: false, fast_skip_threshold: 4, refine_iterations_1p: 2, refine_iterations_2p: 2 }
+        Bc6hEncSettings {
+            slow_mode: false,
+            fast_mode: false,
+            fast_skip_threshold: 4,
+            refine_iterations_1p: 2,
+            refine_iterations_2p: 2,
+        }
     }
 
     /// `GetProfile_bc6h_slow`.
     pub fn slow() -> Self {
-        Bc6hEncSettings { slow_mode: true, fast_mode: false, fast_skip_threshold: 10, refine_iterations_1p: 2, refine_iterations_2p: 2 }
+        Bc6hEncSettings {
+            slow_mode: true,
+            fast_mode: false,
+            fast_skip_threshold: 10,
+            refine_iterations_1p: 2,
+            refine_iterations_2p: 2,
+        }
     }
 
     /// `GetProfile_bc6h_veryslow`.
     pub fn veryslow() -> Self {
-        Bc6hEncSettings { slow_mode: true, fast_mode: false, fast_skip_threshold: 32, refine_iterations_1p: 2, refine_iterations_2p: 2 }
+        Bc6hEncSettings {
+            slow_mode: true,
+            fast_mode: false,
+            fast_skip_threshold: 32,
+            refine_iterations_1p: 2,
+            refine_iterations_2p: 2,
+        }
     }
 }
 
@@ -805,10 +848,10 @@ fn get_span(mode: usize) -> f32 {
         921,   //  (0) 4 / 10
         14745, //  (1) 5 / 7
         204,   //  (2) 3 / 11
-        -1, -1, //
-        1843,  //  (5) 4 / 9
-        3686,  //  (6) 4 / 8
-        -1, -1, //
+        -1, -1,   //
+        1843, //  (5) 4 / 9
+        3686, //  (6) 4 / 8
+        -1, -1,    //
         65535, //  (9) absolute
         65535, // (10) absolute
         7782,  // (11) 8 / 11
@@ -874,7 +917,8 @@ fn get_skips(part_id: i32) -> [i32; 3] {
 }
 
 static UNQUANT_TABLE_3BITS: [i32; 8] = [0, 9, 18, 27, 37, 46, 55, 64];
-static UNQUANT_TABLE_4BITS: [i32; 16] = [0, 4, 9, 13, 17, 21, 26, 30, 34, 38, 43, 47, 51, 55, 60, 64];
+static UNQUANT_TABLE_4BITS: [i32; 16] =
+    [0, 4, 9, 13, 17, 21, 26, 30, 34, 38, 43, 47, 51, 55, 60, 64];
 
 // PCA helpers
 
@@ -1106,7 +1150,9 @@ fn ep_quant_dequant_bc6h(state: &Bc6hEncState, qep: &mut [i32], ep: &mut [f32], 
 
     for i in 0..2 * pairs {
         for p in 0..3 {
-            qep[i * 4 + p] = qep[i * 4 + p].max(state.qbounds[p]).min(state.qbounds[4 + p]);
+            qep[i * 4 + p] = qep[i * 4 + p]
+                .max(state.qbounds[p])
+                .min(state.qbounds[4 + p]);
         }
     }
 
@@ -1116,9 +1162,19 @@ fn ep_quant_dequant_bc6h(state: &Bc6hEncState, qep: &mut [i32], ep: &mut [f32], 
 /// Picks each pixel's index between its subset's two ends and gives the block's error. The
 /// indices come out four bits a pixel in two words. (The original keeps a pixel's error as an
 /// int, so an error too large for one counts as the lowest int: kept, as blocks depend on it.)
-fn block_quant(qblock: &mut [u32; 2], block: &[f32; 64], bits: u32, ep: &[f32], pattern: u32) -> f32 {
+fn block_quant(
+    qblock: &mut [u32; 2],
+    block: &[f32; 64],
+    bits: u32,
+    ep: &[f32],
+    pattern: u32,
+) -> f32 {
     let mut total_err = 0.0f32;
-    let unquant_table: &[i32] = if bits == 3 { &UNQUANT_TABLE_3BITS } else { &UNQUANT_TABLE_4BITS };
+    let unquant_table: &[i32] = if bits == 3 {
+        &UNQUANT_TABLE_3BITS
+    } else {
+        &UNQUANT_TABLE_4BITS
+    };
     let levels = 1i32 << bits;
 
     // What the original works out again for every pixel depends only on the pixel's subset and
@@ -1135,7 +1191,8 @@ fn block_quant(qblock: &mut [u32; 2], block: &[f32; 64], bits: u32, ep: &[f32], 
             delta[j][p] = ep_b - ep_a;
             div[j] += sq(ep_b - ep_a);
             for (q, &w) in unquant_table.iter().enumerate() {
-                decoded[j][q][p] = f2i(((64 - w) as f32 * ep_a + w as f32 * ep_b + 32.0) / 64.0) as f32;
+                decoded[j][q][p] =
+                    f2i(((64 - w) as f32 * ep_a + w as f32 * ep_b + 32.0) / 64.0) as f32;
             }
         }
     }
@@ -1265,7 +1322,12 @@ fn partial_sort_list(list: &mut [i32], length: usize, partial_count: usize) {
     }
 }
 
-fn bc6h_enc_2p_part_fast(state: &Bc6hEncState, qep: &mut [i32; 24], qblock: &mut [u32; 2], part_id: i32) -> f32 {
+fn bc6h_enc_2p_part_fast(
+    state: &Bc6hEncState,
+    qep: &mut [i32; 24],
+    qblock: &mut [u32; 2],
+    part_id: i32,
+) -> f32 {
     let pattern = get_pattern(part_id);
 
     let mut ep = [0.0f32; 16];
@@ -1336,7 +1398,13 @@ fn bc6h_enc_2p_list(state: &mut Bc6hEncState, part_list: &[i32; 32], part_count:
 
     if best_err < state.best_err {
         state.best_err = best_err;
-        bc6h_code_2p(&mut state.best_data, &mut best_qep, &mut best_qblock, best_part_id, state.mode);
+        bc6h_code_2p(
+            &mut state.best_data,
+            &mut best_qep,
+            &mut best_qblock,
+            best_part_id,
+            state.mode,
+        );
     }
 }
 
@@ -2019,7 +2087,13 @@ fn data_shl_1bit_from(data: &mut [u32; 5], from: i32) {
     }
 }
 
-fn bc7_code_qblock(data: &mut [u32; 5], pos: &mut usize, qblock: &[u32; 2], bits: usize, flips: i32) {
+fn bc7_code_qblock(
+    data: &mut [u32; 5],
+    pos: &mut usize,
+    qblock: &[u32; 2],
+    bits: usize,
+    flips: i32,
+) {
     let levels = 1u32 << bits;
     let mut flips_shifted = flips;
     for k1 in 0..2 {
@@ -2041,7 +2115,13 @@ fn bc7_code_qblock(data: &mut [u32; 5], pos: &mut usize, qblock: &[u32; 2], bits
     }
 }
 
-fn bc6h_code_2p(data: &mut [u32; 5], qep: &mut [i32], qblock: &mut [u32; 2], part_id: i32, mode: i32) {
+fn bc6h_code_2p(
+    data: &mut [u32; 5],
+    qep: &mut [i32],
+    qblock: &mut [u32; 2],
+    part_id: i32,
+    mode: i32,
+) {
     const BITS: usize = 3;
 
     let flips = bc7_code_apply_swap_mode01237(qep, qblock, part_id);
@@ -2159,8 +2239,23 @@ fn compress_block_bc6h_core(state: &mut Bc6hEncState) {
 /// The pixels are half floats of zero or above. A half with its sign bit set is not a negative
 /// number to this packer but a very large one, as in the original: clamp negative values to
 /// zero first.
-pub fn compress_block_bc6h(block: &mut [u8; 16], pixels: &[RgbHalf; 16], settings: &Bc6hEncSettings) {
-    let mut state = Bc6hEncState { block: [0.0; 64], best_err: f32::INFINITY, best_data: [0; 5], rgb_bounds: [0.0; 6], max_span: 0.0, max_span_idx: 0, mode: 0, epb: 0, qbounds: [0; 8], settings: *settings };
+pub fn compress_block_bc6h(
+    block: &mut [u8; 16],
+    pixels: &[RgbHalf; 16],
+    settings: &Bc6hEncSettings,
+) {
+    let mut state = Bc6hEncState {
+        block: [0.0; 64],
+        best_err: f32::INFINITY,
+        best_data: [0; 5],
+        rgb_bounds: [0.0; 6],
+        max_span: 0.0,
+        max_span_idx: 0,
+        mode: 0,
+        epb: 0,
+        qbounds: [0; 8],
+        settings: *settings,
+    };
 
     // load_block_interleaved_16bit
     for (k, pixel) in pixels.iter().enumerate() {
@@ -2184,7 +2279,11 @@ pub fn compress_block_bc6h(block: &mut [u8; 16], pixels: &[RgbHalf; 16], setting
 /// # Panics
 ///
 /// When there is not a block for each sixteen pixels.
-pub fn compress_blocks_bc6h(blocks: &mut [[u8; 16]], pixels: &[[RgbHalf; 16]], settings: &Bc6hEncSettings) {
+pub fn compress_blocks_bc6h(
+    blocks: &mut [[u8; 16]],
+    pixels: &[[RgbHalf; 16]],
+    settings: &Bc6hEncSettings,
+) {
     compress_blocks_bc6h_on(0, blocks, pixels, settings);
 }
 
@@ -2194,8 +2293,17 @@ pub fn compress_blocks_bc6h(blocks: &mut [[u8; 16]], pixels: &[[RgbHalf; 16]], s
 /// # Panics
 ///
 /// When there is not a block for each sixteen pixels.
-pub fn compress_blocks_bc6h_on(threads: u32, blocks: &mut [[u8; 16]], pixels: &[[RgbHalf; 16]], settings: &Bc6hEncSettings) {
-    assert_eq!(blocks.len(), pixels.len(), "a block for each sixteen pixels");
+pub fn compress_blocks_bc6h_on(
+    threads: u32,
+    blocks: &mut [[u8; 16]],
+    pixels: &[[RgbHalf; 16]],
+    settings: &Bc6hEncSettings,
+) {
+    assert_eq!(
+        blocks.len(),
+        pixels.len(),
+        "a block for each sixteen pixels"
+    );
     crate::parallel::for_each_run(blocks, pixels, threads, |blocks, pixels| {
         for (block, pixels) in blocks.iter_mut().zip(pixels) {
             compress_block_bc6h(block, pixels, settings);
@@ -2246,16 +2354,29 @@ mod tests {
 
     /// Sixteen pixels from one colour to another.
     fn ramp(from: [f32; 3], to: [f32; 3]) -> [RgbHalf; 16] {
-        std::array::from_fn(|i| std::array::from_fn(|c| float_to_half(from[c] + (to[c] - from[c]) * i as f32 / 15.0)))
+        std::array::from_fn(|i| {
+            std::array::from_fn(|c| float_to_half(from[c] + (to[c] - from[c]) * i as f32 / 15.0))
+        })
     }
 
     #[test]
     fn packed_pixels_unpack_close_to_what_went_in() {
-        let profiles = [Bc6hEncSettings::veryfast(), Bc6hEncSettings::fast(), Bc6hEncSettings::basic(), Bc6hEncSettings::slow(), Bc6hEncSettings::veryslow()];
+        let profiles = [
+            Bc6hEncSettings::veryfast(),
+            Bc6hEncSettings::fast(),
+            Bc6hEncSettings::basic(),
+            Bc6hEncSettings::slow(),
+            Bc6hEncSettings::veryslow(),
+        ];
         // (Gentle ramps: the format draws its line between halves as bit patterns, which is
         // close to a line between their logarithms, so a wide ramp of plain values bends away
         // from it.)
-        for pixels in [ramp([1.0, 0.5, 2.0], [1.4, 0.6, 1.6]), ramp([2.0, 2.0, 2.0], [2.5, 2.25, 2.0]), ramp([0.01, 0.02, 0.03], [0.012, 0.025, 0.027]), ramp([8.0, 1.0, 0.0], [8.0, 1.0, 0.0])] {
+        for pixels in [
+            ramp([1.0, 0.5, 2.0], [1.4, 0.6, 1.6]),
+            ramp([2.0, 2.0, 2.0], [2.5, 2.25, 2.0]),
+            ramp([0.01, 0.02, 0.03], [0.012, 0.025, 0.027]),
+            ramp([8.0, 1.0, 0.0], [8.0, 1.0, 0.0]),
+        ] {
             for settings in &profiles {
                 let mut block = [0u8; 16];
                 compress_block_bc6h(&mut block, &pixels, settings);
@@ -2263,7 +2384,11 @@ mod tests {
                 for (a, b) in pixels.iter().zip(&unpacked) {
                     for c in 0..3 {
                         let a = half_to_float(a[c]);
-                        assert!((a - b[c]).abs() <= 0.01 + a * 0.08, "{a} {} {settings:?}", b[c]);
+                        assert!(
+                            (a - b[c]).abs() <= 0.01 + a * 0.08,
+                            "{a} {} {settings:?}",
+                            b[c]
+                        );
                     }
                 }
             }
@@ -2273,7 +2398,14 @@ mod tests {
     #[test]
     fn many_blocks_pack_as_one_at_a_time() {
         // Enough of them for more than one thread to take part.
-        let pixels: Vec<[RgbHalf; 16]> = (0..150).map(|i| ramp([i as f32 * 0.01, 0.5, 1.0], [1.0, 0.75 + i as f32 * 0.02, 0.25])).collect();
+        let pixels: Vec<[RgbHalf; 16]> = (0..150)
+            .map(|i| {
+                ramp(
+                    [i as f32 * 0.01, 0.5, 1.0],
+                    [1.0, 0.75 + i as f32 * 0.02, 0.25],
+                )
+            })
+            .collect();
         let mut blocks = vec![[0u8; 16]; pixels.len()];
         compress_blocks_bc6h(&mut blocks, &pixels, &Bc6hEncSettings::basic());
         let mut on_three = vec![[0u8; 16]; pixels.len()];
@@ -2315,7 +2447,12 @@ mod tests {
         assert_eq!(pixels[0], [0; 3]);
         assert_eq!(pixels[15], [0x7bff; 3]);
         assert!(pixels.windows(2).all(|pair| pair[0][0] <= pair[1][0]));
-        assert!(pixels.iter().all(|pixel| pixel[0] == pixel[1] && pixel[1] == pixel[2]));
-        assert_eq!(unpack_bc6h_float(&bits.to_le_bytes(), false)[15], [65504.0; 3]);
+        assert!(pixels
+            .iter()
+            .all(|pixel| pixel[0] == pixel[1] && pixel[1] == pixel[2]));
+        assert_eq!(
+            unpack_bc6h_float(&bits.to_le_bytes(), false)[15],
+            [65504.0; 3]
+        );
     }
 }

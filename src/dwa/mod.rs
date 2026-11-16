@@ -98,18 +98,43 @@ struct Rule {
 
 /// The rules of `sDefaultChannelRules` or `sLegacyChannelRules`.
 fn rules(legacy: bool) -> Vec<Rule> {
-    let rule = |suffix: &str, scheme: u8, pixel_type: i32, csc_idx: i32| Rule { suffix: suffix.as_bytes().to_vec(), scheme, pixel_type, csc_idx, case_insensitive: legacy };
+    let rule = |suffix: &str, scheme: u8, pixel_type: i32, csc_idx: i32| Rule {
+        suffix: suffix.as_bytes().to_vec(),
+        scheme,
+        pixel_type,
+        csc_idx,
+        case_insensitive: legacy,
+    };
     let mut out = Vec::new();
     let mut lossy = |suffix: &str, csc_idx: i32| {
         out.push(rule(suffix, LOSSY_DCT, PIXEL_HALF, csc_idx));
         out.push(rule(suffix, LOSSY_DCT, PIXEL_FLOAT, csc_idx));
     };
     if legacy {
-        for (suffix, csc_idx) in [("r", 0), ("red", 0), ("g", 1), ("grn", 1), ("green", 1), ("b", 2), ("blu", 2), ("blue", 2), ("y", -1), ("by", -1), ("ry", -1)] {
+        for (suffix, csc_idx) in [
+            ("r", 0),
+            ("red", 0),
+            ("g", 1),
+            ("grn", 1),
+            ("green", 1),
+            ("b", 2),
+            ("blu", 2),
+            ("blue", 2),
+            ("y", -1),
+            ("by", -1),
+            ("ry", -1),
+        ] {
             lossy(suffix, csc_idx);
         }
     } else {
-        for (suffix, csc_idx) in [("R", 0), ("G", 1), ("B", 2), ("Y", -1), ("BY", -1), ("RY", -1)] {
+        for (suffix, csc_idx) in [
+            ("R", 0),
+            ("G", 1),
+            ("B", 2),
+            ("Y", -1),
+            ("BY", -1),
+            ("RY", -1),
+        ] {
             lossy(suffix, csc_idx);
         }
     }
@@ -195,7 +220,16 @@ fn read_rule(data: &[u8]) -> Result<(Rule, usize), Code> {
     if pixel_type >= 3 {
         return Err(CORRUPT_CHUNK);
     }
-    Ok((Rule { suffix, scheme, pixel_type: i32::from(pixel_type), csc_idx, case_insensitive }, len + 2))
+    Ok((
+        Rule {
+            suffix,
+            scheme,
+            pixel_type: i32::from(pixel_type),
+            csc_idx,
+            case_insensitive,
+        },
+        len + 2,
+    ))
 }
 
 // ---------------------------------------------------------------------------------------
@@ -241,7 +275,11 @@ fn classify(channels: &[Channel], rules: &[Rule]) -> (Vec<u8>, Vec<[usize; 3]>) 
             }
         }
     }
-    let csc_sets = prefix_map.iter().filter(|(_, idx)| idx.iter().all(|&i| i >= 0)).map(|(_, idx)| idx.map(|i| i as usize)).collect();
+    let csc_sets = prefix_map
+        .iter()
+        .filter(|(_, idx)| idx.iter().all(|&i| i >= 0))
+        .map(|(_, idx)| idx.map(|i| i as usize))
+        .collect();
     (compression, csc_sets)
 }
 
@@ -297,7 +335,16 @@ fn layout(channels: &[Channel], rules: &[Rule], width: usize, lines: usize) -> L
         }
     }
 
-    Layout { compression, csc_sets, out_buffer_size, packed_ac_size: max_ac * num_lossy, packed_dc_size: max_dc * num_lossy, rle_buffer_size, planar_size, planar_at }
+    Layout {
+        compression,
+        csc_sets,
+        out_buffer_size,
+        packed_ac_size: max_ac * num_lossy,
+        packed_dc_size: max_dc * num_lossy,
+        rle_buffer_size,
+        planar_size,
+        planar_at,
+    }
 }
 
 // The counters at the start of a block.
@@ -347,7 +394,8 @@ fn rle_compress(src: &[u8], out_bytes: usize) -> Vec<u8> {
             // incompressible
             curcount += 1;
             while rune < end
-                && ((rune + 1 >= end || src[rune] != src[rune + 1]) || (rune + 2 >= end || src[rune + 1] != src[rune + 2]))
+                && ((rune + 1 >= end || src[rune] != src[rune + 1])
+                    || (rune + 2 >= end || src[rune + 1] != src[rune + 2]))
                 && curcount < MAX_RUN_LENGTH
             {
                 curcount += 1;
@@ -436,7 +484,15 @@ fn zip_reconstruct_bytes(source: &mut [u8]) -> Vec<u8> {
     }
     let count = source.len();
     let half = count.div_ceil(2);
-    (0..count).map(|i| if i % 2 == 0 { source[i / 2] } else { source[half + i / 2] }).collect()
+    (0..count)
+        .map(|i| {
+            if i % 2 == 0 {
+                source[i / 2]
+            } else {
+                source[half + i / 2]
+            }
+        })
+        .collect()
 }
 
 /// `exr_uncompress_buffer`: `input` into the start of `out`, the bytes made, or
@@ -455,7 +511,14 @@ fn uncompress_buffer(input: &[u8], out: &mut [u8]) -> Result<usize, Code> {
 /// `level` (`dwaCompressionLevel`), its AC coefficients by Huffman coding or (`deflate_ac`,
 /// as OpenEXRCore has it for tiles of DWAA) by ZIP. A block that does not come out smaller
 /// is given as it is.
-pub fn compress(raw: &[u8], channels: &[Channel], width: usize, lines: usize, level: f32, deflate_ac: bool) -> Vec<u8> {
+pub fn compress(
+    raw: &[u8],
+    channels: &[Channel],
+    width: usize,
+    lines: usize,
+    level: f32,
+    deflate_ac: bool,
+) -> Vec<u8> {
     let rules = rules(false);
     let layout = layout(channels, &rules, width, lines);
     let mut sizes = [0u64; NUM_SIZES];
@@ -465,7 +528,13 @@ pub fn compress(raw: &[u8], channels: &[Channel], width: usize, lines: usize, le
     let rules_at = out.len();
     out.extend_from_slice(&[0, 0]);
     for rule in &rules {
-        if channels.iter().any(|channel| rule_matches(rule, find_suffix(channel.name.as_bytes()), channel.pixel_type)) {
+        if channels.iter().any(|channel| {
+            rule_matches(
+                rule,
+                find_suffix(channel.name.as_bytes()),
+                channel.pixel_type,
+            )
+        }) {
             write_rule(rule, &mut out);
         }
     }
@@ -476,14 +545,18 @@ pub fn compress(raw: &[u8], channels: &[Channel], width: usize, lines: usize, le
     sizes[AC_COMPRESSION] = if deflate_ac { DEFLATE } else { STATIC_HUFFMAN };
 
     // Where each channel's lines start in `raw`.
-    let line_size: usize = channels.iter().map(|channel| width * channel.bytes_per_element()).sum();
+    let line_size: usize = channels
+        .iter()
+        .map(|channel| width * channel.bytes_per_element())
+        .sum();
     let mut channel_at = Vec::with_capacity(channels.len());
     let mut at = 0usize;
     for channel in channels {
         channel_at.push(at);
         at += width * channel.bytes_per_element();
     }
-    let rows = |c: usize| -> Vec<usize> { (0..lines).map(|y| y * line_size + channel_at[c]).collect() };
+    let rows =
+        |c: usize| -> Vec<usize> { (0..lines).map(|y| y * line_size + channel_at[c]).collect() };
 
     let quant_base_error = level / 100000.0;
     let mut packed_ac: Vec<u16> = Vec::new();
@@ -491,8 +564,23 @@ pub fn compress(raw: &[u8], channels: &[Channel], width: usize, lines: usize, le
     let mut processed = vec![false; channels.len()];
 
     for set in &layout.csc_sets {
-        let sources: Vec<lossy::Source> = set.iter().map(|&c| lossy::Source { rows: rows(c), pixel_type: channels[c].pixel_type }).collect();
-        lossy::encode(raw, &sources, quant_base_error, true, width, lines, &mut packed_ac, &mut packed_dc);
+        let sources: Vec<lossy::Source> = set
+            .iter()
+            .map(|&c| lossy::Source {
+                rows: rows(c),
+                pixel_type: channels[c].pixel_type,
+            })
+            .collect();
+        lossy::encode(
+            raw,
+            &sources,
+            quant_base_error,
+            true,
+            width,
+            lines,
+            &mut packed_ac,
+            &mut packed_dc,
+        );
         for &c in set {
             processed[c] = true;
         }
@@ -508,8 +596,20 @@ pub fn compress(raw: &[u8], channels: &[Channel], width: usize, lines: usize, le
         let row_bytes = width * bpe;
         match layout.compression[c] {
             LOSSY_DCT => {
-                let source = lossy::Source { rows: rows(c), pixel_type: channel.pixel_type };
-                lossy::encode(raw, &[source], quant_base_error, !channel.p_linear, width, lines, &mut packed_ac, &mut packed_dc);
+                let source = lossy::Source {
+                    rows: rows(c),
+                    pixel_type: channel.pixel_type,
+                };
+                lossy::encode(
+                    raw,
+                    &[source],
+                    quant_base_error,
+                    !channel.p_linear,
+                    width,
+                    lines,
+                    &mut packed_ac,
+                    &mut packed_dc,
+                );
             }
             RLE => {
                 // The first bytes of each value together, then the second, and so on.
@@ -529,7 +629,8 @@ pub fn compress(raw: &[u8], channels: &[Channel], width: usize, lines: usize, le
             _ => {
                 let base = layout.planar_at[c];
                 for (y, row) in rows(c).into_iter().enumerate() {
-                    planar_unknown[base + y * row_bytes..base + (y + 1) * row_bytes].copy_from_slice(&raw[row..row + row_bytes]);
+                    planar_unknown[base + y * row_bytes..base + (y + 1) * row_bytes]
+                        .copy_from_slice(&raw[row..row + row_bytes]);
                 }
                 sizes[UNKNOWN_UNCOMPRESSED_SIZE] += (width * lines * bpe) as u64;
             }
@@ -540,7 +641,10 @@ pub fn compress(raw: &[u8], channels: &[Channel], width: usize, lines: usize, le
     sizes[DC_UNCOMPRESSED_COUNT] = packed_dc.len() as u64;
 
     if sizes[UNKNOWN_UNCOMPRESSED_SIZE] > 0 {
-        let packed = libdeflate::compress_buffer(9, &planar_unknown[..sizes[UNKNOWN_UNCOMPRESSED_SIZE] as usize]);
+        let packed = libdeflate::compress_buffer(
+            9,
+            &planar_unknown[..sizes[UNKNOWN_UNCOMPRESSED_SIZE] as usize],
+        );
         sizes[UNKNOWN_COMPRESSED_SIZE] = packed.len() as u64;
         out.extend_from_slice(&packed);
     }
@@ -571,7 +675,10 @@ pub fn compress(raw: &[u8], channels: &[Channel], width: usize, lines: usize, le
     }
 
     if sizes[RLE_RAW_SIZE] > 0 {
-        let rle = rle_compress(&planar_rle[..sizes[RLE_RAW_SIZE] as usize], layout.rle_buffer_size);
+        let rle = rle_compress(
+            &planar_rle[..sizes[RLE_RAW_SIZE] as usize],
+            layout.rle_buffer_size,
+        );
         sizes[RLE_UNCOMPRESSED_SIZE] = rle.len() as u64;
         let packed = libdeflate::compress_buffer(9, &rle);
         sizes[RLE_COMPRESSED_SIZE] = packed.len() as u64;
@@ -589,7 +696,13 @@ pub fn compress(raw: &[u8], channels: &[Channel], width: usize, lines: usize, le
 
 /// `DwaCompressor_uncompress`: the block `data` into `out`, which is as long as its lines,
 /// or OpenEXRCore's code for why not.
-pub fn uncompress(data: &[u8], channels: &[Channel], width: usize, lines: usize, out: &mut [u8]) -> Result<(), Code> {
+pub fn uncompress(
+    data: &[u8],
+    channels: &[Channel],
+    width: usize,
+    lines: usize,
+    out: &mut [u8],
+) -> Result<(), Code> {
     let header_size = (NUM_SIZES * 8) as u64;
     let i_size = data.len() as u64;
     if i_size < header_size {
@@ -598,7 +711,8 @@ pub fn uncompress(data: &[u8], channels: &[Channel], width: usize, lines: usize,
     out.fill(0);
     let uncompressed_size = out.len() as u64;
 
-    let counter = |i: usize| u64::from_le_bytes(data[8 * i..8 * i + 8].try_into().expect("eight bytes"));
+    let counter =
+        |i: usize| u64::from_le_bytes(data[8 * i..8 * i + 8].try_into().expect("eight bytes"));
     let version = counter(VERSION);
     let unknown_uncompressed_size = counter(UNKNOWN_UNCOMPRESSED_SIZE);
     let unknown_compressed_size = counter(UNKNOWN_COMPRESSED_SIZE);
@@ -611,18 +725,39 @@ pub fn uncompress(data: &[u8], channels: &[Channel], width: usize, lines: usize,
     let mut total_dc_count = counter(DC_UNCOMPRESSED_COUNT);
     let ac_compression = counter(AC_COMPRESSION);
 
-    let compressed_size = unknown_compressed_size.wrapping_add(ac_compressed_size).wrapping_add(dc_compressed_size).wrapping_add(rle_compressed_size);
+    let compressed_size = unknown_compressed_size
+        .wrapping_add(ac_compressed_size)
+        .wrapping_add(dc_compressed_size)
+        .wrapping_add(rle_compressed_size);
 
     // Both the sum and individual sizes are checked in case of overflow.
-    if i_size < header_size.wrapping_add(compressed_size) || i_size < unknown_compressed_size || i_size < ac_compressed_size || i_size < dc_compressed_size || i_size < rle_compressed_size {
+    if i_size < header_size.wrapping_add(compressed_size)
+        || i_size < unknown_compressed_size
+        || i_size < ac_compressed_size
+        || i_size < dc_compressed_size
+        || i_size < rle_compressed_size
+    {
         return Err(CORRUPT_CHUNK);
     }
-    if unknown_uncompressed_size > uncompressed_size || rle_raw_size > uncompressed_size || unknown_uncompressed_size.wrapping_add(rle_raw_size) > uncompressed_size {
+    if unknown_uncompressed_size > uncompressed_size
+        || rle_raw_size > uncompressed_size
+        || unknown_uncompressed_size.wrapping_add(rle_raw_size) > uncompressed_size
+    {
         return Err(CORRUPT_CHUNK);
     }
-    if [unknown_uncompressed_size, unknown_compressed_size, ac_compressed_size, dc_compressed_size, rle_compressed_size, rle_uncompressed_size, rle_raw_size, total_ac_count, total_dc_count]
-        .iter()
-        .any(|&size| (size as i64) < 0)
+    if [
+        unknown_uncompressed_size,
+        unknown_compressed_size,
+        ac_compressed_size,
+        dc_compressed_size,
+        rle_compressed_size,
+        rle_uncompressed_size,
+        rle_raw_size,
+        total_ac_count,
+        total_dc_count,
+    ]
+    .iter()
+    .any(|&size| (size as i64) < 0)
     {
         return Err(CORRUPT_CHUNK);
     }
@@ -662,7 +797,8 @@ pub fn uncompress(data: &[u8], channels: &[Channel], width: usize, lines: usize,
     let ac_at = unknown_at + unknown_compressed_size;
     let dc_at = ac_at + ac_compressed_size;
     let rle_at = dc_at + dc_compressed_size;
-    if ac_at > i_size || dc_at > i_size || rle_at > i_size || rle_at + rle_compressed_size > i_size {
+    if ac_at > i_size || dc_at > i_size || rle_at > i_size || rle_at + rle_compressed_size > i_size
+    {
         return Err(CORRUPT_CHUNK);
     }
 
@@ -671,19 +807,35 @@ pub fn uncompress(data: &[u8], channels: &[Channel], width: usize, lines: usize,
     }
 
     // validate_size
-    let validate = |scheme: u8, compressed: u64, uncompressed: u64, extra: u64| -> Result<(), Code> {
-        let required: u64 = channels.iter().enumerate().filter(|(c, _)| layout.compression[*c] == scheme).map(|(_, channel)| (width * lines * channel.bytes_per_element()) as u64).sum();
-        if required > 0 {
-            if uncompressed < required || compressed == 0 {
+    let validate =
+        |scheme: u8, compressed: u64, uncompressed: u64, extra: u64| -> Result<(), Code> {
+            let required: u64 = channels
+                .iter()
+                .enumerate()
+                .filter(|(c, _)| layout.compression[*c] == scheme)
+                .map(|(_, channel)| (width * lines * channel.bytes_per_element()) as u64)
+                .sum();
+            if required > 0 {
+                if uncompressed < required || compressed == 0 {
+                    return Err(CORRUPT_CHUNK);
+                }
+            } else if uncompressed > 0 || compressed > 0 || extra > 0 {
                 return Err(CORRUPT_CHUNK);
             }
-        } else if uncompressed > 0 || compressed > 0 || extra > 0 {
-            return Err(CORRUPT_CHUNK);
-        }
-        Ok(())
-    };
-    validate(UNKNOWN, unknown_compressed_size, unknown_uncompressed_size, 0)?;
-    validate(RLE, rle_compressed_size, rle_raw_size, rle_uncompressed_size)?;
+            Ok(())
+        };
+    validate(
+        UNKNOWN,
+        unknown_compressed_size,
+        unknown_uncompressed_size,
+        0,
+    )?;
+    validate(
+        RLE,
+        rle_compressed_size,
+        rle_raw_size,
+        rle_uncompressed_size,
+    )?;
 
     let part = |at: u64, size: u64| &data[at as usize..(at + size) as usize];
 
@@ -692,7 +844,11 @@ pub fn uncompress(data: &[u8], channels: &[Channel], width: usize, lines: usize,
         if unknown_uncompressed_size > planar_unknown.len() as u64 {
             return Err(CORRUPT_CHUNK);
         }
-        let made = uncompress_buffer(part(unknown_at, unknown_compressed_size), &mut planar_unknown[..unknown_uncompressed_size as usize]).map_err(|_| CORRUPT_CHUNK)?;
+        let made = uncompress_buffer(
+            part(unknown_at, unknown_compressed_size),
+            &mut planar_unknown[..unknown_uncompressed_size as usize],
+        )
+        .map_err(|_| CORRUPT_CHUNK)?;
         if made as u64 != unknown_uncompressed_size {
             return Err(CORRUPT_CHUNK);
         }
@@ -705,7 +861,9 @@ pub fn uncompress(data: &[u8], channels: &[Channel], width: usize, lines: usize,
         }
         let count = total_ac_count as usize;
         match ac_compression {
-            STATIC_HUFFMAN => huf::decompress(part(ac_at, ac_compressed_size), &mut packed_ac[..count])?,
+            STATIC_HUFFMAN => {
+                huf::decompress(part(ac_at, ac_compressed_size), &mut packed_ac[..count])?
+            }
             DEFLATE => {
                 let mut bytes = vec![0u8; count * 2];
                 let made = uncompress_buffer(part(ac_at, ac_compressed_size), &mut bytes)?;
@@ -742,7 +900,9 @@ pub fn uncompress(data: &[u8], channels: &[Channel], width: usize, lines: usize,
 
     let mut planar_rle = vec![0u8; layout.planar_size[RLE as usize]];
     if rle_raw_size > 0 {
-        if rle_uncompressed_size > layout.rle_buffer_size as u64 || rle_raw_size > planar_rle.len() as u64 {
+        if rle_uncompressed_size > layout.rle_buffer_size as u64
+            || rle_raw_size > planar_rle.len() as u64
+        {
             return Err(CORRUPT_CHUNK);
         }
         let mut rle = vec![0u8; rle_uncompressed_size as usize];
@@ -756,14 +916,18 @@ pub fn uncompress(data: &[u8], channels: &[Channel], width: usize, lines: usize,
     }
 
     // Where each channel's lines start in `out`.
-    let line_size: usize = channels.iter().map(|channel| width * channel.bytes_per_element()).sum();
+    let line_size: usize = channels
+        .iter()
+        .map(|channel| width * channel.bytes_per_element())
+        .sum();
     let mut channel_at = Vec::with_capacity(channels.len());
     let mut at = 0usize;
     for channel in channels {
         channel_at.push(at);
         at += width * channel.bytes_per_element();
     }
-    let rows = |c: usize| -> Vec<usize> { (0..lines).map(|y| y * line_size + channel_at[c]).collect() };
+    let rows =
+        |c: usize| -> Vec<usize> { (0..lines).map(|y| y * line_size + channel_at[c]).collect() };
 
     let mut decoder = lossy::Decoder::new(channels.len());
     let mut ac_at = 0usize;
@@ -774,8 +938,27 @@ pub fn uncompress(data: &[u8], channels: &[Channel], width: usize, lines: usize,
         if set.iter().any(|&c| layout.compression[c] != LOSSY_DCT) {
             return Err(CORRUPT_CHUNK);
         }
-        let targets: Vec<lossy::Target> = set.iter().map(|&c| lossy::Target { channel: c, rows: rows(c), pixel_type: channels[c].pixel_type }).collect();
-        let result = decoder.decode(out, &targets, &packed_ac, ac_at, total_ac_count, &packed_dc, dc_at, total_dc_count, true, width, lines);
+        let targets: Vec<lossy::Target> = set
+            .iter()
+            .map(|&c| lossy::Target {
+                channel: c,
+                rows: rows(c),
+                pixel_type: channels[c].pixel_type,
+            })
+            .collect();
+        let result = decoder.decode(
+            out,
+            &targets,
+            &packed_ac,
+            ac_at,
+            total_ac_count,
+            &packed_dc,
+            dc_at,
+            total_dc_count,
+            true,
+            width,
+            lines,
+        );
         ac_at += decoder.ac_count;
         dc_at += decoder.dc_count;
         total_ac_count -= decoder.ac_count as u64;
@@ -797,8 +980,24 @@ pub fn uncompress(data: &[u8], channels: &[Channel], width: usize, lines: usize,
         let bpe = channel.bytes_per_element();
         match layout.compression[c] {
             LOSSY_DCT => {
-                let target = lossy::Target { channel: c, rows: rows(c), pixel_type: channel.pixel_type };
-                let result = decoder.decode(out, &[target], &packed_ac, ac_at, total_ac_count, &packed_dc, dc_at, total_dc_count, !channel.p_linear, width, lines);
+                let target = lossy::Target {
+                    channel: c,
+                    rows: rows(c),
+                    pixel_type: channel.pixel_type,
+                };
+                let result = decoder.decode(
+                    out,
+                    &[target],
+                    &packed_ac,
+                    ac_at,
+                    total_ac_count,
+                    &packed_dc,
+                    dc_at,
+                    total_dc_count,
+                    !channel.p_linear,
+                    width,
+                    lines,
+                );
                 ac_at += decoder.ac_count;
                 dc_at += decoder.dc_count;
                 total_ac_count -= decoder.ac_count as u64;
@@ -841,7 +1040,12 @@ pub fn uncompress(data: &[u8], channels: &[Channel], width: usize, lines: usize,
 mod tests {
     use super::*;
 
-    fn block(width: usize, lines: usize, channels: &[Channel], value: impl Fn(usize, usize, usize) -> u32) -> Vec<u8> {
+    fn block(
+        width: usize,
+        lines: usize,
+        channels: &[Channel],
+        value: impl Fn(usize, usize, usize) -> u32,
+    ) -> Vec<u8> {
         let mut raw = Vec::new();
         for y in 0..lines {
             for (c, channel) in channels.iter().enumerate() {
@@ -860,8 +1064,25 @@ mod tests {
 
     #[test]
     fn what_is_kept_whole_comes_back_whole() {
-        let channels = [Channel { name: "A", pixel_type: PIXEL_HALF, p_linear: false }, Channel { name: "id", pixel_type: PIXEL_UINT, p_linear: false }];
-        let raw = block(37, 32, &channels, |c, x, y| if c == 0 { 0x3c00 } else { (x / 5 + y / 3) as u32 });
+        let channels = [
+            Channel {
+                name: "A",
+                pixel_type: PIXEL_HALF,
+                p_linear: false,
+            },
+            Channel {
+                name: "id",
+                pixel_type: PIXEL_UINT,
+                p_linear: false,
+            },
+        ];
+        let raw = block(37, 32, &channels, |c, x, y| {
+            if c == 0 {
+                0x3c00
+            } else {
+                (x / 5 + y / 3) as u32
+            }
+        });
         let packed = compress(&raw, &channels, 37, 32, 45.0, false);
         assert!(packed.len() < raw.len() / 4);
         let mut out = vec![0u8; raw.len()];
@@ -871,16 +1092,28 @@ mod tests {
 
     #[test]
     fn colour_comes_back_near() {
-        let channels: Vec<Channel> = ["B", "G", "R"].iter().map(|name| Channel { name, pixel_type: PIXEL_HALF, p_linear: false }).collect();
+        let channels: Vec<Channel> = ["B", "G", "R"]
+            .iter()
+            .map(|name| Channel {
+                name,
+                pixel_type: PIXEL_HALF,
+                p_linear: false,
+            })
+            .collect();
         let half = |f: f32| simd::float_to_half(f) as u32;
-        let raw = block(64, 40, &channels, |c, x, y| half(0.25 + (x + 2 * y + 9 * c) as f32 / 200.0));
+        let raw = block(64, 40, &channels, |c, x, y| {
+            half(0.25 + (x + 2 * y + 9 * c) as f32 / 200.0)
+        });
         for deflate_ac in [false, true] {
             let packed = compress(&raw, &channels, 64, 40, 45.0, deflate_ac);
             assert!(packed.len() < raw.len() / 3);
             let mut out = vec![0u8; raw.len()];
             uncompress(&packed, &channels, 64, 40, &mut out).unwrap();
             for (a, b) in raw.chunks_exact(2).zip(out.chunks_exact(2)) {
-                let (a, b) = (simd::half_to_float(u16::from_le_bytes([a[0], a[1]])), simd::half_to_float(u16::from_le_bytes([b[0], b[1]])));
+                let (a, b) = (
+                    simd::half_to_float(u16::from_le_bytes([a[0], a[1]])),
+                    simd::half_to_float(u16::from_le_bytes([b[0], b[1]])),
+                );
                 assert!((a - b).abs() < 0.01, "{a} {b}");
             }
         }
@@ -888,12 +1121,24 @@ mod tests {
 
     #[test]
     fn damage_is_refused() {
-        let channels = [Channel { name: "Y", pixel_type: PIXEL_FLOAT, p_linear: false }];
-        let raw = block(16, 16, &channels, |_, x, y| (0.5 + (x * y) as f32 / 512.0).to_bits());
+        let channels = [Channel {
+            name: "Y",
+            pixel_type: PIXEL_FLOAT,
+            p_linear: false,
+        }];
+        let raw = block(16, 16, &channels, |_, x, y| {
+            (0.5 + (x * y) as f32 / 512.0).to_bits()
+        });
         let mut packed = compress(&raw, &channels, 16, 16, 45.0, false);
         let mut out = vec![0u8; raw.len()];
-        assert_eq!(uncompress(&packed[..40], &channels, 16, 16, &mut out), Err(CORRUPT_CHUNK));
+        assert_eq!(
+            uncompress(&packed[..40], &channels, 16, 16, &mut out),
+            Err(CORRUPT_CHUNK)
+        );
         packed[0] = 3;
-        assert_eq!(uncompress(&packed, &channels, 16, 16, &mut out), Err(BAD_CHUNK_LEADER));
+        assert_eq!(
+            uncompress(&packed, &channels, 16, 16, &mut out),
+            Err(BAD_CHUNK_LEADER)
+        );
     }
 }

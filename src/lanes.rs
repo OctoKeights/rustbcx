@@ -46,19 +46,37 @@ mod plain {
         /// In each lane `self` where it is less than `other`, else `other`.
         #[inline(always)]
         pub(crate) fn lesser(self, other: F4) -> F4 {
-            F4(std::array::from_fn(|i| if self.0[i] < other.0[i] { self.0[i] } else { other.0[i] }))
+            F4(std::array::from_fn(|i| {
+                if self.0[i] < other.0[i] {
+                    self.0[i]
+                } else {
+                    other.0[i]
+                }
+            }))
         }
 
         /// In each lane `then` where `self` equals `other`, else `otherwise`.
         #[inline(always)]
         pub(crate) fn where_equal(self, other: F4, then: I4, otherwise: I4) -> I4 {
-            I4(std::array::from_fn(|i| if self.0[i] == other.0[i] { then.0[i] } else { otherwise.0[i] }))
+            I4(std::array::from_fn(|i| {
+                if self.0[i] == other.0[i] {
+                    then.0[i]
+                } else {
+                    otherwise.0[i]
+                }
+            }))
         }
 
         /// In each lane `then` where `self` is less than `other`, else `otherwise`.
         #[inline(always)]
         pub(crate) fn where_less(self, other: F4, then: I4, otherwise: I4) -> I4 {
-            I4(std::array::from_fn(|i| if self.0[i] < other.0[i] { then.0[i] } else { otherwise.0[i] }))
+            I4(std::array::from_fn(|i| {
+                if self.0[i] < other.0[i] {
+                    then.0[i]
+                } else {
+                    otherwise.0[i]
+                }
+            }))
         }
     }
 
@@ -178,8 +196,14 @@ mod tests {
         let lesser = a.lesser(b).to_array();
         assert_eq!(lesser[..3], [0.5, -2.5, 3.0]);
         assert!(lesser[3].is_nan());
-        assert_eq!(a.where_equal(b, I4::splat(7), I4::splat(1)).to_array(), [1, 7, 1, 1]);
-        assert_eq!(b.where_less(a, I4::splat(7), I4::splat(1)).to_array(), [7, 1, 1, 1]);
+        assert_eq!(
+            a.where_equal(b, I4::splat(7), I4::splat(1)).to_array(),
+            [1, 7, 1, 1]
+        );
+        assert_eq!(
+            b.where_less(a, I4::splat(7), I4::splat(1)).to_array(),
+            [7, 1, 1, 1]
+        );
         assert_eq!(F4::splat(2.0).to_array(), [2.0; 4]);
     }
 }

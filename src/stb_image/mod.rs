@@ -168,7 +168,16 @@ pub(crate) struct Context<'a> {
 impl<'a> Context<'a> {
     /// `stbi__start_mem`
     fn new(buffer: &'a [u8], options: &LoadOptions) -> Context<'a> {
-        Context { img_x: 0, img_y: 0, img_n: 0, img_out_n: 0, buffer, pos: 0, reason: "", options: *options }
+        Context {
+            img_x: 0,
+            img_y: 0,
+            img_n: 0,
+            img_out_n: 0,
+            buffer,
+            pos: 0,
+            reason: "",
+            options: *options,
+        }
     }
 
     /// `stbi__err`
@@ -314,7 +323,9 @@ pub(crate) fn mad2sizes_valid(a: i32, b: i32, add: i32) -> bool {
 /// `stbi__mad3sizes_valid`: returns 1 if "a*b*c + add" has no negative terms/factors and
 /// doesn't overflow
 pub(crate) fn mad3sizes_valid(a: i32, b: i32, c: i32, add: i32) -> bool {
-    mul2sizes_valid(a, b) && mul2sizes_valid(a.wrapping_mul(b), c) && addsizes_valid(a.wrapping_mul(b).wrapping_mul(c), add)
+    mul2sizes_valid(a, b)
+        && mul2sizes_valid(a.wrapping_mul(b), c)
+        && addsizes_valid(a.wrapping_mul(b).wrapping_mul(c), add)
 }
 
 /// `stbi__mad4sizes_valid`: returns 1 if "a*b*c*d + add" has no negative terms/factors and
@@ -387,7 +398,14 @@ impl Sample for u16 {
 //    interleave an alpha=255 channel, but falls back to this for other cases
 
 /// `stbi__convert_format`, `stbi__convert_format16`
-pub(crate) fn convert_format<T: Sample>(s: &mut Context, data: Vec<T>, img_n: i32, req_comp: i32, x: u32, y: u32) -> Option<Vec<T>> {
+pub(crate) fn convert_format<T: Sample>(
+    s: &mut Context,
+    data: Vec<T>,
+    img_n: i32,
+    req_comp: i32,
+    x: u32,
+    y: u32,
+) -> Option<Vec<T>> {
     if req_comp == img_n {
         return Some(data);
     }
@@ -406,17 +424,30 @@ pub(crate) fn convert_format<T: Sample>(s: &mut Context, data: Vec<T>, img_n: i3
         // convert source image with img_n components to one with req_comp components
         match (img_n, req_comp) {
             (1, 2) => pixels.for_each(|(src, dest)| dest.copy_from_slice(&[src[0], T::FULL])),
-            (1, 3) => pixels.for_each(|(src, dest)| dest.copy_from_slice(&[src[0], src[0], src[0]])),
-            (1, 4) => pixels.for_each(|(src, dest)| dest.copy_from_slice(&[src[0], src[0], src[0], T::FULL])),
+            (1, 3) => {
+                pixels.for_each(|(src, dest)| dest.copy_from_slice(&[src[0], src[0], src[0]]))
+            }
+            (1, 4) => pixels
+                .for_each(|(src, dest)| dest.copy_from_slice(&[src[0], src[0], src[0], T::FULL])),
             (2, 1) => pixels.for_each(|(src, dest)| dest[0] = src[0]),
-            (2, 3) => pixels.for_each(|(src, dest)| dest.copy_from_slice(&[src[0], src[0], src[0]])),
-            (2, 4) => pixels.for_each(|(src, dest)| dest.copy_from_slice(&[src[0], src[0], src[0], src[1]])),
-            (3, 4) => pixels.for_each(|(src, dest)| dest.copy_from_slice(&[src[0], src[1], src[2], T::FULL])),
+            (2, 3) => {
+                pixels.for_each(|(src, dest)| dest.copy_from_slice(&[src[0], src[0], src[0]]))
+            }
+            (2, 4) => pixels
+                .for_each(|(src, dest)| dest.copy_from_slice(&[src[0], src[0], src[0], src[1]])),
+            (3, 4) => pixels
+                .for_each(|(src, dest)| dest.copy_from_slice(&[src[0], src[1], src[2], T::FULL])),
             (3, 1) => pixels.for_each(|(src, dest)| dest[0] = T::compute_y(src[0], src[1], src[2])),
-            (3, 2) => pixels.for_each(|(src, dest)| dest.copy_from_slice(&[T::compute_y(src[0], src[1], src[2]), T::FULL])),
+            (3, 2) => pixels.for_each(|(src, dest)| {
+                dest.copy_from_slice(&[T::compute_y(src[0], src[1], src[2]), T::FULL])
+            }),
             (4, 1) => pixels.for_each(|(src, dest)| dest[0] = T::compute_y(src[0], src[1], src[2])),
-            (4, 2) => pixels.for_each(|(src, dest)| dest.copy_from_slice(&[T::compute_y(src[0], src[1], src[2]), src[3]])),
-            (4, 3) => pixels.for_each(|(src, dest)| dest.copy_from_slice(&[src[0], src[1], src[2]])),
+            (4, 2) => pixels.for_each(|(src, dest)| {
+                dest.copy_from_slice(&[T::compute_y(src[0], src[1], src[2]), src[3]])
+            }),
+            (4, 3) => {
+                pixels.for_each(|(src, dest)| dest.copy_from_slice(&[src[0], src[1], src[2]]))
+            }
             _ => return s.errp("unsupported"),
         }
     }
@@ -461,7 +492,15 @@ fn load_main(s: &mut Context, req_comp: i32, bpc: i32) -> Option<(Pixels, i32)> 
         let (hdr, comp) = hdr::hdr_load(s, req_comp)?;
         let (x, y) = (s.img_x as i32, s.img_y as i32);
         let options = s.options;
-        return hdr::hdr_to_ldr(s, hdr, x, y, if req_comp != 0 { req_comp } else { comp }, &options).map(|out| (Pixels::U8(out), comp));
+        return hdr::hdr_to_ldr(
+            s,
+            hdr,
+            x,
+            y,
+            if req_comp != 0 { req_comp } else { comp },
+            &options,
+        )
+        .map(|out| (Pixels::U8(out), comp));
     }
 
     // test tga last because it's a crappy test!
@@ -473,25 +512,47 @@ fn load_main(s: &mut Context, req_comp: i32, bpc: i32) -> Option<(Pixels, i32)> 
 }
 
 /// `stbi__convert_16_to_8`
-fn convert_16_to_8(s: &mut Context, orig: Vec<u16>, w: i32, h: i32, channels: i32) -> Option<Vec<u8>> {
+fn convert_16_to_8(
+    s: &mut Context,
+    orig: Vec<u16>,
+    w: i32,
+    h: i32,
+    channels: i32,
+) -> Option<Vec<u8>> {
     if !mad3sizes_valid(w, h, channels, 0) {
         return s.errp("too large");
     }
     let img_len = (w * h * channels) as usize;
 
     // top half of each byte is sufficient approx of 16->8 bit scaling
-    Some(orig[..img_len].iter().map(|&value| (value >> 8) as u8).collect())
+    Some(
+        orig[..img_len]
+            .iter()
+            .map(|&value| (value >> 8) as u8)
+            .collect(),
+    )
 }
 
 /// `stbi__convert_8_to_16`
-fn convert_8_to_16(s: &mut Context, orig: Vec<u8>, w: i32, h: i32, channels: i32) -> Option<Vec<u16>> {
+fn convert_8_to_16(
+    s: &mut Context,
+    orig: Vec<u8>,
+    w: i32,
+    h: i32,
+    channels: i32,
+) -> Option<Vec<u16>> {
     if !mad4sizes_valid(w, h, channels, 2, 0) {
         return s.errp("too large");
     }
     let img_len = (w * h * channels) as usize;
 
     // replicate to high and low byte, maps 0->0, 255->0xffff
-    Some(orig[..img_len].iter().map(|&value| (u16::from(value) << 8) + u16::from(value)).collect())
+    Some(
+        orig[..img_len]
+            .iter()
+            .map(|&value| (u16::from(value) << 8) + u16::from(value))
+            .collect(),
+    )
 }
 
 /// `stbi__vertical_flip`
@@ -511,7 +572,11 @@ pub(crate) fn vertical_flip<T>(image: &mut [T], w: usize, h: usize, per_pixel: u
 /// `desired_channels` is how many values a pixel is to have, 1 to 4, or 0 for as many as the
 /// file has. A file of 16 bits a channel is brought down to 8, and an HDR file's floats with
 /// [`LoadOptions::hdr_to_ldr_gamma`]. Of a GIF, the first frame.
-pub fn load_from_memory(buffer: &[u8], desired_channels: i32, options: &LoadOptions) -> Result<Loaded<u8>, LoadError> {
+pub fn load_from_memory(
+    buffer: &[u8],
+    desired_channels: i32,
+    options: &LoadOptions,
+) -> Result<Loaded<u8>, LoadError> {
     let mut s = Context::new(buffer, options);
     load_and_postprocess_8bit(&mut s, desired_channels).ok_or(LoadError(s.reason))
 }
@@ -521,7 +586,11 @@ fn load_and_postprocess_8bit(s: &mut Context, desired_channels: i32) -> Option<L
     let options = s.options;
     let (result, comp) = load_main(s, desired_channels, 8)?;
     let (x, y) = (s.img_x as i32, s.img_y as i32);
-    let channels = if desired_channels == 0 { comp } else { desired_channels };
+    let channels = if desired_channels == 0 {
+        comp
+    } else {
+        desired_channels
+    };
 
     let mut result = match result {
         Pixels::U8(result) => result,
@@ -532,19 +601,32 @@ fn load_and_postprocess_8bit(s: &mut Context, desired_channels: i32) -> Option<L
         vertical_flip(&mut result, x as usize, y as usize, channels as usize);
     }
 
-    Some(Loaded { x, y, channels_in_file: comp, data: result })
+    Some(Loaded {
+        x,
+        y,
+        channels_in_file: comp,
+        data: result,
+    })
 }
 
 /// The image out of an image file's bytes at 16 bits a channel: `stbi_load_16_from_memory`.
 /// A file of 8 bits a channel is brought up to 16, each value with itself as its lower half.
-pub fn load_16_from_memory(buffer: &[u8], desired_channels: i32, options: &LoadOptions) -> Result<Loaded<u16>, LoadError> {
+pub fn load_16_from_memory(
+    buffer: &[u8],
+    desired_channels: i32,
+    options: &LoadOptions,
+) -> Result<Loaded<u16>, LoadError> {
     let mut s = Context::new(buffer, options);
     // stbi__load_and_postprocess_16bit
     let Some((result, comp)) = load_main(&mut s, desired_channels, 16) else {
         return Err(LoadError(s.reason));
     };
     let (x, y) = (s.img_x as i32, s.img_y as i32);
-    let channels = if desired_channels == 0 { comp } else { desired_channels };
+    let channels = if desired_channels == 0 {
+        comp
+    } else {
+        desired_channels
+    };
 
     let mut result = match result {
         Pixels::U16(result) => result,
@@ -558,13 +640,22 @@ pub fn load_16_from_memory(buffer: &[u8], desired_channels: i32, options: &LoadO
         vertical_flip(&mut result, x as usize, y as usize, channels as usize);
     }
 
-    Ok(Loaded { x, y, channels_in_file: comp, data: result })
+    Ok(Loaded {
+        x,
+        y,
+        channels_in_file: comp,
+        data: result,
+    })
 }
 
 /// The image out of an image file's bytes as floats: `stbi_loadf_from_memory`. An HDR file's
 /// values come as they are; any other file's come by way of 8 bits a channel, made floats
 /// with [`LoadOptions::ldr_to_hdr_gamma`] (alpha in a straight line, from 0 to 1).
-pub fn loadf_from_memory(buffer: &[u8], desired_channels: i32, options: &LoadOptions) -> Result<Loaded<f32>, LoadError> {
+pub fn loadf_from_memory(
+    buffer: &[u8],
+    desired_channels: i32,
+    options: &LoadOptions,
+) -> Result<Loaded<f32>, LoadError> {
     let mut s = Context::new(buffer, options);
     // stbi__loadf_main
     if hdr::hdr_test(&mut s) {
@@ -574,15 +665,33 @@ pub fn loadf_from_memory(buffer: &[u8], desired_channels: i32, options: &LoadOpt
         let (x, y) = (s.img_x as i32, s.img_y as i32);
         // stbi__float_postprocess
         if options.flip_vertically_on_load {
-            let channels = if desired_channels != 0 { desired_channels } else { comp };
+            let channels = if desired_channels != 0 {
+                desired_channels
+            } else {
+                comp
+            };
             vertical_flip(&mut data, x as usize, y as usize, channels as usize);
         }
-        return Ok(Loaded { x, y, channels_in_file: comp, data });
+        return Ok(Loaded {
+            x,
+            y,
+            channels_in_file: comp,
+            data,
+        });
     }
     if let Some(loaded) = load_and_postprocess_8bit(&mut s, desired_channels) {
-        let channels = if desired_channels != 0 { desired_channels } else { loaded.channels_in_file };
+        let channels = if desired_channels != 0 {
+            desired_channels
+        } else {
+            loaded.channels_in_file
+        };
         return match hdr::ldr_to_hdr(&mut s, loaded.data, loaded.x, loaded.y, channels, options) {
-            Some(data) => Ok(Loaded { x: loaded.x, y: loaded.y, channels_in_file: loaded.channels_in_file, data }),
+            Some(data) => Ok(Loaded {
+                x: loaded.x,
+                y: loaded.y,
+                channels_in_file: loaded.channels_in_file,
+                data,
+            }),
             None => Err(LoadError(s.reason)),
         };
     }
@@ -591,7 +700,11 @@ pub fn loadf_from_memory(buffer: &[u8], desired_channels: i32, options: &LoadOpt
 
 /// Every frame of a GIF file, one after another, each with its delay:
 /// `stbi_load_gif_from_memory`.
-pub fn load_gif_from_memory(buffer: &[u8], desired_channels: i32, options: &LoadOptions) -> Result<LoadedGif, LoadError> {
+pub fn load_gif_from_memory(
+    buffer: &[u8],
+    desired_channels: i32,
+    options: &LoadOptions,
+) -> Result<LoadedGif, LoadError> {
     let mut s = Context::new(buffer, options);
     if !(0..=4).contains(&desired_channels) {
         return Err(LoadError("bad req_comp"));
@@ -648,26 +761,72 @@ mod tests {
 
     #[test]
     fn the_size_checks_are_the_originals() {
-        assert!(addsizes_valid(i32::MAX - 5, 5) && !addsizes_valid(i32::MAX - 5, 6) && !addsizes_valid(1, -1));
-        assert!(mul2sizes_valid(46340, 46340) && !mul2sizes_valid(46341, 46341) && mul2sizes_valid(i32::MAX, 0) && !mul2sizes_valid(-1, 1));
+        assert!(
+            addsizes_valid(i32::MAX - 5, 5)
+                && !addsizes_valid(i32::MAX - 5, 6)
+                && !addsizes_valid(1, -1)
+        );
+        assert!(
+            mul2sizes_valid(46340, 46340)
+                && !mul2sizes_valid(46341, 46341)
+                && mul2sizes_valid(i32::MAX, 0)
+                && !mul2sizes_valid(-1, 1)
+        );
         assert!(mad3sizes_valid(1024, 1024, 2047, 1023) && !mad3sizes_valid(1024, 1024, 2048, 0));
         assert!(mad4sizes_valid(256, 256, 256, 127, 0) && !mad4sizes_valid(256, 256, 256, 128, 0));
-        assert!(addints_valid(i32::MIN, 0) && !addints_valid(i32::MIN, -1) && !addints_valid(i32::MAX, 1) && addints_valid(i32::MAX, i32::MIN));
-        assert!(mul2shorts_valid(181, 181) && !mul2shorts_valid(182, 182) && mul2shorts_valid(-32768, 1) && !mul2shorts_valid(-32769, 1));
-        assert!(mul2shorts_valid(16384, -2) && !mul2shorts_valid(16385, -2) && mul2shorts_valid(-2, 16384) && mul2shorts_valid(123456, 0) && mul2shorts_valid(5, -1));
+        assert!(
+            addints_valid(i32::MIN, 0)
+                && !addints_valid(i32::MIN, -1)
+                && !addints_valid(i32::MAX, 1)
+                && addints_valid(i32::MAX, i32::MIN)
+        );
+        assert!(
+            mul2shorts_valid(181, 181)
+                && !mul2shorts_valid(182, 182)
+                && mul2shorts_valid(-32768, 1)
+                && !mul2shorts_valid(-32769, 1)
+        );
+        assert!(
+            mul2shorts_valid(16384, -2)
+                && !mul2shorts_valid(16385, -2)
+                && mul2shorts_valid(-2, 16384)
+                && mul2shorts_valid(123456, 0)
+                && mul2shorts_valid(5, -1)
+        );
     }
 
     #[test]
     fn channels_are_made_and_dropped() {
         let mut s = Context::new(&[], &LoadOptions::default());
         let rgba: Vec<u8> = vec![10, 20, 30, 40, 200, 100, 50, 25];
-        assert_eq!(convert_format(&mut s, rgba.clone(), 4, 3, 2, 1).unwrap(), [10, 20, 30, 200, 100, 50]);
-        assert_eq!(convert_format(&mut s, rgba.clone(), 4, 2, 2, 1).unwrap(), [compute_y(10, 20, 30), 40, compute_y(200, 100, 50), 25]);
-        assert_eq!(convert_format(&mut s, rgba.clone(), 4, 1, 2, 1).unwrap(), [18, 124]);
-        assert_eq!(convert_format(&mut s, vec![7u8, 9], 1, 4, 2, 1).unwrap(), [7, 7, 7, 255, 9, 9, 9, 255]);
-        assert_eq!(convert_format(&mut s, vec![7u16, 9], 2, 4, 1, 1).unwrap(), [7, 7, 7, 9]);
-        assert_eq!(convert_format(&mut s, vec![7u16, 9, 11], 3, 2, 1, 1).unwrap(), [(7 * 77 + 9 * 150 + 29 * 11) >> 8, 0xffff]);
-        assert_eq!(convert_format(&mut s, rgba.clone(), 4, 4, 2, 1).unwrap(), rgba);
+        assert_eq!(
+            convert_format(&mut s, rgba.clone(), 4, 3, 2, 1).unwrap(),
+            [10, 20, 30, 200, 100, 50]
+        );
+        assert_eq!(
+            convert_format(&mut s, rgba.clone(), 4, 2, 2, 1).unwrap(),
+            [compute_y(10, 20, 30), 40, compute_y(200, 100, 50), 25]
+        );
+        assert_eq!(
+            convert_format(&mut s, rgba.clone(), 4, 1, 2, 1).unwrap(),
+            [18, 124]
+        );
+        assert_eq!(
+            convert_format(&mut s, vec![7u8, 9], 1, 4, 2, 1).unwrap(),
+            [7, 7, 7, 255, 9, 9, 9, 255]
+        );
+        assert_eq!(
+            convert_format(&mut s, vec![7u16, 9], 2, 4, 1, 1).unwrap(),
+            [7, 7, 7, 9]
+        );
+        assert_eq!(
+            convert_format(&mut s, vec![7u16, 9, 11], 3, 2, 1, 1).unwrap(),
+            [(7 * 77 + 9 * 150 + 29 * 11) >> 8, 0xffff]
+        );
+        assert_eq!(
+            convert_format(&mut s, rgba.clone(), 4, 4, 2, 1).unwrap(),
+            rgba
+        );
     }
 
     #[test]
@@ -680,10 +839,22 @@ mod tests {
     #[test]
     fn what_is_no_image_is_refused() {
         let options = LoadOptions::default();
-        assert_eq!(load_from_memory(&[], 0, &options), Err(LoadError("unknown image type")));
-        assert_eq!(load_from_memory(b"not an image at all", 0, &options), Err(LoadError("unknown image type")));
-        assert_eq!(load_from_memory(&[], 5, &options), Err(LoadError("bad req_comp")));
-        assert_eq!(info_from_memory(b"GIF8"), Err(LoadError("unknown image type")));
+        assert_eq!(
+            load_from_memory(&[], 0, &options),
+            Err(LoadError("unknown image type"))
+        );
+        assert_eq!(
+            load_from_memory(b"not an image at all", 0, &options),
+            Err(LoadError("unknown image type"))
+        );
+        assert_eq!(
+            load_from_memory(&[], 5, &options),
+            Err(LoadError("bad req_comp"))
+        );
+        assert_eq!(
+            info_from_memory(b"GIF8"),
+            Err(LoadError("unknown image type"))
+        );
         assert!(!is_16_bit_from_memory(&[]));
     }
 }

@@ -11,31 +11,51 @@
 //! with [`PAST_THE_END`].
 
 use super::chunk::{decode_chunk, precalculate_tile_info, tile_offsets_shape, OffsetData};
-use super::{convert_header, parse_exr_header, ExrError, ExrHeader, ExrImage, ExrVersion, HeaderInfo, ERROR_INVALID_ARGUMENT, ERROR_INVALID_DATA, ERROR_INVALID_HEADER, TILE_ONE_LEVEL};
+use super::{
+    convert_header, parse_exr_header, ExrError, ExrHeader, ExrImage, ExrVersion, HeaderInfo,
+    ERROR_INVALID_ARGUMENT, ERROR_INVALID_DATA, ERROR_INVALID_HEADER, TILE_ONE_LEVEL,
+};
 
 const EXR_VERSION_SIZE: usize = 8;
 
 /// The message of a file refused because the original's answer for it depends on memory past
 /// its end, or because the original stops on it. (Its code is `ERROR_INVALID_DATA`.)
-pub const PAST_THE_END: &str = "The file is damaged: tinyexr reads past its end for it, or stops on it.";
+pub const PAST_THE_END: &str =
+    "The file is damaged: tinyexr reads past its end for it, or stops on it.";
 
 fn past_the_end() -> ExrError {
-    ExrError { code: ERROR_INVALID_DATA, message: PAST_THE_END.to_string() }
+    ExrError {
+        code: ERROR_INVALID_DATA,
+        message: PAST_THE_END.to_string(),
+    }
 }
 
 /// `ParseEXRMultipartHeaderFromMemory`: the header of every part of a file of many parts.
-pub fn parse_exr_multipart_header_from_memory(version: &ExrVersion, memory: &[u8]) -> Result<Vec<ExrHeader>, ExrError> {
+pub fn parse_exr_multipart_header_from_memory(
+    version: &ExrVersion,
+    memory: &[u8],
+) -> Result<Vec<ExrHeader>, ExrError> {
     parse_multipart_header(version, memory, false)
 }
 
 /// `ParseEXRMultipartHeaderFromMemory` exactly as tinyexr has it, which refuses DWAA and DWAB.
-pub fn parse_exr_multipart_header_from_memory_as_tinyexr(version: &ExrVersion, memory: &[u8]) -> Result<Vec<ExrHeader>, ExrError> {
+pub fn parse_exr_multipart_header_from_memory_as_tinyexr(
+    version: &ExrVersion,
+    memory: &[u8],
+) -> Result<Vec<ExrHeader>, ExrError> {
     parse_multipart_header(version, memory, true)
 }
 
-fn parse_multipart_header(version: &ExrVersion, memory: &[u8], as_tinyexr: bool) -> Result<Vec<ExrHeader>, ExrError> {
+fn parse_multipart_header(
+    version: &ExrVersion,
+    memory: &[u8],
+    as_tinyexr: bool,
+) -> Result<Vec<ExrHeader>, ExrError> {
     if memory.len() < EXR_VERSION_SIZE {
-        return Err(ExrError { code: ERROR_INVALID_DATA, message: "Data size too short".to_string() });
+        return Err(ExrError {
+            code: ERROR_INVALID_DATA,
+            message: "Data size too short".to_string(),
+        });
     }
     // (Every header but the first is read as if it had the whole of the file after the first
     // header to itself: the second time round, with ones past the end.)
@@ -55,13 +75,28 @@ fn parse_multipart_header(version: &ExrVersion, memory: &[u8], as_tinyexr: bool)
 fn same(a: &Result<Vec<ExrHeader>, ExrError>, b: &Result<Vec<ExrHeader>, ExrError>) -> bool {
     // (The floats compared as bits, and the rest with them set aside.)
     fn floats(header: &ExrHeader) -> [u32; 4] {
-        [header.pixel_aspect_ratio.to_bits(), header.screen_window_center[0].to_bits(), header.screen_window_center[1].to_bits(), header.screen_window_width.to_bits()]
+        [
+            header.pixel_aspect_ratio.to_bits(),
+            header.screen_window_center[0].to_bits(),
+            header.screen_window_center[1].to_bits(),
+            header.screen_window_width.to_bits(),
+        ]
     }
     fn without_floats(header: &ExrHeader) -> ExrHeader {
-        ExrHeader { pixel_aspect_ratio: 0.0, screen_window_center: [0.0; 2], screen_window_width: 0.0, ..header.clone() }
+        ExrHeader {
+            pixel_aspect_ratio: 0.0,
+            screen_window_center: [0.0; 2],
+            screen_window_width: 0.0,
+            ..header.clone()
+        }
     }
     match (a, b) {
-        (Ok(a), Ok(b)) => a.len() == b.len() && a.iter().zip(b).all(|(a, b)| floats(a) == floats(b) && without_floats(a) == without_floats(b)),
+        (Ok(a), Ok(b)) => {
+            a.len() == b.len()
+                && a.iter()
+                    .zip(b)
+                    .all(|(a, b)| floats(a) == floats(b) && without_floats(a) == without_floats(b))
+        }
         (Err(a), Err(b)) => a == b,
         _ => false,
     }
@@ -69,7 +104,12 @@ fn same(a: &Result<Vec<ExrHeader>, ExrError>, b: &Result<Vec<ExrHeader>, ExrErro
 
 /// The headers as the original parses them, with `pad` past the end of the file; and
 /// whether the parsing was handed bytes past the end.
-fn parse_headers(version: &ExrVersion, memory: &[u8], pad: u8, as_tinyexr: bool) -> (Result<Vec<ExrHeader>, ExrError>, bool) {
+fn parse_headers(
+    version: &ExrVersion,
+    memory: &[u8],
+    pad: u8,
+    as_tinyexr: bool,
+) -> (Result<Vec<ExrHeader>, ExrError>, bool) {
     let size = memory.len();
     let marker_size = size - EXR_VERSION_SIZE;
     let mut padded = memory.to_vec();
@@ -87,8 +127,21 @@ fn parse_headers(version: &ExrVersion, memory: &[u8], pad: u8, as_tinyexr: bool)
 
         let mut err_str = String::new();
         let mut empty_header = false;
-        if let Err(code) = parse_exr_header(&mut info, &mut empty_header, version, &mut err_str, &padded[marker..marker + marker_size], as_tinyexr) {
-            return (Err(ExrError { code, message: err_str }), beyond);
+        if let Err(code) = parse_exr_header(
+            &mut info,
+            &mut empty_header,
+            version,
+            &mut err_str,
+            &padded[marker..marker + marker_size],
+            as_tinyexr,
+        ) {
+            return (
+                Err(ExrError {
+                    code,
+                    message: err_str,
+                }),
+                beyond,
+            );
         }
 
         if empty_header {
@@ -97,7 +150,13 @@ fn parse_headers(version: &ExrVersion, memory: &[u8], pad: u8, as_tinyexr: bool)
 
         // `chunkCount` must exist in the header.
         if info.chunk_count == 0 {
-            return (Err(ExrError { code: ERROR_INVALID_DATA, message: "`chunkCount' attribute is not found in the header.".to_string() }), beyond);
+            return (
+                Err(ExrError {
+                    code: ERROR_INVALID_DATA,
+                    message: "`chunkCount' attribute is not found in the header.".to_string(),
+                }),
+                beyond,
+            );
         }
 
         // move to next header.
@@ -127,7 +186,13 @@ fn parse_headers(version: &ExrVersion, memory: &[u8], pad: u8, as_tinyexr: bool)
     }
 
     if retcode != 0 {
-        return (Err(ExrError { code: retcode, message }), beyond);
+        return (
+            Err(ExrError {
+                code: retcode,
+                message,
+            }),
+            beyond,
+        );
     }
     (Ok(headers), beyond)
 }
@@ -160,17 +225,27 @@ fn read_le<const N: usize>(memory: &[u8], at: usize) -> (u64, bool) {
 /// `LoadEXRMultipartImageFromMemory`: the pixels of every part of the file, whose headers
 /// [`parse_exr_multipart_header_from_memory`] gave. Each part's channels come as its
 /// header's `requested_pixel_types` ask, as [`super::load_exr_image_from_memory`] gives them.
-pub fn load_exr_multipart_image_from_memory(exr_headers: &mut [ExrHeader], memory: &[u8]) -> Result<Vec<ExrImage>, ExrError> {
+pub fn load_exr_multipart_image_from_memory(
+    exr_headers: &mut [ExrHeader],
+    memory: &[u8],
+) -> Result<Vec<ExrImage>, ExrError> {
     load_parts(exr_headers, memory, false)
 }
 
 /// `LoadEXRMultipartImageFromMemory` exactly as tinyexr has it
 /// ([`super::load_exr_image_from_memory_as_tinyexr`] says where that differs).
-pub fn load_exr_multipart_image_from_memory_as_tinyexr(exr_headers: &mut [ExrHeader], memory: &[u8]) -> Result<Vec<ExrImage>, ExrError> {
+pub fn load_exr_multipart_image_from_memory_as_tinyexr(
+    exr_headers: &mut [ExrHeader],
+    memory: &[u8],
+) -> Result<Vec<ExrImage>, ExrError> {
     load_parts(exr_headers, memory, true)
 }
 
-fn load_parts(exr_headers: &mut [ExrHeader], memory: &[u8], as_tinyexr: bool) -> Result<Vec<ExrImage>, ExrError> {
+fn load_parts(
+    exr_headers: &mut [ExrHeader],
+    memory: &[u8],
+    as_tinyexr: bool,
+) -> Result<Vec<ExrImage>, ExrError> {
     let headers_before = exr_headers.to_vec();
     let mut divergence: Option<Divergence> = None;
     let result = load_parts_with_zeros(exr_headers, memory, as_tinyexr, &mut divergence);
@@ -190,21 +265,35 @@ fn load_parts(exr_headers: &mut [ExrHeader], memory: &[u8], as_tinyexr: bool) ->
 
 /// The original, with zeros past the end of the file: and where it first read past the end in
 /// a way ones there would have stopped it, how.
-fn load_parts_with_zeros(exr_headers: &mut [ExrHeader], memory: &[u8], as_tinyexr: bool, divergence: &mut Option<Divergence>) -> Result<Vec<ExrImage>, ExrError> {
+fn load_parts_with_zeros(
+    exr_headers: &mut [ExrHeader],
+    memory: &[u8],
+    as_tinyexr: bool,
+    divergence: &mut Option<Divergence>,
+) -> Result<Vec<ExrImage>, ExrError> {
     let size = memory.len();
     let num_parts = exr_headers.len();
     if num_parts == 0 || size <= EXR_VERSION_SIZE {
-        return Err(ExrError { code: ERROR_INVALID_ARGUMENT, message: "Invalid argument for LoadEXRMultipartImageFromMemory()".to_string() });
+        return Err(ExrError {
+            code: ERROR_INVALID_ARGUMENT,
+            message: "Invalid argument for LoadEXRMultipartImageFromMemory()".to_string(),
+        });
     }
     fn fail<T>(message: &str) -> Result<T, ExrError> {
-        Err(ExrError { code: ERROR_INVALID_DATA, message: message.to_string() })
+        Err(ExrError {
+            code: ERROR_INVALID_DATA,
+            message: message.to_string(),
+        })
     }
 
     // compute total header size.
     let mut total_header_size = 0usize;
     for exr_header in exr_headers.iter() {
         if exr_header.header_len == 0 {
-            return Err(ExrError { code: ERROR_INVALID_ARGUMENT, message: "EXRHeader variable is not initialized.".to_string() });
+            return Err(ExrError {
+                code: ERROR_INVALID_ARGUMENT,
+                message: "EXRHeader variable is not initialized.".to_string(),
+            });
         }
         total_header_size += exr_header.header_len as usize;
     }
@@ -258,7 +347,8 @@ fn load_parts_with_zeros(exr_headers: &mut [ExrHeader], memory: &[u8], as_tinyex
             let Some((num_x_tiles, num_y_tiles)) = precalculate_tile_info(exr_header) else {
                 return fail("Invalid tile info.");
             };
-            let (shape, num_blocks) = tile_offsets_shape(&mut offset_data, exr_header, &num_x_tiles, &num_y_tiles);
+            let (shape, num_blocks) =
+                tile_offsets_shape(&mut offset_data, exr_header, &num_x_tiles, &num_y_tiles);
             if num_blocks != exr_header.chunk_count {
                 return fail("Invalid offset table size.");
             }
@@ -288,15 +378,30 @@ fn load_parts_with_zeros(exr_headers: &mut [ExrHeader], memory: &[u8], as_tinyex
             }
             if beyond && divergence.is_none() {
                 // (With ones past the end, the number is never `i`.)
-                *divergence = Some(Divergence { error: ExrError { code: ERROR_INVALID_DATA, message: "Invalid `part number' in EXR header chunks.".to_string() } });
+                *divergence = Some(Divergence {
+                    error: ExrError {
+                        code: ERROR_INVALID_DATA,
+                        message: "Invalid `part number' in EXR header chunks.".to_string(),
+                    },
+                });
             }
         }
 
         let mut exr_image = ExrImage::default();
         let mut e = String::new();
-        let ret = decode_chunk(&mut exr_image, &mut exr_headers[i], offset_data, memory, &mut e, as_tinyexr);
+        let ret = decode_chunk(
+            &mut exr_image,
+            &mut exr_headers[i],
+            offset_data,
+            memory,
+            &mut e,
+            as_tinyexr,
+        );
         if ret != 0 {
-            return Err(ExrError { code: ret, message: e });
+            return Err(ExrError {
+                code: ret,
+                message: e,
+            });
         }
         exr_images.push(exr_image);
     }
@@ -307,14 +412,27 @@ fn load_parts_with_zeros(exr_headers: &mut [ExrHeader], memory: &[u8], as_tinyex
 #[cfg(test)]
 mod tests {
     use super::super::{
-        load_exr_multipart_image_from_memory, parse_exr_multipart_header_from_memory, parse_exr_version_from_memory, save_exr_multipart_image_to_memory, ChannelData, ChannelInfo, ExrHeader, ExrImage,
-        COMPRESSIONTYPE_ZIP, PIXELTYPE_FLOAT, PIXELTYPE_HALF,
+        load_exr_multipart_image_from_memory, parse_exr_multipart_header_from_memory,
+        parse_exr_version_from_memory, save_exr_multipart_image_to_memory, ChannelData,
+        ChannelInfo, ExrHeader, ExrImage, COMPRESSIONTYPE_ZIP, PIXELTYPE_FLOAT, PIXELTYPE_HALF,
     };
 
     fn part(name: &str, width: i32, height: i32, value: f32) -> (ExrImage, ExrHeader) {
-        let image = ExrImage { images: vec![ChannelData::Float(vec![value; (width * height) as usize])], width, height, num_channels: 1, ..ExrImage::default() };
+        let image = ExrImage {
+            images: vec![ChannelData::Float(vec![value; (width * height) as usize])],
+            width,
+            height,
+            num_channels: 1,
+            ..ExrImage::default()
+        };
         let header = ExrHeader {
-            channels: vec![ChannelInfo { name: "Y".to_string(), pixel_type: PIXELTYPE_HALF, x_sampling: 1, y_sampling: 1, p_linear: 0 }],
+            channels: vec![ChannelInfo {
+                name: "Y".to_string(),
+                pixel_type: PIXELTYPE_HALF,
+                x_sampling: 1,
+                y_sampling: 1,
+                p_linear: 0,
+            }],
             pixel_types: vec![PIXELTYPE_FLOAT],
             requested_pixel_types: vec![PIXELTYPE_HALF],
             compression_type: COMPRESSIONTYPE_ZIP,
@@ -332,9 +450,23 @@ mod tests {
         let version = parse_exr_version_from_memory(&file).unwrap();
         assert!(version.multipart);
         let mut headers = parse_exr_multipart_header_from_memory(&version, &file).unwrap();
-        assert_eq!(headers.iter().map(|header| header.name.as_str()).collect::<Vec<_>>(), ["left", "right"]);
+        assert_eq!(
+            headers
+                .iter()
+                .map(|header| header.name.as_str())
+                .collect::<Vec<_>>(),
+            ["left", "right"]
+        );
         let images = load_exr_multipart_image_from_memory(&mut headers, &file).unwrap();
-        assert_eq!((images[0].width, images[0].height, images[1].width, images[1].height), (20, 17, 3, 40));
+        assert_eq!(
+            (
+                images[0].width,
+                images[0].height,
+                images[1].width,
+                images[1].height
+            ),
+            (20, 17, 3, 40)
+        );
         assert_eq!(images[1].images[0], ChannelData::Half(vec![0x4000; 120]));
     }
 
@@ -342,12 +474,20 @@ mod tests {
     fn parts_need_names_of_their_own() {
         let (a, a_header) = part("same", 2, 2, 1.0);
         let (b, b_header) = part("same", 2, 2, 1.0);
-        let error = save_exr_multipart_image_to_memory(&[(&a, &a_header), (&b, &b_header)]).unwrap_err();
-        assert_eq!(error.message, "'name' attributes must be unique for a multi-part file");
+        let error =
+            save_exr_multipart_image_to_memory(&[(&a, &a_header), (&b, &b_header)]).unwrap_err();
+        assert_eq!(
+            error.message,
+            "'name' attributes must be unique for a multi-part file"
+        );
         let (c, mut c_header) = part("", 2, 2, 1.0);
         c_header.name.clear();
-        let error = save_exr_multipart_image_to_memory(&[(&a, &a_header), (&c, &c_header)]).unwrap_err();
-        assert_eq!(error.message, "Invalid 'name' attribute for a multi-part file");
+        let error =
+            save_exr_multipart_image_to_memory(&[(&a, &a_header), (&c, &c_header)]).unwrap_err();
+        assert_eq!(
+            error.message,
+            "Invalid 'name' attribute for a multi-part file"
+        );
     }
 
     #[test]
@@ -358,7 +498,12 @@ mod tests {
         let version = parse_exr_version_from_memory(&file).unwrap();
         let mut headers = parse_exr_multipart_header_from_memory(&version, &file).unwrap();
         // Cut in the table of offsets: the original reads the rest of it past the end.
-        let end_of_headers = 8 + headers.iter().map(|header| header.header_len as usize).sum::<usize>() + 1;
+        let end_of_headers = 8
+            + headers
+                .iter()
+                .map(|header| header.header_len as usize)
+                .sum::<usize>()
+            + 1;
         let cut = &file[..end_of_headers + 12];
         assert!(load_exr_multipart_image_from_memory(&mut headers, cut).is_err());
     }

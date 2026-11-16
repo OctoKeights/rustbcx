@@ -21,12 +21,20 @@ pub struct Image {
 impl Image {
     /// An image of this size, black and opaque (as bc7enc_rdo's `image_u8` starts).
     pub fn new(width: u32, height: u32) -> Image {
-        Image { width, height, pixels: vec![[0, 0, 0, 255]; width as usize * height as usize] }
+        Image {
+            width,
+            height,
+            pixels: vec![[0, 0, 0, 255]; width as usize * height as usize],
+        }
     }
 
     /// An image from its pixels. None when there are not `width * height` of them.
     pub fn from_pixels(width: u32, height: u32, pixels: Vec<ColorRgba>) -> Option<Image> {
-        (pixels.len() == width as usize * height as usize).then_some(Image { width, height, pixels })
+        (pixels.len() == width as usize * height as usize).then_some(Image {
+            width,
+            height,
+            pixels,
+        })
     }
 
     /// An image from bytes, four to a pixel (red, green, blue, alpha). None when there are not
@@ -35,7 +43,14 @@ impl Image {
         if bytes.len() != width as usize * height as usize * 4 {
             return None;
         }
-        Some(Image { width, height, pixels: bytes.chunks_exact(4).map(|pixel| [pixel[0], pixel[1], pixel[2], pixel[3]]).collect() })
+        Some(Image {
+            width,
+            height,
+            pixels: bytes
+                .chunks_exact(4)
+                .map(|pixel| [pixel[0], pixel[1], pixel[2], pixel[3]])
+                .collect(),
+        })
     }
 
     /// The pixels as bytes, four to a pixel.
@@ -92,14 +107,16 @@ impl Image {
             if width > orig_w {
                 for x in orig_w..width {
                     for y in 0..height {
-                        new_image.pixels[x as usize + y as usize * width as usize] = new_image.get_clamped(x.min(orig_w - 1) as i32, y.min(orig_h - 1) as i32);
+                        new_image.pixels[x as usize + y as usize * width as usize] = new_image
+                            .get_clamped(x.min(orig_w - 1) as i32, y.min(orig_h - 1) as i32);
                     }
                 }
             }
             if height > orig_h {
                 for y in orig_h..height {
                     for x in 0..width {
-                        new_image.pixels[x as usize + y as usize * width as usize] = new_image.get_clamped(x.min(orig_w - 1) as i32, y.min(orig_h - 1) as i32);
+                        new_image.pixels[x as usize + y as usize * width as usize] = new_image
+                            .get_clamped(x.min(orig_w - 1) as i32, y.min(orig_h - 1) as i32);
                     }
                 }
             }
@@ -118,11 +135,24 @@ impl Image {
             for x in 0..width {
                 // (A side of one pixel has nothing beside it: the pixel counts twice.)
                 let (x0, y0) = ((x * 2).min(self.width - 1), (y * 2).min(self.height - 1));
-                let (x1, y1) = ((x * 2 + 1).min(self.width - 1), (y * 2 + 1).min(self.height - 1));
-                let (a, b, c, d) = (self.pixel(x0, y0), self.pixel(x1, y0), self.pixel(x0, y1), self.pixel(x1, y1));
+                let (x1, y1) = (
+                    (x * 2 + 1).min(self.width - 1),
+                    (y * 2 + 1).min(self.height - 1),
+                );
+                let (a, b, c, d) = (
+                    self.pixel(x0, y0),
+                    self.pixel(x1, y0),
+                    self.pixel(x0, y1),
+                    self.pixel(x1, y1),
+                );
                 let mut pixel = [0u8; 4];
                 for (channel, value) in pixel.iter_mut().enumerate() {
-                    *value = ((u32::from(a[channel]) + u32::from(b[channel]) + u32::from(c[channel]) + u32::from(d[channel]) + 2) / 4) as u8;
+                    *value = ((u32::from(a[channel])
+                        + u32::from(b[channel])
+                        + u32::from(c[channel])
+                        + u32::from(d[channel])
+                        + 2)
+                        / 4) as u8;
                 }
                 half.pixels[(x + y * width) as usize] = pixel;
             }
@@ -138,16 +168,34 @@ impl Image {
     ///
     /// When the two are not of one size.
     pub fn half_with(&self, behind: &Image) -> Image {
-        assert_eq!((self.width, self.height), (behind.width, behind.height), "two slices of one size");
+        assert_eq!(
+            (self.width, self.height),
+            (behind.width, behind.height),
+            "two slices of one size"
+        );
         let (width, height) = ((self.width / 2).max(1), (self.height / 2).max(1));
         let mut half = Image::new(width, height);
         for y in 0..height {
             for x in 0..width {
                 let (x0, y0) = ((x * 2).min(self.width - 1), (y * 2).min(self.height - 1));
-                let (x1, y1) = ((x * 2 + 1).min(self.width - 1), (y * 2 + 1).min(self.height - 1));
+                let (x1, y1) = (
+                    (x * 2 + 1).min(self.width - 1),
+                    (y * 2 + 1).min(self.height - 1),
+                );
                 let mut pixel = [0u8; 4];
                 for (channel, value) in pixel.iter_mut().enumerate() {
-                    let sum: u32 = [self, behind].iter().flat_map(|slice| [slice.pixel(x0, y0), slice.pixel(x1, y0), slice.pixel(x0, y1), slice.pixel(x1, y1)]).map(|pixel| u32::from(pixel[channel])).sum();
+                    let sum: u32 = [self, behind]
+                        .iter()
+                        .flat_map(|slice| {
+                            [
+                                slice.pixel(x0, y0),
+                                slice.pixel(x1, y0),
+                                slice.pixel(x0, y1),
+                                slice.pixel(x1, y1),
+                            ]
+                        })
+                        .map(|pixel| u32::from(pixel[channel]))
+                        .sum();
                     *value = ((sum + 4) / 8) as u8;
                 }
                 half.pixels[(x + y * width) as usize] = pixel;
@@ -163,7 +211,12 @@ impl Image {
         if slices.is_empty() {
             return Vec::new();
         }
-        (0..(slices.len() / 2).max(1)).map(|z| slices[(z * 2).min(slices.len() - 1)].half_with(&slices[(z * 2 + 1).min(slices.len() - 1)])).collect()
+        (0..(slices.len() / 2).max(1))
+            .map(|z| {
+                slices[(z * 2).min(slices.len() - 1)]
+                    .half_with(&slices[(z * 2 + 1).min(slices.len() - 1)])
+            })
+            .collect()
     }
 
     /// The image upside down.
@@ -171,7 +224,8 @@ impl Image {
         let mut flipped = Image::new(self.width, self.height);
         for y in 0..self.height {
             for x in 0..self.width {
-                flipped.pixels[x as usize + (self.height - 1 - y) as usize * self.width as usize] = self.pixel(x, y);
+                flipped.pixels[x as usize + (self.height - 1 - y) as usize * self.width as usize] =
+                    self.pixel(x, y);
             }
         }
         flipped
@@ -183,14 +237,23 @@ impl Image {
     /// down to 8, and an HDR file's floats with a gamma of 2.2. Of a GIF, the first frame.
     pub fn from_file_bytes(file: &[u8]) -> Result<Image, LoadError> {
         let loaded = stb_image::load_from_memory(file, 4, &LoadOptions::default())?;
-        Ok(Image { width: loaded.x as u32, height: loaded.y as u32, pixels: loaded.data.chunks_exact(4).map(|pixel| [pixel[0], pixel[1], pixel[2], pixel[3]]).collect() })
+        Ok(Image {
+            width: loaded.x as u32,
+            height: loaded.y as u32,
+            pixels: loaded
+                .data
+                .chunks_exact(4)
+                .map(|pixel| [pixel[0], pixel[1], pixel[2], pixel[3]])
+                .collect(),
+        })
     }
 
     /// Reads an image file from disk, of any kind [`Image::from_file_bytes`] reads. A file that
     /// is none of them, or is damaged, comes back as an error of the kind `InvalidData`, with
     /// the [`LoadError`] inside.
     pub fn load(path: impl AsRef<Path>) -> std::io::Result<Image> {
-        Image::from_file_bytes(&std::fs::read(path)?).map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
+        Image::from_file_bytes(&std::fs::read(path)?)
+            .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
     }
 
     /// Whether every pixel is opaque.
@@ -200,12 +263,23 @@ impl Image {
 
     /// The pixels as the writers take them: three bytes each when all are opaque, else four.
     fn for_file(&self) -> Option<(i32, i32, i32, Vec<u8>)> {
-        let (width, height) = (i32::try_from(self.width).ok()?, i32::try_from(self.height).ok()?);
+        let (width, height) = (
+            i32::try_from(self.width).ok()?,
+            i32::try_from(self.height).ok()?,
+        );
         if self.pixels.len() != self.width as usize * self.height as usize {
             return None;
         }
         if self.is_opaque() {
-            Some((width, height, 3, self.pixels.iter().flat_map(|pixel| [pixel[0], pixel[1], pixel[2]]).collect()))
+            Some((
+                width,
+                height,
+                3,
+                self.pixels
+                    .iter()
+                    .flat_map(|pixel| [pixel[0], pixel[1], pixel[2]])
+                    .collect(),
+            ))
         } else {
             Some((width, height, 4, self.as_rgba8().to_vec()))
         }
@@ -228,11 +302,22 @@ impl Image {
     /// The image as the bytes of a `.jpg` file, at a quality from 1 to 100. The format holds
     /// no alpha, and loses a little of the colour. None for an image of no pixels.
     pub fn to_jpg(&self, quality: i32) -> Option<Vec<u8>> {
-        let (width, height) = (i32::try_from(self.width).ok()?, i32::try_from(self.height).ok()?);
+        let (width, height) = (
+            i32::try_from(self.width).ok()?,
+            i32::try_from(self.height).ok()?,
+        );
         if self.pixels.len() != self.width as usize * self.height as usize {
             return None;
         }
-        stb_image_write::write_jpg(width, height, 4, self.as_rgba8(), quality.clamp(1, 100), 0, &WriteOptions::default())
+        stb_image_write::write_jpg(
+            width,
+            height,
+            4,
+            self.as_rgba8(),
+            quality.clamp(1, 100),
+            0,
+            &WriteOptions::default(),
+        )
     }
 
     /// Writes the image to disk as the file its name ends in says: `.png`, `.bmp`, or `.jpg`
@@ -240,14 +325,24 @@ impl Image {
     /// image of no pixels, is an error of the kind `InvalidInput`.
     pub fn save(&self, path: impl AsRef<Path>) -> std::io::Result<()> {
         let path = path.as_ref();
-        let extension = path.extension().and_then(|extension| extension.to_str()).map(str::to_ascii_lowercase);
+        let extension = path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .map(str::to_ascii_lowercase);
         let file = match extension.as_deref() {
             Some("png") => self.to_png(),
             Some("bmp") => self.to_bmp(),
             Some("jpg" | "jpeg") => self.to_jpg(90),
-            _ => return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "the file name has to end in .png, .bmp, .jpg or .jpeg")),
+            _ => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "the file name has to end in .png, .bmp, .jpg or .jpeg",
+                ))
+            }
         };
-        let file = file.ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, "the image has no pixels"))?;
+        let file = file.ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::InvalidInput, "the image has no pixels")
+        })?;
         std::fs::write(path, file)
     }
 }
@@ -264,7 +359,11 @@ pub struct HdrImage {
 impl HdrImage {
     /// An image of this size, black.
     pub fn new(width: u32, height: u32) -> HdrImage {
-        HdrImage { width, height, pixels: vec![[0; 3]; width as usize * height as usize] }
+        HdrImage {
+            width,
+            height,
+            pixels: vec![[0; 3]; width as usize * height as usize],
+        }
     }
 
     /// An image from floats, three to a pixel (red, green, blue). Each is brought into what an
@@ -274,8 +373,21 @@ impl HdrImage {
         if values.len() != width as usize * height as usize * 3 {
             return None;
         }
-        let half = |value: f32| if value > 0.0 { float_to_half(value).min(0x7bff) } else { 0 };
-        Some(HdrImage { width, height, pixels: values.chunks_exact(3).map(|pixel| [half(pixel[0]), half(pixel[1]), half(pixel[2])]).collect() })
+        let half = |value: f32| {
+            if value > 0.0 {
+                float_to_half(value).min(0x7bff)
+            } else {
+                0
+            }
+        };
+        Some(HdrImage {
+            width,
+            height,
+            pixels: values
+                .chunks_exact(3)
+                .map(|pixel| [half(pixel[0]), half(pixel[1]), half(pixel[2])])
+                .collect(),
+        })
     }
 
     /// An image from floats, three to a pixel, with what is below zero kept: for signed BC6H.
@@ -285,19 +397,42 @@ impl HdrImage {
         if values.len() != width as usize * height as usize * 3 {
             return None;
         }
-        let half = |value: f32| if value.is_nan() { 0 } else { float_to_half(value.clamp(-65504.0, 65504.0)) };
-        Some(HdrImage { width, height, pixels: values.chunks_exact(3).map(|pixel| [half(pixel[0]), half(pixel[1]), half(pixel[2])]).collect() })
+        let half = |value: f32| {
+            if value.is_nan() {
+                0
+            } else {
+                float_to_half(value.clamp(-65504.0, 65504.0))
+            }
+        };
+        Some(HdrImage {
+            width,
+            height,
+            pixels: values
+                .chunks_exact(3)
+                .map(|pixel| [half(pixel[0]), half(pixel[1]), half(pixel[2])])
+                .collect(),
+        })
     }
 
     /// The pixels as floats, three to a pixel.
     pub fn to_rgb_f32(&self) -> Vec<f32> {
-        self.pixels.as_flattened().iter().map(|&half| half_to_float(half)).collect()
+        self.pixels
+            .as_flattened()
+            .iter()
+            .map(|&half| half_to_float(half))
+            .collect()
     }
 
     /// The red, green and blue of a `.exr` file as floats, read by [`crate::tinyexr`].
     fn exr_floats(file: &[u8]) -> Result<(u32, u32, Vec<f32>), ExrError> {
         let (rgba, width, height) = tinyexr::load_exr_from_memory(file)?;
-        Ok((width as u32, height as u32, rgba.chunks_exact(4).flat_map(|pixel| [pixel[0], pixel[1], pixel[2]]).collect()))
+        Ok((
+            width as u32,
+            height as u32,
+            rgba.chunks_exact(4)
+                .flat_map(|pixel| [pixel[0], pixel[1], pixel[2]])
+                .collect(),
+        ))
     }
 
     /// The image in the bytes of a `.exr` file, read by [`crate::tinyexr`]: its channels
@@ -320,7 +455,10 @@ impl HdrImage {
     /// values are never below zero.)
     pub fn from_hdr_bytes(file: &[u8]) -> Result<HdrImage, LoadError> {
         let loaded = stb_image::loadf_from_memory(file, 3, &LoadOptions::default())?;
-        Ok(HdrImage::from_rgb_f32(loaded.x as u32, loaded.y as u32, &loaded.data).unwrap_or_default())
+        Ok(
+            HdrImage::from_rgb_f32(loaded.x as u32, loaded.y as u32, &loaded.data)
+                .unwrap_or_default(),
+        )
     }
 
     /// Reads a `.exr` or Radiance `.hdr` file from disk, whichever its bytes say it is. A file
@@ -329,9 +467,11 @@ impl HdrImage {
     pub fn load(path: impl AsRef<Path>) -> std::io::Result<HdrImage> {
         let file = std::fs::read(path)?;
         if stb_image::is_hdr_from_memory(&file) {
-            return HdrImage::from_hdr_bytes(&file).map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error));
+            return HdrImage::from_hdr_bytes(&file)
+                .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error));
         }
-        HdrImage::from_file_bytes(&file).map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
+        HdrImage::from_file_bytes(&file)
+            .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
     }
 
     /// Reads a `.exr` file from disk, with what is below zero kept
@@ -340,9 +480,11 @@ impl HdrImage {
     pub fn load_signed(path: impl AsRef<Path>) -> std::io::Result<HdrImage> {
         let file = std::fs::read(path)?;
         if stb_image::is_hdr_from_memory(&file) {
-            return HdrImage::from_hdr_bytes(&file).map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error));
+            return HdrImage::from_hdr_bytes(&file)
+                .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error));
         }
-        HdrImage::from_file_bytes_signed(&file).map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
+        HdrImage::from_file_bytes_signed(&file)
+            .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
     }
 
     /// The image as the bytes of a `.exr` file, written by [`crate::tinyexr`]: channels `B`,
@@ -350,17 +492,41 @@ impl HdrImage {
     /// loses nothing), or not at all when the image is less than sixteen pixels each way, as
     /// tinyexr's `SaveEXR` chooses. None for an image of no pixels.
     pub fn to_exr(&self) -> Option<Vec<u8>> {
-        let (width, height) = (i32::try_from(self.width).ok()?, i32::try_from(self.height).ok()?);
-        if self.pixels.is_empty() || self.pixels.len() != self.width as usize * self.height as usize {
+        let (width, height) = (
+            i32::try_from(self.width).ok()?,
+            i32::try_from(self.height).ok()?,
+        );
+        if self.pixels.is_empty() || self.pixels.len() != self.width as usize * self.height as usize
+        {
             return None;
         }
-        let channel = |k: usize| ChannelData::Half(self.pixels.iter().map(|pixel| pixel[k]).collect());
-        let image = ExrImage { images: vec![channel(2), channel(1), channel(0)], width, height, num_channels: 3, ..ExrImage::default() };
+        let channel =
+            |k: usize| ChannelData::Half(self.pixels.iter().map(|pixel| pixel[k]).collect());
+        let image = ExrImage {
+            images: vec![channel(2), channel(1), channel(0)],
+            width,
+            height,
+            num_channels: 3,
+            ..ExrImage::default()
+        };
         let header = ExrHeader {
-            channels: ["B", "G", "R"].iter().map(|name| ChannelInfo { name: name.to_string(), pixel_type: tinyexr::PIXELTYPE_HALF, x_sampling: 1, y_sampling: 1, p_linear: 0 }).collect(),
+            channels: ["B", "G", "R"]
+                .iter()
+                .map(|name| ChannelInfo {
+                    name: name.to_string(),
+                    pixel_type: tinyexr::PIXELTYPE_HALF,
+                    x_sampling: 1,
+                    y_sampling: 1,
+                    p_linear: 0,
+                })
+                .collect(),
             pixel_types: vec![tinyexr::PIXELTYPE_HALF; 3],
             requested_pixel_types: vec![tinyexr::PIXELTYPE_HALF; 3],
-            compression_type: if width < 16 && height < 16 { tinyexr::COMPRESSIONTYPE_NONE } else { tinyexr::COMPRESSIONTYPE_ZIP },
+            compression_type: if width < 16 && height < 16 {
+                tinyexr::COMPRESSIONTYPE_NONE
+            } else {
+                tinyexr::COMPRESSIONTYPE_ZIP
+            },
             ..ExrHeader::default()
         };
         tinyexr::save_exr_image_to_memory(&image, &header).ok()
@@ -370,10 +536,19 @@ impl HdrImage {
     /// of no pixels, is an error of the kind `InvalidInput`.
     pub fn save(&self, path: impl AsRef<Path>) -> std::io::Result<()> {
         let path = path.as_ref();
-        if !path.extension().and_then(|extension| extension.to_str()).is_some_and(|extension| extension.eq_ignore_ascii_case("exr")) {
-            return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "the file name has to end in .exr"));
+        if !path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("exr"))
+        {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "the file name has to end in .exr",
+            ));
         }
-        let file = self.to_exr().ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidInput, "the image has no pixels"))?;
+        let file = self.to_exr().ok_or_else(|| {
+            std::io::Error::new(std::io::ErrorKind::InvalidInput, "the image has no pixels")
+        })?;
         std::fs::write(path, file)
     }
 
@@ -388,7 +563,10 @@ impl HdrImage {
         let mut block = [[0u16; 3]; 16];
         for y in 0..4 {
             for x in 0..4 {
-                block[(y * 4 + x) as usize] = self.pixel((bx * 4 + x).min(self.width - 1), (by * 4 + y).min(self.height - 1));
+                block[(y * 4 + x) as usize] = self.pixel(
+                    (bx * 4 + x).min(self.width - 1),
+                    (by * 4 + y).min(self.height - 1),
+                );
             }
         }
         block
@@ -402,11 +580,22 @@ impl HdrImage {
         for y in 0..height {
             for x in 0..width {
                 let (x0, y0) = ((x * 2).min(self.width - 1), (y * 2).min(self.height - 1));
-                let (x1, y1) = ((x * 2 + 1).min(self.width - 1), (y * 2 + 1).min(self.height - 1));
-                let (a, b, c, d) = (self.pixel(x0, y0), self.pixel(x1, y0), self.pixel(x0, y1), self.pixel(x1, y1));
+                let (x1, y1) = (
+                    (x * 2 + 1).min(self.width - 1),
+                    (y * 2 + 1).min(self.height - 1),
+                );
+                let (a, b, c, d) = (
+                    self.pixel(x0, y0),
+                    self.pixel(x1, y0),
+                    self.pixel(x0, y1),
+                    self.pixel(x1, y1),
+                );
                 let mut pixel = [0u16; 3];
                 for (channel, value) in pixel.iter_mut().enumerate() {
-                    let sum = half_to_float(a[channel]) + half_to_float(b[channel]) + half_to_float(c[channel]) + half_to_float(d[channel]);
+                    let sum = half_to_float(a[channel])
+                        + half_to_float(b[channel])
+                        + half_to_float(c[channel])
+                        + half_to_float(d[channel]);
                     *value = float_to_half(sum * 0.25);
                 }
                 half.pixels[(x + y * width) as usize] = pixel;
@@ -423,16 +612,28 @@ impl HdrImage {
     ///
     /// When the two are not of one size.
     pub fn half_with(&self, behind: &HdrImage) -> HdrImage {
-        assert_eq!((self.width, self.height), (behind.width, behind.height), "two slices of one size");
+        assert_eq!(
+            (self.width, self.height),
+            (behind.width, behind.height),
+            "two slices of one size"
+        );
         let (width, height) = ((self.width / 2).max(1), (self.height / 2).max(1));
         let mut half = HdrImage::new(width, height);
         for y in 0..height {
             for x in 0..width {
                 let (x0, y0) = ((x * 2).min(self.width - 1), (y * 2).min(self.height - 1));
-                let (x1, y1) = ((x * 2 + 1).min(self.width - 1), (y * 2 + 1).min(self.height - 1));
+                let (x1, y1) = (
+                    (x * 2 + 1).min(self.width - 1),
+                    (y * 2 + 1).min(self.height - 1),
+                );
                 let mut pixel = [0u16; 3];
                 for (channel, value) in pixel.iter_mut().enumerate() {
-                    let sum_of = |slice: &HdrImage| half_to_float(slice.pixel(x0, y0)[channel]) + half_to_float(slice.pixel(x1, y0)[channel]) + half_to_float(slice.pixel(x0, y1)[channel]) + half_to_float(slice.pixel(x1, y1)[channel]);
+                    let sum_of = |slice: &HdrImage| {
+                        half_to_float(slice.pixel(x0, y0)[channel])
+                            + half_to_float(slice.pixel(x1, y0)[channel])
+                            + half_to_float(slice.pixel(x0, y1)[channel])
+                            + half_to_float(slice.pixel(x1, y1)[channel])
+                    };
                     *value = float_to_half((sum_of(self) + sum_of(behind)) * 0.125);
                 }
                 half.pixels[(x + y * width) as usize] = pixel;
@@ -448,7 +649,12 @@ impl HdrImage {
         if slices.is_empty() {
             return Vec::new();
         }
-        (0..(slices.len() / 2).max(1)).map(|z| slices[(z * 2).min(slices.len() - 1)].half_with(&slices[(z * 2 + 1).min(slices.len() - 1)])).collect()
+        (0..(slices.len() / 2).max(1))
+            .map(|z| {
+                slices[(z * 2).min(slices.len() - 1)]
+                    .half_with(&slices[(z * 2 + 1).min(slices.len() - 1)])
+            })
+            .collect()
     }
 }
 
@@ -460,7 +666,12 @@ mod tests {
     fn images_go_to_files_and_come_back() {
         let mut image = Image::new(13, 9);
         for (i, pixel) in image.pixels.iter_mut().enumerate() {
-            *pixel = [(i * 2) as u8, 100 + (i % 13) as u8, 200 - (i / 13) as u8, 255];
+            *pixel = [
+                (i * 2) as u8,
+                100 + (i % 13) as u8,
+                200 - (i / 13) as u8,
+                255,
+            ];
         }
         // Opaque: three channels in the file, the same pixels back.
         let png = image.to_png().unwrap();
@@ -471,7 +682,11 @@ mod tests {
         assert_eq!(Image::from_file_bytes(&bmp).unwrap(), image);
         let jpg = Image::from_file_bytes(&image.to_jpg(95).unwrap()).unwrap();
         assert_eq!((jpg.width, jpg.height), (13, 9));
-        assert!(jpg.pixels.iter().zip(&image.pixels).all(|(a, b)| (0..3).all(|c| a[c].abs_diff(b[c]) < 40) && a[3] == 255));
+        assert!(jpg
+            .pixels
+            .iter()
+            .zip(&image.pixels)
+            .all(|(a, b)| (0..3).all(|c| a[c].abs_diff(b[c]) < 40) && a[3] == 255));
         // With alpha: four.
         image.pixels[5][3] = 17;
         let png = image.to_png().unwrap();
@@ -481,7 +696,8 @@ mod tests {
         assert_eq!(u16::from_le_bytes([bmp[28], bmp[29]]), 32);
         assert_eq!(Image::from_file_bytes(&bmp).unwrap(), image);
         // To disk, by the name's ending.
-        let folder = std::env::temp_dir().join(format!("rustbcx-image-test-{}", std::process::id()));
+        let folder =
+            std::env::temp_dir().join(format!("rustbcx-image-test-{}", std::process::id()));
         std::fs::create_dir_all(&folder).unwrap();
         for name in ["a.png", "a.BMP"] {
             image.save(folder.join(name)).unwrap();
@@ -489,13 +705,26 @@ mod tests {
         }
         image.save(folder.join("a.jpeg")).unwrap();
         assert_eq!(Image::load(folder.join("a.jpeg")).unwrap().width, 13);
-        assert_eq!(image.save(folder.join("a.gif")).unwrap_err().kind(), std::io::ErrorKind::InvalidInput);
+        assert_eq!(
+            image.save(folder.join("a.gif")).unwrap_err().kind(),
+            std::io::ErrorKind::InvalidInput
+        );
         std::fs::write(folder.join("b.png"), b"not a picture").unwrap();
-        assert_eq!(Image::load(folder.join("b.png")).unwrap_err().kind(), std::io::ErrorKind::InvalidData);
+        assert_eq!(
+            Image::load(folder.join("b.png")).unwrap_err().kind(),
+            std::io::ErrorKind::InvalidData
+        );
         std::fs::remove_dir_all(&folder).unwrap();
         // No pixels, no file.
-        assert!(Image::new(0, 4).to_png().is_none() && Image::new(0, 4).to_bmp().is_none() && Image::new(4, 0).to_jpg(90).is_none());
-        assert_eq!(Image::from_file_bytes(&[]), Err(LoadError("unknown image type")));
+        assert!(
+            Image::new(0, 4).to_png().is_none()
+                && Image::new(0, 4).to_bmp().is_none()
+                && Image::new(4, 0).to_jpg(90).is_none()
+        );
+        assert_eq!(
+            Image::from_file_bytes(&[]),
+            Err(LoadError("unknown image type"))
+        );
     }
 
     #[test]
@@ -515,7 +744,15 @@ mod tests {
 
     #[test]
     fn half_averages_two_by_two() {
-        let image = Image::from_rgba8(4, 2, &[0, 0, 0, 255, 2, 0, 0, 255, 10, 0, 0, 255, 10, 0, 0, 255, 4, 0, 0, 255, 7, 0, 0, 255, 10, 0, 0, 255, 11, 0, 0, 255]).unwrap();
+        let image = Image::from_rgba8(
+            4,
+            2,
+            &[
+                0, 0, 0, 255, 2, 0, 0, 255, 10, 0, 0, 255, 10, 0, 0, 255, 4, 0, 0, 255, 7, 0, 0,
+                255, 10, 0, 0, 255, 11, 0, 0, 255,
+            ],
+        )
+        .unwrap();
         let half = image.half();
         assert_eq!((half.width, half.height), (2, 1));
         // (0 + 2 + 4 + 7 + 2) / 4 and (10 + 10 + 10 + 11 + 2) / 4.
@@ -535,7 +772,11 @@ mod tests {
             let mut image = HdrImage::new(width, height);
             for (i, pixel) in image.pixels.iter_mut().enumerate() {
                 // Halves from 0 up to 4 or so, a different one for each colour.
-                *pixel = [0x3000 + (i as u16 * 7) % 0x1000, (i as u16 * 13) % 0x4400, 0x3c00];
+                *pixel = [
+                    0x3000 + (i as u16 * 7) % 0x1000,
+                    (i as u16 * 13) % 0x4400,
+                    0x3c00,
+                ];
             }
             let file = image.to_exr().unwrap();
             assert_eq!(&file[..4], &[0x76, 0x2f, 0x31, 0x01]);
@@ -544,25 +785,44 @@ mod tests {
             // The file is what tinyexr's reader says: three channels of halves.
             let version = tinyexr::parse_exr_version_from_memory(&file).unwrap();
             let header = tinyexr::parse_exr_header_from_memory(&version, &file).unwrap();
-            assert_eq!(header.channels.iter().map(|channel| channel.name.as_str()).collect::<Vec<_>>(), ["B", "G", "R"]);
+            assert_eq!(
+                header
+                    .channels
+                    .iter()
+                    .map(|channel| channel.name.as_str())
+                    .collect::<Vec<_>>(),
+                ["B", "G", "R"]
+            );
             assert_eq!(header.pixel_types, [tinyexr::PIXELTYPE_HALF; 3]);
-            assert_eq!(header.compression_type, if width < 16 { tinyexr::COMPRESSIONTYPE_NONE } else { tinyexr::COMPRESSIONTYPE_ZIP });
+            assert_eq!(
+                header.compression_type,
+                if width < 16 {
+                    tinyexr::COMPRESSIONTYPE_NONE
+                } else {
+                    tinyexr::COMPRESSIONTYPE_ZIP
+                }
+            );
         }
 
         // What is below zero is kept only when asked for; floats in a file come in as halves.
-        let file = tinyexr::save_exr_to_memory(&[-1.0, 0.5, 2.0, 1e9, 0.25, -0.5], 2, 1, 3, false).unwrap();
+        let file = tinyexr::save_exr_to_memory(&[-1.0, 0.5, 2.0, 1e9, 0.25, -0.5], 2, 1, 3, false)
+            .unwrap();
         let image = HdrImage::from_file_bytes(&file).unwrap();
         assert_eq!(image.to_rgb_f32(), [0.0, 0.5, 2.0, 65504.0, 0.25, 0.0]);
         let signed = HdrImage::from_file_bytes_signed(&file).unwrap();
         assert_eq!(signed.to_rgb_f32(), [-1.0, 0.5, 2.0, 65504.0, 0.25, -0.5]);
 
         // To disk, by the name's ending.
-        let folder = std::env::temp_dir().join(format!("rustbcx-hdr-image-test-{}", std::process::id()));
+        let folder =
+            std::env::temp_dir().join(format!("rustbcx-hdr-image-test-{}", std::process::id()));
         std::fs::create_dir_all(&folder).unwrap();
         signed.save(folder.join("a.EXR")).unwrap();
         assert_eq!(HdrImage::load(folder.join("a.EXR")).unwrap(), image);
         assert_eq!(HdrImage::load_signed(folder.join("a.EXR")).unwrap(), signed);
-        assert_eq!(signed.save(folder.join("a.hdr")).unwrap_err().kind(), std::io::ErrorKind::InvalidInput);
+        assert_eq!(
+            signed.save(folder.join("a.hdr")).unwrap_err().kind(),
+            std::io::ErrorKind::InvalidInput
+        );
         std::fs::write(folder.join("b.exr"), b"not a picture").unwrap();
         let error = HdrImage::load(folder.join("b.exr")).unwrap_err();
         assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
@@ -574,9 +834,35 @@ mod tests {
 
     #[test]
     fn hdr_images_take_floats_and_halve() {
-        let image = HdrImage::from_rgb_f32(2, 2, &[1.0, 0.5, 0.0, 3.0, -2.0, f32::NAN, 0.0, 1e9, 2.0, 4.0, 0.25, f32::INFINITY]).unwrap();
+        let image = HdrImage::from_rgb_f32(
+            2,
+            2,
+            &[
+                1.0,
+                0.5,
+                0.0,
+                3.0,
+                -2.0,
+                f32::NAN,
+                0.0,
+                1e9,
+                2.0,
+                4.0,
+                0.25,
+                f32::INFINITY,
+            ],
+        )
+        .unwrap();
         // Below zero and not-a-number are 0; too large is the largest half.
-        assert_eq!(image.pixels, [[0x3c00, 0x3800, 0], [0x4200, 0, 0], [0, 0x7bff, 0x4000], [0x4400, 0x3400, 0x7bff]]);
+        assert_eq!(
+            image.pixels,
+            [
+                [0x3c00, 0x3800, 0],
+                [0x4200, 0, 0],
+                [0, 0x7bff, 0x4000],
+                [0x4400, 0x3400, 0x7bff]
+            ]
+        );
         assert_eq!(image.to_rgb_f32()[..4], [1.0, 0.5, 0.0, 3.0]);
         let half = image.half();
         assert_eq!((half.width, half.height), (1, 1));
@@ -588,8 +874,13 @@ mod tests {
         assert_eq!(block[15], image.pixels[3]);
         assert!(HdrImage::from_rgb_f32(2, 2, &[0.0; 11]).is_none());
         // With the sign kept: below zero stays, and the ends are the largest halves.
-        let signed = HdrImage::from_rgb_f32_signed(1, 2, &[-1.0, 0.5, f32::NAN, -1e9, f32::INFINITY, -0.0]).unwrap();
-        assert_eq!(signed.pixels, [[0xbc00, 0x3800, 0], [0xfbff, 0x7bff, 0x8000]]);
+        let signed =
+            HdrImage::from_rgb_f32_signed(1, 2, &[-1.0, 0.5, f32::NAN, -1e9, f32::INFINITY, -0.0])
+                .unwrap();
+        assert_eq!(
+            signed.pixels,
+            [[0xbc00, 0x3800, 0], [0xfbff, 0x7bff, 0x8000]]
+        );
         assert_eq!(signed.to_rgb_f32()[..2], [-1.0, 0.5]);
         assert!(HdrImage::from_rgb_f32_signed(1, 2, &[0.0; 5]).is_none());
     }
@@ -608,15 +899,26 @@ mod tests {
         for (i, pixel) in lone.pixels.iter_mut().enumerate() {
             *pixel = [(i * 17) as u8, (i * 5) as u8, 3, 255];
         }
-        assert_eq!(Image::half_volume(std::slice::from_ref(&lone)), [lone.half()]);
+        assert_eq!(
+            Image::half_volume(std::slice::from_ref(&lone)),
+            [lone.half()]
+        );
         assert!(Image::half_volume(&[]).is_empty());
 
         let hdr = |value: f32| HdrImage::from_rgb_f32(2, 2, &[value; 12]).unwrap();
         let level = HdrImage::half_volume(&[hdr(1.0), hdr(2.0), hdr(8.0)]);
         assert_eq!(level.len(), 1);
         assert_eq!(half_to_float(level[0].pixels[0][1]), 1.5);
-        let lone = HdrImage::from_rgb_f32(2, 2, &[0.1, 0.2, 0.3, 1.5, 2.5, 3.5, 7.0, 9.0, 11.0, 0.7, 0.9, 1.1]).unwrap();
-        assert_eq!(HdrImage::half_volume(std::slice::from_ref(&lone)), [lone.half()]);
+        let lone = HdrImage::from_rgb_f32(
+            2,
+            2,
+            &[0.1, 0.2, 0.3, 1.5, 2.5, 3.5, 7.0, 9.0, 11.0, 0.7, 0.9, 1.1],
+        )
+        .unwrap();
+        assert_eq!(
+            HdrImage::half_volume(std::slice::from_ref(&lone)),
+            [lone.half()]
+        );
         assert!(HdrImage::half_volume(&[]).is_empty());
     }
 

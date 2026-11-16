@@ -24,15 +24,32 @@ fn same(printed: String, expected: &str) {
 
 #[test]
 fn compresses_and_decompresses_as_libdeflate_does() {
-    same([made_up::libdeflate(3, 200), made_up::libdeflate(8, 200)].concat(), include_str!("data/libdeflate_expected.txt"));
+    same(
+        [made_up::libdeflate(3, 200), made_up::libdeflate(8, 200)].concat(),
+        include_str!("data/libdeflate_expected.txt"),
+    );
 }
 
 #[test]
 fn compresses_blocks_as_openexr_does() {
-    same([made_up::dwa("dwa_write", 3, 400), made_up::dwa("dwa_write", 8, 400)].concat(), include_str!("data/dwa_write_expected.txt"));
+    same(
+        [
+            made_up::dwa("dwa_write", 3, 400),
+            made_up::dwa("dwa_write", 8, 400),
+        ]
+        .concat(),
+        include_str!("data/dwa_write_expected.txt"),
+    );
 }
 
 #[test]
 fn decompresses_damaged_blocks_as_openexr_does() {
-    same([made_up::dwa("dwa_read", 3, 600), made_up::dwa("dwa_read", 8, 600)].concat(), include_str!("data/dwa_read_expected.txt"));
+    same(
+        [
+            made_up::dwa("dwa_read", 3, 600),
+            made_up::dwa("dwa_read", 8, 600),
+        ]
+        .concat(),
+        include_str!("data/dwa_read_expected.txt"),
+    );
 }

@@ -7,7 +7,10 @@
 //! arms of a loop.
 
 use super::common::{read32, read64};
-use super::zstd_compress::{count, get_lowest_prefix_index, hash_ptr, offset_to_offbase, MatchState, SeqStore, HASH_READ_SIZE, K_SEARCH_STRENGTH, REPCODE1_TO_OFFBASE, ZSTD_WINDOW_START_INDEX};
+use super::zstd_compress::{
+    count, get_lowest_prefix_index, hash_ptr, offset_to_offbase, MatchState, SeqStore,
+    HASH_READ_SIZE, K_SEARCH_STRENGTH, REPCODE1_TO_OFFBASE, ZSTD_WINDOW_START_INDEX,
+};
 
 /// What ends the search for a match from one place.
 enum Found {
@@ -24,7 +27,14 @@ enum Found {
 /// `ZSTD_compressBlock_doubleFast`: the sequences of the block
 /// `src[istart..istart + src_size]` go to `seq_store`. The answer is how many bytes at the
 /// end of the block no sequence covers.
-pub(crate) fn compress_block_double_fast(ms: &mut MatchState, seq_store: &mut SeqStore, rep: &mut [u32; 3], src: &[u8], istart: usize, src_size: usize) -> usize {
+pub(crate) fn compress_block_double_fast(
+    ms: &mut MatchState,
+    seq_store: &mut SeqStore,
+    rep: &mut [u32; 3],
+    src: &[u8],
+    istart: usize,
+    src_size: usize,
+) -> usize {
     // (The original has one copy of the function per minimum match.)
     let mls = match ms.cparams.min_match {
         m @ 5..=7 => m,
@@ -117,7 +127,9 @@ pub(crate) fn compress_block_double_fast(ms: &mut MatchState, seq_store: &mut Se
             if idxl0 >= prefix_lowest_index && read64(src, matchl0) == read64(src, ip) {
                 m_length = count(src, ip + 8, matchl0 + 8, iend) + 8;
                 offset = (ip - matchl0) as u32;
-                while ((ip > anchor) & (matchl0 > prefix_lowest)) && (src[ip - 1] == src[matchl0 - 1]) {
+                while ((ip > anchor) & (matchl0 > prefix_lowest))
+                    && (src[ip - 1] == src[matchl0 - 1])
+                {
                     // catch up
                     ip -= 1;
                     matchl0 -= 1;
@@ -172,7 +184,9 @@ pub(crate) fn compress_block_double_fast(ms: &mut MatchState, seq_store: &mut Se
                         }
                     }
 
-                    while ((ip > anchor) & (matchs0 > prefix_lowest)) && (src[ip - 1] == src[matchs0 - 1]) {
+                    while ((ip > anchor) & (matchs0 > prefix_lowest))
+                        && (src[ip - 1] == src[matchs0 - 1])
+                    {
                         // Complete backward.
                         ip -= 1;
                         matchs0 -= 1;
@@ -190,7 +204,13 @@ pub(crate) fn compress_block_double_fast(ms: &mut MatchState, seq_store: &mut Se
                     hash_long[hl1] = (ip1 + BASE) as u32;
                 }
 
-                seq_store.store_seq(src, anchor, ip - anchor, offset_to_offbase(offset), m_length);
+                seq_store.store_seq(
+                    src,
+                    anchor,
+                    ip - anchor,
+                    offset_to_offbase(offset),
+                    m_length,
+                );
             }
         }
 
@@ -212,7 +232,9 @@ pub(crate) fn compress_block_double_fast(ms: &mut MatchState, seq_store: &mut Se
             }
 
             // Check immediate repeat codes.
-            while (ip + HASH_READ_SIZE <= iend) && ((offset_2 > 0) & (read32(src, ip) == read32(src, ip - offset_2 as usize))) {
+            while (ip + HASH_READ_SIZE <= iend)
+                && ((offset_2 > 0) & (read32(src, ip) == read32(src, ip - offset_2 as usize)))
+            {
                 // Store the sequence.
                 let r_length = count(src, ip + 4, ip + 4 - offset_2 as usize, iend) + 4;
                 std::mem::swap(&mut offset_1, &mut offset_2); // swap offset_2 <=> offset_1
@@ -229,11 +251,23 @@ pub(crate) fn compress_block_double_fast(ms: &mut MatchState, seq_store: &mut Se
     // cleanup.
     // If offset_1 started invalid (offsetSaved1 != 0) and became valid (offset_1 != 0),
     // rotate saved offsets.
-    offset_saved2 = if offset_saved1 != 0 && offset_1 != 0 { offset_saved1 } else { offset_saved2 };
+    offset_saved2 = if offset_saved1 != 0 && offset_1 != 0 {
+        offset_saved1
+    } else {
+        offset_saved2
+    };
 
     // Save the repeat offsets for the next block.
-    rep[0] = if offset_1 != 0 { offset_1 } else { offset_saved1 };
-    rep[1] = if offset_2 != 0 { offset_2 } else { offset_saved2 };
+    rep[0] = if offset_1 != 0 {
+        offset_1
+    } else {
+        offset_saved1
+    };
+    rep[1] = if offset_2 != 0 {
+        offset_2
+    } else {
+        offset_saved2
+    };
 
     // Return the last literals size.
     iend - anchor

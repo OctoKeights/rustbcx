@@ -29,7 +29,11 @@ pub struct WriteOptions {
 
 impl Default for WriteOptions {
     fn default() -> WriteOptions {
-        WriteOptions { png_compression_level: 8, force_png_filter: -1, flip_vertically_on_write: false }
+        WriteOptions {
+            png_compression_level: 8,
+            force_png_filter: -1,
+            flip_vertically_on_write: false,
+        }
     }
 }
 
@@ -56,14 +60,25 @@ fn stbiw_validate_dimensions(x: i32, y: i32, comp: i32) -> bool {
 /// the next. (The original trusts its caller; here a slice that is too short is refused.)
 fn holds(data: &[u8], x: i32, y: i32, comp: i32, stride: usize) -> bool {
     let row = x as usize * comp as usize;
-    stride >= row && (y as usize - 1).checked_mul(stride).and_then(|before| before.checked_add(row)).is_some_and(|needed| data.len() >= needed)
+    stride >= row
+        && (y as usize - 1)
+            .checked_mul(stride)
+            .and_then(|before| before.checked_add(row))
+            .is_some_and(|needed| data.len() >= needed)
 }
 
 // ---------------------------------------------------------------------------------------------
 // BMP
 
 /// `stbiw__write_pixel`
-fn stbiw_write_pixel(out: &mut Vec<u8>, rgb_dir: i32, comp: i32, write_alpha: i32, expand_mono: bool, d: &[u8]) {
+fn stbiw_write_pixel(
+    out: &mut Vec<u8>,
+    rgb_dir: i32,
+    comp: i32,
+    write_alpha: i32,
+    expand_mono: bool,
+    d: &[u8],
+) {
     let bg = [255i32, 0, 255];
     if write_alpha < 0 {
         out.push(d[comp as usize - 1]);
@@ -83,9 +98,15 @@ fn stbiw_write_pixel(out: &mut Vec<u8>, rgb_dir: i32, comp: i32, write_alpha: i3
             for k in 0..3 {
                 px[k] = (bg[k] + ((i32::from(d[k]) - bg[k]) * i32::from(d[3])) / 255) as u8;
             }
-            out.extend_from_slice(&[px[(1 - rgb_dir) as usize], px[1], px[(1 + rgb_dir) as usize]]);
+            out.extend_from_slice(&[
+                px[(1 - rgb_dir) as usize],
+                px[1],
+                px[(1 + rgb_dir) as usize],
+            ]);
         }
-        3 | 4 => out.extend_from_slice(&[d[(1 - rgb_dir) as usize], d[1], d[(1 + rgb_dir) as usize]]),
+        3 | 4 => {
+            out.extend_from_slice(&[d[(1 - rgb_dir) as usize], d[1], d[(1 + rgb_dir) as usize]])
+        }
         _ => {}
     }
     if write_alpha > 0 {
@@ -94,7 +115,20 @@ fn stbiw_write_pixel(out: &mut Vec<u8>, rgb_dir: i32, comp: i32, write_alpha: i3
 }
 
 /// `stbiw__write_pixels`
-fn stbiw_write_pixels(out: &mut Vec<u8>, rgb_dir: i32, mut vdir: i32, x: i32, y: i32, comp: i32, data: &[u8], stride_in_bytes: usize, write_alpha: i32, scanline_pad: usize, expand_mono: bool, options: &WriteOptions) {
+fn stbiw_write_pixels(
+    out: &mut Vec<u8>,
+    rgb_dir: i32,
+    mut vdir: i32,
+    x: i32,
+    y: i32,
+    comp: i32,
+    data: &[u8],
+    stride_in_bytes: usize,
+    write_alpha: i32,
+    scanline_pad: usize,
+    expand_mono: bool,
+    options: &WriteOptions,
+) {
     if !stbiw_validate_dimensions(x, y, comp) {
         return;
     }
@@ -108,7 +142,14 @@ fn stbiw_write_pixels(out: &mut Vec<u8>, rgb_dir: i32, mut vdir: i32, x: i32, y:
     while j != j_end {
         for i in 0..x as usize {
             let at = j as usize * stride_in_bytes + i * comp as usize;
-            stbiw_write_pixel(out, rgb_dir, comp, write_alpha, expand_mono, &data[at..at + comp as usize]);
+            stbiw_write_pixel(
+                out,
+                rgb_dir,
+                comp,
+                write_alpha,
+                expand_mono,
+                &data[at..at + comp as usize],
+            );
         }
         out.extend_from_slice(&[0u8; 4][..scanline_pad]);
         j += vdir;
@@ -132,11 +173,22 @@ fn put_u32(out: &mut Vec<u8>, value: u32) {
 ///
 /// None when the size is not above zero, `comp` is not 1 to 4, or `data` is too short. (The
 /// original writes a header with no pixels for such a size, and calls it done.)
-pub fn write_bmp(x: i32, y: i32, comp: i32, data: &[u8], stride_in_bytes: usize, options: &WriteOptions) -> Option<Vec<u8>> {
+pub fn write_bmp(
+    x: i32,
+    y: i32,
+    comp: i32,
+    data: &[u8],
+    stride_in_bytes: usize,
+    options: &WriteOptions,
+) -> Option<Vec<u8>> {
     if !stbiw_validate_dimensions(x, y, comp) {
         return None;
     }
-    let stride_in_bytes = if stride_in_bytes == 0 { x as usize * comp as usize } else { stride_in_bytes };
+    let stride_in_bytes = if stride_in_bytes == 0 {
+        x as usize * comp as usize
+    } else {
+        stride_in_bytes
+    };
     if !holds(data, x, y, comp, stride_in_bytes) {
         return None;
     }
@@ -159,7 +211,20 @@ pub fn write_bmp(x: i32, y: i32, comp: i32, data: &[u8], stride_in_bytes: usize,
         for _ in 0..6 {
             put_u32(&mut out, 0);
         }
-        stbiw_write_pixels(&mut out, -1, -1, x, y, comp, data, stride_in_bytes, 0, pad as usize, true, options);
+        stbiw_write_pixels(
+            &mut out,
+            -1,
+            -1,
+            x,
+            y,
+            comp,
+            data,
+            stride_in_bytes,
+            0,
+            pad as usize,
+            true,
+            options,
+        );
     } else {
         // RGBA bitmaps need a v4 header
         // use BI_BITFIELDS mode with 32bpp and alpha mask
@@ -176,10 +241,47 @@ pub fn write_bmp(x: i32, y: i32, comp: i32, data: &[u8], stride_in_bytes: usize,
         put_u32(&mut out, y as u32);
         put_u16(&mut out, 1);
         put_u16(&mut out, 32);
-        for value in [3, 0, 0, 0, 0, 0, 0xff0000, 0xff00, 0xff, 0xff000000u32, 0x73524742, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] {
+        for value in [
+            3,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0xff0000,
+            0xff00,
+            0xff,
+            0xff000000u32,
+            0x73524742,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+        ] {
             put_u32(&mut out, value);
         }
-        stbiw_write_pixels(&mut out, -1, -1, x, y, comp, data, stride_in_bytes, 1, 0, true, options);
+        stbiw_write_pixels(
+            &mut out,
+            -1,
+            -1,
+            x,
+            y,
+            comp,
+            data,
+            stride_in_bytes,
+            1,
+            0,
+            true,
+            options,
+        );
     }
     Some(out)
 }
@@ -277,12 +379,27 @@ impl ZlibOut {
 /// `stbi_zlib_compress`. `quality` is how many earlier places are kept for each run of three
 /// bytes; below 5 counts as 5.
 pub fn zlib_compress(data: &[u8], quality: i32) -> Vec<u8> {
-    static LENGTHC: [u16; 30] = [3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258, 259];
-    static LENGTHEB: [u8; 29] = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0];
-    static DISTC: [u16; 31] = [1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577, 32768];
-    static DISTEB: [u8; 30] = [0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13];
+    static LENGTHC: [u16; 30] = [
+        3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115,
+        131, 163, 195, 227, 258, 259,
+    ];
+    static LENGTHEB: [u8; 29] = [
+        0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0,
+    ];
+    static DISTC: [u16; 31] = [
+        1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537,
+        2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577, 32768,
+    ];
+    static DISTEB: [u8; 30] = [
+        0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12,
+        13, 13,
+    ];
     let data_len = data.len() as i32;
-    let mut z = ZlibOut { out: Vec::new(), bitbuf: 0, bitcount: 0 };
+    let mut z = ZlibOut {
+        out: Vec::new(),
+        bitbuf: 0,
+        bitcount: 0,
+    };
     // (For each hash, the places in the data where bytes of that hash begin.)
     let mut hash_table: Vec<Vec<i32>> = vec![Vec::new(); STBIW_ZHASH];
     let quality = quality.max(5);
@@ -301,7 +418,8 @@ pub fn zlib_compress(data: &[u8], quality: i32) -> Vec<u8> {
         for &place in &hash_table[h] {
             if place > i - 32768 {
                 // if entry lies within window
-                let d = stbiw_zlib_countm(&data[place as usize..], &data[i as usize..], data_len - i);
+                let d =
+                    stbiw_zlib_countm(&data[place as usize..], &data[i as usize..], data_len - i);
                 if d >= best {
                     best = d;
                     bestloc = Some(place);
@@ -319,7 +437,11 @@ pub fn zlib_compress(data: &[u8], quality: i32) -> Vec<u8> {
             h = stbiw_zhash(&data[i as usize + 1..]) as usize & (STBIW_ZHASH - 1);
             for &place in &hash_table[h] {
                 if place > i - 32767 {
-                    let e = stbiw_zlib_countm(&data[place as usize..], &data[i as usize + 1..], data_len - i - 1);
+                    let e = stbiw_zlib_countm(
+                        &data[place as usize..],
+                        &data[i as usize + 1..],
+                        data_len - i - 1,
+                    );
                     if e > best {
                         // if next match is better, bail on current match
                         bestloc = None;
@@ -360,7 +482,7 @@ pub fn zlib_compress(data: &[u8], quality: i32) -> Vec<u8> {
         i += 1;
     }
     z.huff(256); // end of block
-    // pad with 0 bits to byte boundary
+                 // pad with 0 bits to byte boundary
     while z.bitcount != 0 {
         z.add(0, 1);
     }
@@ -424,7 +546,17 @@ fn stbiw_paeth(a: i32, b: i32, c: i32) -> u8 {
 
 // @OPTIMIZE: provide an option that always forces left-predict or paeth predict
 /// `stbiw__encode_png_line`
-fn stbiw_encode_png_line(pixels: &[u8], stride_bytes: usize, width: i32, height: i32, y: i32, n: i32, filter_type: i32, line_buffer: &mut [u8], flip: bool) {
+fn stbiw_encode_png_line(
+    pixels: &[u8],
+    stride_bytes: usize,
+    width: i32,
+    height: i32,
+    y: i32,
+    n: i32,
+    filter_type: i32,
+    line_buffer: &mut [u8],
+    flip: bool,
+) {
     static MAPPING: [i32; 5] = [0, 1, 2, 3, 4];
     static FIRSTMAP: [i32; 5] = [0, 1, 0, 5, 6];
     let mymap = if y != 0 { &MAPPING } else { &FIRSTMAP };
@@ -476,7 +608,14 @@ fn stbiw_encode_png_line(pixels: &[u8], stride_bytes: usize, width: i32, height:
 /// row every `stride_bytes` bytes (0 for rows that follow one another).
 ///
 /// None when the size is not above zero, `n` is not 1 to 4, or `pixels` is too short.
-pub fn write_png(pixels: &[u8], stride_bytes: usize, x: i32, y: i32, n: i32, options: &WriteOptions) -> Option<Vec<u8>> {
+pub fn write_png(
+    pixels: &[u8],
+    stride_bytes: usize,
+    x: i32,
+    y: i32,
+    n: i32,
+    options: &WriteOptions,
+) -> Option<Vec<u8>> {
     let mut force_filter = options.force_png_filter;
     let ctype = [-1i32, 0, 4, 2, 6];
     let sig = [137u8, 80, 78, 71, 13, 10, 26, 10];
@@ -485,7 +624,11 @@ pub fn write_png(pixels: &[u8], stride_bytes: usize, x: i32, y: i32, n: i32, opt
         return None;
     }
 
-    let stride_bytes = if stride_bytes == 0 { x as usize * n as usize } else { stride_bytes };
+    let stride_bytes = if stride_bytes == 0 {
+        x as usize * n as usize
+    } else {
+        stride_bytes
+    };
     if !holds(pixels, x, y, n, stride_bytes) {
         return None;
     }
@@ -501,12 +644,32 @@ pub fn write_png(pixels: &[u8], stride_bytes: usize, x: i32, y: i32, n: i32, opt
         let filter_type;
         if force_filter > -1 {
             filter_type = force_filter;
-            stbiw_encode_png_line(pixels, stride_bytes, x, y, j, n, force_filter, &mut line_buffer, options.flip_vertically_on_write);
+            stbiw_encode_png_line(
+                pixels,
+                stride_bytes,
+                x,
+                y,
+                j,
+                n,
+                force_filter,
+                &mut line_buffer,
+                options.flip_vertically_on_write,
+            );
         } else {
             // Estimate the best filter by running through all of them:
             let (mut best_filter, mut best_filter_val) = (0, 0x7fffffff);
             for filter_type in 0..5 {
-                stbiw_encode_png_line(pixels, stride_bytes, x, y, j, n, filter_type, &mut line_buffer, options.flip_vertically_on_write);
+                stbiw_encode_png_line(
+                    pixels,
+                    stride_bytes,
+                    x,
+                    y,
+                    j,
+                    n,
+                    filter_type,
+                    &mut line_buffer,
+                    options.flip_vertically_on_write,
+                );
 
                 // Estimate the entropy of the line using this filter; the less, the better.
                 let mut est = 0i32;
@@ -518,7 +681,17 @@ pub fn write_png(pixels: &[u8], stride_bytes: usize, x: i32, y: i32, n: i32, opt
                     best_filter = filter_type;
                 }
             }
-            stbiw_encode_png_line(pixels, stride_bytes, x, y, j, n, best_filter, &mut line_buffer, options.flip_vertically_on_write);
+            stbiw_encode_png_line(
+                pixels,
+                stride_bytes,
+                x,
+                y,
+                j,
+                n,
+                best_filter,
+                &mut line_buffer,
+                options.flip_vertically_on_write,
+            );
             filter_type = best_filter;
         }
         // when we get here, filter_type contains the filter type, and line_buffer contains the data
@@ -586,7 +759,16 @@ impl JpgBits {
 // (The constants have the original's digits.)
 #[allow(clippy::excessive_precision, clippy::approx_constant)]
 fn stbiw_jpg_dct(cdu: &mut [f32], at: usize, step: usize) {
-    let (d0, d1, d2, d3, d4, d5, d6, d7) = (cdu[at], cdu[at + step], cdu[at + step * 2], cdu[at + step * 3], cdu[at + step * 4], cdu[at + step * 5], cdu[at + step * 6], cdu[at + step * 7]);
+    let (d0, d1, d2, d3, d4, d5, d6, d7) = (
+        cdu[at],
+        cdu[at + step],
+        cdu[at + step * 2],
+        cdu[at + step * 3],
+        cdu[at + step * 4],
+        cdu[at + step * 5],
+        cdu[at + step * 6],
+        cdu[at + step * 7],
+    );
 
     let tmp0 = d0 + d7;
     let tmp7 = d0 - d7;
@@ -651,7 +833,15 @@ fn stbiw_jpg_calc_bits(mut val: i32) -> [u16; 2] {
 }
 
 /// `stbiw__jpg_processDU`
-fn stbiw_jpg_process_du(s: &mut JpgBits, cdu: &mut [f32], du_stride: usize, fdtbl: &[f32; 64], dc: i32, htdc: &[[u16; 2]; 256], htac: &[[u16; 2]; 256]) -> i32 {
+fn stbiw_jpg_process_du(
+    s: &mut JpgBits,
+    cdu: &mut [f32],
+    du_stride: usize,
+    fdtbl: &[f32; 64],
+    dc: i32,
+    htdc: &[[u16; 2]; 256],
+    htac: &[[u16; 2]; 256],
+) -> i32 {
     let eob = htac[0x00];
     let m16zeroes = htac[0xF0];
     let mut du = [0i32; 64];
@@ -730,10 +920,27 @@ fn stbiw_jpg_process_du(s: &mut JpgBits, cdu: &mut [f32], du_stride: usize, fdtb
 /// half the size each way.
 ///
 /// None when the size is not above zero, `comp` is not 1 to 4, or `data` is too short.
-pub fn write_jpg(width: i32, height: i32, comp: i32, data: &[u8], quality: i32, stride_in_bytes: usize, options: &WriteOptions) -> Option<Vec<u8>> {
+pub fn write_jpg(
+    width: i32,
+    height: i32,
+    comp: i32,
+    data: &[u8],
+    quality: i32,
+    stride_in_bytes: usize,
+    options: &WriteOptions,
+) -> Option<Vec<u8>> {
     // (The products are single floats, as in the original.)
     #[allow(clippy::excessive_precision)]
-    static AASF: [f32; 8] = [1.0 * 2.828427125, 1.387039845 * 2.828427125, 1.306562965 * 2.828427125, 1.175875602 * 2.828427125, 1.0 * 2.828427125, 0.785694958 * 2.828427125, 0.541196100 * 2.828427125, 0.275899379 * 2.828427125];
+    static AASF: [f32; 8] = [
+        1.0 * 2.828427125,
+        1.387039845 * 2.828427125,
+        1.306562965 * 2.828427125,
+        1.175875602 * 2.828427125,
+        1.0 * 2.828427125,
+        0.785694958 * 2.828427125,
+        0.541196100 * 2.828427125,
+        0.275899379 * 2.828427125,
+    ];
 
     let (mut fdtbl_y, mut fdtbl_uv) = ([0.0f32; 64], [0.0f32; 64]);
     let (mut y_table, mut uv_table) = ([0u8; 64], [0u8; 64]);
@@ -742,7 +949,11 @@ pub fn write_jpg(width: i32, height: i32, comp: i32, data: &[u8], quality: i32, 
         return None;
     }
 
-    let stride_in_bytes = if stride_in_bytes == 0 { comp as usize * width as usize } else { stride_in_bytes };
+    let stride_in_bytes = if stride_in_bytes == 0 {
+        comp as usize * width as usize
+    } else {
+        stride_in_bytes
+    };
     if !holds(data, width, height, comp, stride_in_bytes) {
         return None;
     }
@@ -750,7 +961,11 @@ pub fn write_jpg(width: i32, height: i32, comp: i32, data: &[u8], quality: i32, 
     let mut quality = if quality != 0 { quality } else { 90 };
     let subsample = quality <= 90;
     quality = quality.clamp(1, 100);
-    quality = if quality < 50 { 5000 / quality } else { 200 - quality * 2 };
+    quality = if quality < 50 {
+        5000 / quality
+    } else {
+        200 - quality * 2
+    };
 
     for i in 0..64 {
         let yti = (YQT[i] * quality + 50) / 100;
@@ -762,19 +977,53 @@ pub fn write_jpg(width: i32, height: i32, comp: i32, data: &[u8], quality: i32, 
     let mut k = 0;
     for row in 0..8 {
         for col in 0..8 {
-            fdtbl_y[k] = 1.0 / (f32::from(y_table[usize::from(STBIW_JPG_ZIGZAG[k])]) * AASF[row] * AASF[col]);
-            fdtbl_uv[k] = 1.0 / (f32::from(uv_table[usize::from(STBIW_JPG_ZIGZAG[k])]) * AASF[row] * AASF[col]);
+            fdtbl_y[k] = 1.0
+                / (f32::from(y_table[usize::from(STBIW_JPG_ZIGZAG[k])]) * AASF[row] * AASF[col]);
+            fdtbl_uv[k] = 1.0
+                / (f32::from(uv_table[usize::from(STBIW_JPG_ZIGZAG[k])]) * AASF[row] * AASF[col]);
             k += 1;
         }
     }
 
-    let mut s = JpgBits { out: Vec::new(), bit_buf: 0, bit_cnt: 0 };
+    let mut s = JpgBits {
+        out: Vec::new(),
+        bit_buf: 0,
+        bit_cnt: 0,
+    };
 
     // Write Headers
     {
-        static HEAD0: [u8; 25] = [0xFF, 0xD8, 0xFF, 0xE0, 0, 0x10, b'J', b'F', b'I', b'F', 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0xFF, 0xDB, 0, 0x84, 0];
+        static HEAD0: [u8; 25] = [
+            0xFF, 0xD8, 0xFF, 0xE0, 0, 0x10, b'J', b'F', b'I', b'F', 0, 1, 1, 0, 0, 1, 0, 1, 0, 0,
+            0xFF, 0xDB, 0, 0x84, 0,
+        ];
         static HEAD2: [u8; 14] = [0xFF, 0xDA, 0, 0xC, 3, 1, 0, 2, 0x11, 3, 0x11, 0, 0x3F, 0];
-        let head1: [u8; 24] = [0xFF, 0xC0, 0, 0x11, 8, (height >> 8) as u8, height as u8, (width >> 8) as u8, width as u8, 3, 1, if subsample { 0x22 } else { 0x11 }, 0, 2, 0x11, 1, 3, 0x11, 1, 0xFF, 0xC4, 0x01, 0xA2, 0];
+        let head1: [u8; 24] = [
+            0xFF,
+            0xC0,
+            0,
+            0x11,
+            8,
+            (height >> 8) as u8,
+            height as u8,
+            (width >> 8) as u8,
+            width as u8,
+            3,
+            1,
+            if subsample { 0x22 } else { 0x11 },
+            0,
+            2,
+            0x11,
+            1,
+            3,
+            0x11,
+            1,
+            0xFF,
+            0xC4,
+            0x01,
+            0xA2,
+            0,
+        ];
         s.out.extend_from_slice(&HEAD0);
         s.out.extend_from_slice(&y_table);
         s.out.push(1);
@@ -804,23 +1053,34 @@ pub fn write_jpg(width: i32, height: i32, comp: i32, data: &[u8], quality: i32, 
         let comp = comp as usize;
         // The Y, U and V of a square of pixels of `size` a side from (x, y), the edges of the
         // image repeated past them.
-        let convert = |x: i32, y: i32, size: i32, y_out: &mut [f32], u_out: &mut [f32], v_out: &mut [f32]| {
-            let mut pos = 0;
-            for row in y..y + size {
-                // row >= height => use last input row
-                let clamped_row = if row < height { row } else { height - 1 };
-                let base_p = (if options.flip_vertically_on_write { height - 1 - clamped_row } else { clamped_row }) as usize * stride_in_bytes;
-                for col in x..x + size {
-                    // if col >= width => use pixel from last input column
-                    let p = base_p + (if col < width { col } else { width - 1 }) as usize * comp;
-                    let (r, g, b) = (f32::from(data[p]), f32::from(data[p + ofs_g]), f32::from(data[p + ofs_b]));
-                    y_out[pos] = 0.29900 * r + 0.58700 * g + 0.11400 * b - 128.0;
-                    u_out[pos] = -0.16874 * r - 0.33126 * g + 0.50000 * b;
-                    v_out[pos] = 0.50000 * r - 0.41869 * g - 0.08131 * b;
-                    pos += 1;
+        let convert =
+            |x: i32, y: i32, size: i32, y_out: &mut [f32], u_out: &mut [f32], v_out: &mut [f32]| {
+                let mut pos = 0;
+                for row in y..y + size {
+                    // row >= height => use last input row
+                    let clamped_row = if row < height { row } else { height - 1 };
+                    let base_p = (if options.flip_vertically_on_write {
+                        height - 1 - clamped_row
+                    } else {
+                        clamped_row
+                    }) as usize
+                        * stride_in_bytes;
+                    for col in x..x + size {
+                        // if col >= width => use pixel from last input column
+                        let p =
+                            base_p + (if col < width { col } else { width - 1 }) as usize * comp;
+                        let (r, g, b) = (
+                            f32::from(data[p]),
+                            f32::from(data[p + ofs_g]),
+                            f32::from(data[p + ofs_b]),
+                        );
+                        y_out[pos] = 0.29900 * r + 0.58700 * g + 0.11400 * b - 128.0;
+                        u_out[pos] = -0.16874 * r - 0.33126 * g + 0.50000 * b;
+                        v_out[pos] = 0.50000 * r - 0.41869 * g - 0.08131 * b;
+                        pos += 1;
+                    }
                 }
-            }
-        };
+            };
         if subsample {
             let mut y = 0;
             while y < height {
@@ -828,10 +1088,42 @@ pub fn write_jpg(width: i32, height: i32, comp: i32, data: &[u8], quality: i32, 
                 while x < width {
                     let (mut yy, mut uu, mut vv) = ([0.0f32; 256], [0.0f32; 256], [0.0f32; 256]);
                     convert(x, y, 16, &mut yy, &mut uu, &mut vv);
-                    dcy = stbiw_jpg_process_du(&mut s, &mut yy[0..], 16, &fdtbl_y, dcy, &YDC_HT, &YAC_HT);
-                    dcy = stbiw_jpg_process_du(&mut s, &mut yy[8..], 16, &fdtbl_y, dcy, &YDC_HT, &YAC_HT);
-                    dcy = stbiw_jpg_process_du(&mut s, &mut yy[128..], 16, &fdtbl_y, dcy, &YDC_HT, &YAC_HT);
-                    dcy = stbiw_jpg_process_du(&mut s, &mut yy[136..], 16, &fdtbl_y, dcy, &YDC_HT, &YAC_HT);
+                    dcy = stbiw_jpg_process_du(
+                        &mut s,
+                        &mut yy[0..],
+                        16,
+                        &fdtbl_y,
+                        dcy,
+                        &YDC_HT,
+                        &YAC_HT,
+                    );
+                    dcy = stbiw_jpg_process_du(
+                        &mut s,
+                        &mut yy[8..],
+                        16,
+                        &fdtbl_y,
+                        dcy,
+                        &YDC_HT,
+                        &YAC_HT,
+                    );
+                    dcy = stbiw_jpg_process_du(
+                        &mut s,
+                        &mut yy[128..],
+                        16,
+                        &fdtbl_y,
+                        dcy,
+                        &YDC_HT,
+                        &YAC_HT,
+                    );
+                    dcy = stbiw_jpg_process_du(
+                        &mut s,
+                        &mut yy[136..],
+                        16,
+                        &fdtbl_y,
+                        dcy,
+                        &YDC_HT,
+                        &YAC_HT,
+                    );
 
                     // subsample U,V
                     {
@@ -845,8 +1137,12 @@ pub fn write_jpg(width: i32, height: i32, comp: i32, data: &[u8], quality: i32, 
                                 pos += 1;
                             }
                         }
-                        dcu = stbiw_jpg_process_du(&mut s, &mut sub_u, 8, &fdtbl_uv, dcu, &UVDC_HT, &UVAC_HT);
-                        dcv = stbiw_jpg_process_du(&mut s, &mut sub_v, 8, &fdtbl_uv, dcv, &UVDC_HT, &UVAC_HT);
+                        dcu = stbiw_jpg_process_du(
+                            &mut s, &mut sub_u, 8, &fdtbl_uv, dcu, &UVDC_HT, &UVAC_HT,
+                        );
+                        dcv = stbiw_jpg_process_du(
+                            &mut s, &mut sub_v, 8, &fdtbl_uv, dcv, &UVDC_HT, &UVAC_HT,
+                        );
                     }
                     x += 16;
                 }
@@ -860,8 +1156,12 @@ pub fn write_jpg(width: i32, height: i32, comp: i32, data: &[u8], quality: i32, 
                     let (mut yy, mut uu, mut vv) = ([0.0f32; 64], [0.0f32; 64], [0.0f32; 64]);
                     convert(x, y, 8, &mut yy, &mut uu, &mut vv);
                     dcy = stbiw_jpg_process_du(&mut s, &mut yy, 8, &fdtbl_y, dcy, &YDC_HT, &YAC_HT);
-                    dcu = stbiw_jpg_process_du(&mut s, &mut uu, 8, &fdtbl_uv, dcu, &UVDC_HT, &UVAC_HT);
-                    dcv = stbiw_jpg_process_du(&mut s, &mut vv, 8, &fdtbl_uv, dcv, &UVDC_HT, &UVAC_HT);
+                    dcu = stbiw_jpg_process_du(
+                        &mut s, &mut uu, 8, &fdtbl_uv, dcu, &UVDC_HT, &UVAC_HT,
+                    );
+                    dcv = stbiw_jpg_process_du(
+                        &mut s, &mut vv, 8, &fdtbl_uv, dcv, &UVDC_HT, &UVAC_HT,
+                    );
                     x += 8;
                 }
                 y += 8;
@@ -885,12 +1185,16 @@ mod tests {
     use crate::miniz;
 
     fn image(x: usize, y: usize, comp: usize) -> Vec<u8> {
-        (0..x * y * comp).map(|i| ((i / comp % x) * 9 + (i / comp / x) * 5 + i % comp * 60) as u8).collect()
+        (0..x * y * comp)
+            .map(|i| ((i / comp % x) * 9 + (i / comp / x) * 5 + i % comp * 60) as u8)
+            .collect()
     }
 
     #[test]
     fn the_small_zlib_makes_streams_that_decompress() {
-        let noise: Vec<u8> = (0..5000u32).map(|i| (i.wrapping_mul(2654435761) >> 13) as u8).collect();
+        let noise: Vec<u8> = (0..5000u32)
+            .map(|i| (i.wrapping_mul(2654435761) >> 13) as u8)
+            .collect();
         let runs: Vec<u8> = (0..70000u32).map(|i| (i / 300) as u8).collect();
         for data in [&[][..], b"a", b"abc", b"abcabcabcabcabcabc", &noise, &runs] {
             for quality in [0, 5, 8, 30] {
@@ -899,7 +1203,10 @@ mod tests {
                     // (The original writes no block at all for no bytes.)
                     assert_eq!(packed, [0x78, 0x5e, 0, 0, 0, 1]);
                 } else {
-                    assert_eq!(miniz::uncompress(&packed, data.len()).as_deref(), Some(data));
+                    assert_eq!(
+                        miniz::uncompress(&packed, data.len()).as_deref(),
+                        Some(data)
+                    );
                 }
             }
         }
@@ -907,7 +1214,9 @@ mod tests {
         let mut state = 7u64;
         let big_noise: Vec<u8> = (0..40000)
             .map(|_| {
-                state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                state = state
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
                 (state >> 40) as u8
             })
             .collect();
@@ -922,19 +1231,39 @@ mod tests {
             let file = write_png(&pixels, 0, 13, 7, comp as i32, &WriteOptions::default()).unwrap();
             assert_eq!(&file[..8], &[137, 80, 78, 71, 13, 10, 26, 10]);
             assert_eq!(&file[8..16], &[0, 0, 0, 13, b'I', b'H', b'D', b'R']);
-            assert_eq!(&file[16..29], &[0, 0, 0, 13, 0, 0, 0, 7, 8, [0, 4, 2, 6][comp - 1], 0, 0, 0]);
-            assert_eq!(&file[file.len() - 12..], &[0, 0, 0, 0, b'I', b'E', b'N', b'D', 0xAE, 0x42, 0x60, 0x82]);
+            assert_eq!(
+                &file[16..29],
+                &[0, 0, 0, 13, 0, 0, 0, 7, 8, [0, 4, 2, 6][comp - 1], 0, 0, 0]
+            );
+            assert_eq!(
+                &file[file.len() - 12..],
+                &[0, 0, 0, 0, b'I', b'E', b'N', b'D', 0xAE, 0x42, 0x60, 0x82]
+            );
             // The rows come back out of the compressed chunk, each behind its filter.
             let length = u32::from_be_bytes(file[33..37].try_into().unwrap()) as usize;
             assert_eq!(&file[37..41], b"IDAT");
             let rows = miniz::uncompress(&file[41..41 + length], 7 * (13 * comp + 1)).unwrap();
             assert_eq!(rows.len(), 7 * (13 * comp + 1));
             // Unfiltered, they are the pixels.
-            let plain = write_png(&pixels, 0, 13, 7, comp as i32, &WriteOptions { force_png_filter: 0, ..WriteOptions::default() }).unwrap();
+            let plain = write_png(
+                &pixels,
+                0,
+                13,
+                7,
+                comp as i32,
+                &WriteOptions {
+                    force_png_filter: 0,
+                    ..WriteOptions::default()
+                },
+            )
+            .unwrap();
             let length = u32::from_be_bytes(plain[33..37].try_into().unwrap()) as usize;
             let rows = miniz::uncompress(&plain[41..41 + length], 7 * (13 * comp + 1)).unwrap();
             for (row, line) in rows.chunks(13 * comp + 1).enumerate() {
-                assert_eq!((line[0], &line[1..]), (0, &pixels[row * 13 * comp..(row + 1) * 13 * comp]));
+                assert_eq!(
+                    (line[0], &line[1..]),
+                    (0, &pixels[row * 13 * comp..(row + 1) * 13 * comp])
+                );
             }
         }
         // A stride, and upside down.
@@ -944,10 +1273,19 @@ mod tests {
             wide[row * 20..row * 20 + 15].copy_from_slice(&pixels[row * 15..row * 15 + 15]);
         }
         let options = WriteOptions::default();
-        assert_eq!(write_png(&wide, 20, 5, 3, 3, &options), write_png(&pixels, 0, 5, 3, 3, &options));
+        assert_eq!(
+            write_png(&wide, 20, 5, 3, 3, &options),
+            write_png(&pixels, 0, 5, 3, 3, &options)
+        );
         let upside_down: Vec<u8> = pixels.chunks(15).rev().flatten().copied().collect();
-        let flipped = WriteOptions { flip_vertically_on_write: true, ..options };
-        assert_eq!(write_png(&upside_down, 0, 5, 3, 3, &flipped), write_png(&pixels, 0, 5, 3, 3, &options));
+        let flipped = WriteOptions {
+            flip_vertically_on_write: true,
+            ..options
+        };
+        assert_eq!(
+            write_png(&upside_down, 0, 5, 3, 3, &flipped),
+            write_png(&pixels, 0, 5, 3, 3, &options)
+        );
         // No size, too few bytes, too many channels.
         assert!(write_png(&pixels, 0, 0, 3, 3, &options).is_none());
         assert!(write_png(&pixels[..44], 0, 5, 3, 3, &options).is_none());
@@ -985,7 +1323,10 @@ mod tests {
             assert_eq!(&file[file.len() - 2..], &[0xFF, 0xD9]);
             // The frame header: 8 bits, 11 by 20, three components, the first sampled as said.
             let frame = 25 + 64 + 1 + 64;
-            assert_eq!(&file[frame..frame + 12], &[0xFF, 0xC0, 0, 0x11, 8, 0, 11, 0, 20, 3, 1, sampling]);
+            assert_eq!(
+                &file[frame..frame + 12],
+                &[0xFF, 0xC0, 0, 0x11, 8, 0, 11, 0, 20, 3, 1, sampling]
+            );
         }
         // Better quality is more bytes.
         let small = write_jpg(20, 11, 3, &pixels, 10, 0, &WriteOptions::default()).unwrap();

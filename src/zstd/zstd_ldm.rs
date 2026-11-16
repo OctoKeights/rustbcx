@@ -12,7 +12,9 @@
 #![allow(clippy::implicit_saturating_sub, clippy::manual_is_multiple_of)]
 
 use super::common::{read32, read64};
-use super::zstd_compress::{count, CompressionParameters, RawSeq, Window, HASH_READ_SIZE, ZSTD_WINDOW_START_INDEX};
+use super::zstd_compress::{
+    count, CompressionParameters, RawSeq, Window, HASH_READ_SIZE, ZSTD_WINDOW_START_INDEX,
+};
 
 const LDM_BUCKET_SIZE_LOG: u32 = 4;
 const LDM_MIN_MATCH_LENGTH: u32 = 64;
@@ -99,7 +101,9 @@ pub(crate) fn xxh64(input: &[u8], seed: u64) -> u64 {
     const P4: u64 = 0x85EBCA77C2B2AE63;
     const P5: u64 = 0x27D4EB2F165667C5;
     fn round(acc: u64, input: u64) -> u64 {
-        acc.wrapping_add(input.wrapping_mul(P2)).rotate_left(31).wrapping_mul(P1)
+        acc.wrapping_add(input.wrapping_mul(P2))
+            .rotate_left(31)
+            .wrapping_mul(P1)
     }
     fn merge_round(acc: u64, val: u64) -> u64 {
         (acc ^ round(0, val)).wrapping_mul(P1).wrapping_add(P4)
@@ -119,7 +123,11 @@ pub(crate) fn xxh64(input: &[u8], seed: u64) -> u64 {
             v4 = round(v4, read64(input, p + 24));
             p += 32;
         }
-        h64 = v1.rotate_left(1).wrapping_add(v2.rotate_left(7)).wrapping_add(v3.rotate_left(12)).wrapping_add(v4.rotate_left(18));
+        h64 = v1
+            .rotate_left(1)
+            .wrapping_add(v2.rotate_left(7))
+            .wrapping_add(v3.rotate_left(12))
+            .wrapping_add(v4.rotate_left(18));
         h64 = merge_round(h64, v1);
         h64 = merge_round(h64, v2);
         h64 = merge_round(h64, v3);
@@ -170,14 +178,24 @@ impl LdmParams {
         let strategy = cparams.strategy as u32;
         // mapping from [fast, rate7] to [btultra2, rate4]
         let hash_rate_log = 7 - (strategy / 3);
-        let hash_log = window_log.saturating_sub(hash_rate_log).clamp(ZSTD_HASHLOG_MIN, ZSTD_HASHLOG_MAX);
+        let hash_log = window_log
+            .saturating_sub(hash_rate_log)
+            .clamp(ZSTD_HASHLOG_MIN, ZSTD_HASHLOG_MAX);
         let mut min_match_length = LDM_MIN_MATCH_LENGTH;
         if strategy >= 8 {
             // ZSTD_btultra
             min_match_length /= 2;
         }
-        let bucket_size_log = strategy.clamp(LDM_BUCKET_SIZE_LOG, ZSTD_LDM_BUCKETSIZELOG_MAX).min(hash_log);
-        LdmParams { window_log, hash_log, bucket_size_log, min_match_length, hash_rate_log }
+        let bucket_size_log = strategy
+            .clamp(LDM_BUCKET_SIZE_LOG, ZSTD_LDM_BUCKETSIZELOG_MAX)
+            .min(hash_log);
+        LdmParams {
+            window_log,
+            hash_log,
+            bucket_size_log,
+            min_match_length,
+            hash_rate_log,
+        }
     }
 }
 
@@ -213,7 +231,10 @@ impl RollingHashState {
             // In this degenerate case we simply honor the hash rate.
             (1u64 << hash_rate_log) - 1
         };
-        RollingHashState { rolling: u64::from(!0u32), stop_mask }
+        RollingHashState {
+            rolling: u64::from(!0u32),
+            stop_mask,
+        }
     }
 
     // (`ZSTD_ldm_gear_reset` works out a hash of the bytes it is given and keeps nothing of
@@ -222,7 +243,12 @@ impl RollingHashState {
     /// `ZSTD_ldm_gear_feed`: the split points found in `data` into `splits`, until all of it
     /// is hashed or there are `LDM_BATCH_SIZE` of them. The answer is how many bytes were
     /// hashed.
-    fn feed(&mut self, data: &[u8], splits: &mut [usize; LDM_BATCH_SIZE], num_splits: &mut usize) -> usize {
+    fn feed(
+        &mut self,
+        data: &[u8],
+        splits: &mut [usize; LDM_BATCH_SIZE],
+        num_splits: &mut usize,
+    ) -> usize {
         let mut hash = self.rolling;
         let mask = self.stop_mask;
         let mut n = 0;
@@ -265,7 +291,11 @@ impl LdmState {
         LdmState {
             params,
             // (`ZSTD_window_init`, then `ZSTD_window_update` with the source.)
-            window: Window { base: ZSTD_WINDOW_START_INDEX, dict_limit: ZSTD_WINDOW_START_INDEX, low_limit: ZSTD_WINDOW_START_INDEX },
+            window: Window {
+                base: ZSTD_WINDOW_START_INDEX,
+                dict_limit: ZSTD_WINDOW_START_INDEX,
+                low_limit: ZSTD_WINDOW_START_INDEX,
+            },
             hash_table: vec![LdmEntry::default(); 1usize << params.hash_log],
             bucket_offsets: vec![0; num_buckets],
             max_nb_seq: block_size / params.min_match_length as usize,
@@ -283,7 +313,13 @@ impl LdmState {
     /// `ZSTD_ldm_generateSequences_internal`: the matches of the chunk
     /// `src[istart..istart + src_size]` onto `sequences`. The answer is the size of the
     /// literals after the last.
-    fn generate_sequences_internal(&mut self, sequences: &mut Vec<RawSeq>, src: &[u8], istart: usize, src_size: usize) -> Result<usize, OutOfSequences> {
+    fn generate_sequences_internal(
+        &mut self,
+        sequences: &mut Vec<RawSeq>,
+        src: &[u8],
+        istart: usize,
+        src_size: usize,
+    ) -> Result<usize, OutOfSequences> {
         // LDM parameters
         let min_match_length = self.params.min_match_length as usize;
         let ents_per_bucket = 1usize << self.params.bucket_size_log;
@@ -327,7 +363,10 @@ impl LdmState {
                 let mut best_match_length = 0usize;
                 let mut best_entry: Option<LdmEntry> = None;
                 let bucket = hash << self.params.bucket_size_log;
-                let new_entry = LdmEntry { offset: (split + base) as u32, checksum };
+                let new_entry = LdmEntry {
+                    offset: (split + base) as u32,
+                    checksum,
+                };
 
                 // If a split point would generate a sequence overlapping with the previous
                 // one, we merely register it in the hash table and move on.
@@ -350,14 +389,18 @@ impl LdmState {
                     let cur_backward_match_length = {
                         let (mut p_in, mut p_match) = (split, p_match);
                         let mut match_length = 0usize;
-                        while p_in > anchor && p_match > low_prefix_ptr && src[p_in - 1] == src[p_match - 1] {
+                        while p_in > anchor
+                            && p_match > low_prefix_ptr
+                            && src[p_in - 1] == src[p_match - 1]
+                        {
                             p_in -= 1;
                             p_match -= 1;
                             match_length += 1;
                         }
                         match_length
                     };
-                    let cur_total_match_length = cur_forward_match_length + cur_backward_match_length;
+                    let cur_total_match_length =
+                        cur_forward_match_length + cur_backward_match_length;
 
                     if cur_total_match_length > best_match_length {
                         best_match_length = cur_total_match_length;
@@ -382,7 +425,11 @@ impl LdmState {
                     if sequences.len() == self.max_nb_seq {
                         return Err(OutOfSequences);
                     }
-                    sequences.push(RawSeq { lit_length: (split - backward_match_length - anchor) as u32, match_length: m_length as u32, offset });
+                    sequences.push(RawSeq {
+                        lit_length: (split - backward_match_length - anchor) as u32,
+                        match_length: m_length as u32,
+                        offset,
+                    });
                 }
 
                 // Insert the current entry into the hash table --- it must be done after the
@@ -413,11 +460,18 @@ impl LdmState {
 
     /// `ZSTD_ldm_generateSequences`: the long-distance matches of the block
     /// `src[istart..istart + src_size]`, in `sequences`.
-    pub(crate) fn generate_sequences(&mut self, sequences: &mut Vec<RawSeq>, src: &[u8], istart: usize, src_size: usize) -> Result<(), OutOfSequences> {
+    pub(crate) fn generate_sequences(
+        &mut self,
+        sequences: &mut Vec<RawSeq>,
+        src: &[u8],
+        istart: usize,
+        src_size: usize,
+    ) -> Result<(), OutOfSequences> {
         let max_dist = 1u32 << self.params.window_log;
         let iend = istart + src_size;
         const K_MAX_CHUNK_SIZE: usize = 1 << 20;
-        let nb_chunks = (src_size / K_MAX_CHUNK_SIZE) + usize::from(src_size % K_MAX_CHUNK_SIZE != 0);
+        let nb_chunks =
+            (src_size / K_MAX_CHUNK_SIZE) + usize::from(src_size % K_MAX_CHUNK_SIZE != 0);
         let mut leftover_size = 0usize;
 
         // The input could be very large (in zstdmt), so it must be broken up into chunks to
@@ -426,7 +480,11 @@ impl LdmState {
         while chunk < nb_chunks && sequences.len() < self.max_nb_seq {
             let chunk_start = istart + chunk * K_MAX_CHUNK_SIZE;
             let remaining = iend - chunk_start;
-            let chunk_end = if remaining < K_MAX_CHUNK_SIZE { iend } else { chunk_start + K_MAX_CHUNK_SIZE };
+            let chunk_end = if remaining < K_MAX_CHUNK_SIZE {
+                iend
+            } else {
+                chunk_start + K_MAX_CHUNK_SIZE
+            };
             let chunk_size = chunk_end - chunk_start;
             let prev_size = sequences.len();
 
@@ -447,7 +505,8 @@ impl LdmState {
                 }
             }
             // 3. Generate the sequences for the chunk, and get newLeftoverSize.
-            let new_leftover_size = self.generate_sequences_internal(sequences, src, chunk_start, chunk_size)?;
+            let new_leftover_size =
+                self.generate_sequences_internal(sequences, src, chunk_start, chunk_size)?;
             // 4. We add the leftover literals from previous iterations to the first newly
             // generated sequence, or add the `newLeftoverSize` if none are generated.
             if prev_size < sequences.len() {
@@ -471,6 +530,9 @@ mod tests {
         assert_eq!(xxh64(b"", 0), 0xEF46DB3751D8E999);
         assert_eq!(xxh64(b"a", 0), 0xD24EC4F1A98C6E5B);
         assert_eq!(xxh64(b"abc", 0), 0x44BC2CF5AD770999);
-        assert_eq!(xxh64(b"Nobody inspects the spammish repetition", 0), 0xFBCEA83C8A378BF1);
+        assert_eq!(
+            xxh64(b"Nobody inspects the spammish repetition", 0),
+            0xFBCEA83C8A378BF1
+        );
     }
 }

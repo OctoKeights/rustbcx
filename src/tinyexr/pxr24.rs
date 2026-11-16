@@ -15,7 +15,14 @@ use super::{PIXELTYPE_HALF, PIXELTYPE_UINT};
 /// The original takes a block that is as long as its values are in PXR24's own layout for
 /// one that was not compressed, which no writer makes, its own included; a compressed block
 /// that comes out that long is then read as other values. That is done only `as_tinyexr`.
-pub(crate) fn decompress_pxr24(out: &mut [u8], input: &[u8], data_width: i32, num_lines: i32, pixel_types: &[i32], as_tinyexr: bool) -> bool {
+pub(crate) fn decompress_pxr24(
+    out: &mut [u8],
+    input: &[u8],
+    data_width: i32,
+    num_lines: i32,
+    pixel_types: &[i32],
+    as_tinyexr: bool,
+) -> bool {
     // PXR24 stores data per-scanline, per-channel with byte planes: UINT in 4 bytes, HALF in
     // 2 bytes, FLOAT in 3 bytes (24-bit).
 
@@ -63,7 +70,10 @@ pub(crate) fn decompress_pxr24(out: &mut [u8], input: &[u8], data_width: i32, nu
 
                 let mut pixel = 0u32;
                 for x in 0..w {
-                    let diff = ((pxr24_buf[ptr0 + x] as u32) << 24) | ((pxr24_buf[ptr1 + x] as u32) << 16) | ((pxr24_buf[ptr2 + x] as u32) << 8) | pxr24_buf[ptr3 + x] as u32;
+                    let diff = ((pxr24_buf[ptr0 + x] as u32) << 24)
+                        | ((pxr24_buf[ptr1 + x] as u32) << 16)
+                        | ((pxr24_buf[ptr2 + x] as u32) << 8)
+                        | pxr24_buf[ptr3 + x] as u32;
                     pixel = pixel.wrapping_add(diff);
                     out[out_p..out_p + 4].copy_from_slice(&pixel.to_le_bytes());
                     out_p += 4;
@@ -87,7 +97,9 @@ pub(crate) fn decompress_pxr24(out: &mut [u8], input: &[u8], data_width: i32, nu
 
                 let mut pixel = 0u32;
                 for x in 0..w {
-                    let diff = ((pxr24_buf[ptr0 + x] as u32) << 24) | ((pxr24_buf[ptr1 + x] as u32) << 16) | ((pxr24_buf[ptr2 + x] as u32) << 8);
+                    let diff = ((pxr24_buf[ptr0 + x] as u32) << 24)
+                        | ((pxr24_buf[ptr1 + x] as u32) << 16)
+                        | ((pxr24_buf[ptr2 + x] as u32) << 8);
                     pixel = pixel.wrapping_add(diff);
                     // Float24 to float32: the 24-bit value is in the upper 24 bits.
                     out[out_p..out_p + 4].copy_from_slice(&pixel.to_le_bytes());
@@ -142,7 +154,12 @@ fn float_to_float24(f: f32) -> u32 {
 /// stored as `file_types`, as a PXR24 block: floats cut to 24 bits, every value as its
 /// difference from the one before it in its line, the bytes of the values of a line apart
 /// (all first bytes, then all second ones), and the whole as a zlib stream.
-pub(crate) fn compress_pxr24(input: &[u8], data_width: i32, num_lines: i32, file_types: &[i32]) -> Vec<u8> {
+pub(crate) fn compress_pxr24(
+    input: &[u8],
+    data_width: i32,
+    num_lines: i32,
+    file_types: &[i32],
+) -> Vec<u8> {
     // Calculate PXR24 buffer size.
     // PXR24 converts FLOAT to 24-bit, HALF stays 16-bit, UINT stays 32-bit.
     let w = data_width as usize;
@@ -173,7 +190,12 @@ pub(crate) fn compress_pxr24(input: &[u8], data_width: i32, num_lines: i32, file
 
                 let mut prev_pixel = 0u32;
                 for x in 0..w {
-                    let pixel = u32::from_le_bytes([input[in_p], input[in_p + 1], input[in_p + 2], input[in_p + 3]]);
+                    let pixel = u32::from_le_bytes([
+                        input[in_p],
+                        input[in_p + 1],
+                        input[in_p + 2],
+                        input[in_p + 3],
+                    ]);
                     in_p += 4;
 
                     let diff = pixel.wrapping_sub(prev_pixel);
@@ -208,7 +230,12 @@ pub(crate) fn compress_pxr24(input: &[u8], data_width: i32, num_lines: i32, file
 
                 let mut prev_pixel = 0u32;
                 for x in 0..w {
-                    let f = f32::from_bits(u32::from_le_bytes([input[in_p], input[in_p + 1], input[in_p + 2], input[in_p + 3]]));
+                    let f = f32::from_bits(u32::from_le_bytes([
+                        input[in_p],
+                        input[in_p + 1],
+                        input[in_p + 2],
+                        input[in_p + 3],
+                    ]));
                     in_p += 4;
 
                     let pixel24 = float_to_float24(f);

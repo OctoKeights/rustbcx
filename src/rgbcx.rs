@@ -5,7 +5,11 @@
 //! are an [`Rgbcx`], made by [`Rgbcx::new`], and the encoders that need them are its methods.
 //! The BC4 and BC5 encoders and all the unpackers need no tables and are plain functions.
 
-use crate::rgbcx_tables::{BEST_TOTAL_ORDERINGS3, BEST_TOTAL_ORDERINGS4, MIDPOINT5, MIDPOINT6, NUM_UNIQUE_TOTAL_ORDERINGS3, NUM_UNIQUE_TOTAL_ORDERINGS4, UNIQUE_TOTAL_ORDERS3, UNIQUE_TOTAL_ORDERS4};
+use crate::rgbcx_tables::{
+    BEST_TOTAL_ORDERINGS3, BEST_TOTAL_ORDERINGS4, MIDPOINT5, MIDPOINT6,
+    NUM_UNIQUE_TOTAL_ORDERINGS3, NUM_UNIQUE_TOTAL_ORDERINGS4, UNIQUE_TOTAL_ORDERS3,
+    UNIQUE_TOTAL_ORDERS4,
+};
 
 /// A pixel: red, green, blue, alpha.
 pub type Color32 = [u8; 4];
@@ -65,7 +69,8 @@ pub const ENCODE_BC1_BOUNDING_BOX_INT: u32 = 32768;
 /// Try refining the final endpoints by examining nearby colors: the number of rounds, shifted
 /// up by this.
 pub const ENCODE_BC1_ENDPOINT_SEARCH_ROUNDS_SHIFT: u32 = 22;
-pub const ENCODE_BC1_ENDPOINT_SEARCH_ROUNDS_MASK: u32 = 1023 << ENCODE_BC1_ENDPOINT_SEARCH_ROUNDS_SHIFT;
+pub const ENCODE_BC1_ENDPOINT_SEARCH_ROUNDS_MASK: u32 =
+    1023 << ENCODE_BC1_ENDPOINT_SEARCH_ROUNDS_SHIFT;
 
 pub const MIN_TOTAL_ORDERINGS: u32 = 1;
 pub const MAX_TOTAL_ORDERINGS3: u32 = 32;
@@ -244,7 +249,11 @@ struct Bc1MatchEntry {
     e: u8,
 }
 
-fn prepare_bc1_single_color_table(expand: &[u8], mode: Bc1ApproxMode, half: bool) -> [Bc1MatchEntry; 256] {
+fn prepare_bc1_single_color_table(
+    expand: &[u8],
+    mode: Bc1ApproxMode,
+    half: bool,
+) -> [Bc1MatchEntry; 256] {
     let size = expand.len() as i32;
     let mut table = [Bc1MatchEntry::default(); 256];
     for (i, entry) in table.iter_mut().enumerate() {
@@ -316,7 +325,9 @@ fn lookup_total_ordering_index4(hash: &[u16; 4096], hist: &[u8; 4]) -> u32 {
         TOTAL_ORDER_4_3_16
     } else {
         // Must sum to 16, so m_hist[3] isn't needed.
-        u32::from(hash[usize::from(hist[0]) | (usize::from(hist[1]) << 4) | (usize::from(hist[2]) << 8)])
+        u32::from(
+            hash[usize::from(hist[0]) | (usize::from(hist[1]) << 4) | (usize::from(hist[2]) << 8)],
+        )
     }
 }
 
@@ -375,7 +386,9 @@ impl Rgbcx {
     /// The tables of a mode are made the first time and copied from then on.
     pub fn new(mode: Bc1ApproxMode) -> Rgbcx {
         static TABLES: [std::sync::OnceLock<Rgbcx>; 4] = [const { std::sync::OnceLock::new() }; 4];
-        TABLES[mode as usize].get_or_init(|| Rgbcx::make_tables(mode)).clone()
+        TABLES[mode as usize]
+            .get_or_init(|| Rgbcx::make_tables(mode))
+            .clone()
     }
 
     /// Makes the tables.
@@ -393,7 +406,9 @@ impl Rgbcx {
         let mut selector_factors4 = Vec::with_capacity(NUM_UNIQUE_TOTAL_ORDERINGS4);
         for (i, hist) in UNIQUE_TOTAL_ORDERS4.iter().enumerate() {
             if !hist.contains(&16) {
-                let index = usize::from(hist[0]) | (usize::from(hist[1]) << 4) | (usize::from(hist[2]) << 8);
+                let index = usize::from(hist[0])
+                    | (usize::from(hist[1]) << 4)
+                    | (usize::from(hist[2]) << 8);
                 total_ordering4_hash[index] = i as u16;
             }
             let mut weight_accum = 0u32;
@@ -436,18 +451,33 @@ impl Rgbcx {
     }
 
     /// Optimally encodes a solid colour block to BC1 format.
-    pub fn encode_bc1_solid_block(&self, dst: &mut [u8; 8], fr: u32, fg: u32, fb: u32, allow_3color: bool) {
+    pub fn encode_bc1_solid_block(
+        &self,
+        dst: &mut [u8; 8],
+        fr: u32,
+        fg: u32,
+        fb: u32,
+        allow_3color: bool,
+    ) {
         let (fr, fg, fb) = (fr as usize & 255, fg as usize & 255, fb as usize & 255);
         let mut mask = 0xAAu32;
         let (mut max16, mut min16) = (-1i32, 0i32);
 
         if allow_3color {
-            let err4 = u32::from(self.match5_equals_1[fr].e) + u32::from(self.match6_equals_1[fg].e) + u32::from(self.match5_equals_1[fb].e);
-            let err3 = u32::from(self.match5_half[fr].e) + u32::from(self.match6_half[fg].e) + u32::from(self.match5_half[fb].e);
+            let err4 = u32::from(self.match5_equals_1[fr].e)
+                + u32::from(self.match6_equals_1[fg].e)
+                + u32::from(self.match5_equals_1[fb].e);
+            let err3 = u32::from(self.match5_half[fr].e)
+                + u32::from(self.match6_half[fg].e)
+                + u32::from(self.match5_half[fb].e);
 
             if err3 < err4 {
-                max16 = (i32::from(self.match5_half[fr].hi) << 11) | (i32::from(self.match6_half[fg].hi) << 5) | i32::from(self.match5_half[fb].hi);
-                min16 = (i32::from(self.match5_half[fr].lo) << 11) | (i32::from(self.match6_half[fg].lo) << 5) | i32::from(self.match5_half[fb].lo);
+                max16 = (i32::from(self.match5_half[fr].hi) << 11)
+                    | (i32::from(self.match6_half[fg].hi) << 5)
+                    | i32::from(self.match5_half[fb].hi);
+                min16 = (i32::from(self.match5_half[fr].lo) << 11)
+                    | (i32::from(self.match6_half[fg].lo) << 5)
+                    | i32::from(self.match5_half[fb].lo);
 
                 if max16 > min16 {
                     std::mem::swap(&mut max16, &mut min16);
@@ -456,8 +486,12 @@ impl Rgbcx {
         }
 
         if max16 == -1 {
-            max16 = (i32::from(self.match5_equals_1[fr].hi) << 11) | (i32::from(self.match6_equals_1[fg].hi) << 5) | i32::from(self.match5_equals_1[fb].hi);
-            min16 = (i32::from(self.match5_equals_1[fr].lo) << 11) | (i32::from(self.match6_equals_1[fg].lo) << 5) | i32::from(self.match5_equals_1[fb].lo);
+            max16 = (i32::from(self.match5_equals_1[fr].hi) << 11)
+                | (i32::from(self.match6_equals_1[fg].hi) << 5)
+                | i32::from(self.match5_equals_1[fb].hi);
+            min16 = (i32::from(self.match5_equals_1[fr].lo) << 11)
+                | (i32::from(self.match6_equals_1[fg].lo) << 5)
+                | i32::from(self.match5_equals_1[fb].lo);
 
             if min16 == max16 {
                 // Always forbid 3 color blocks
@@ -487,7 +521,14 @@ impl Rgbcx {
     }
 }
 
-fn compute_least_squares_endpoints4_rgb_sums(xl: &mut Vec3F, xh: &mut Vec3F, total: [i32; 3], iz: [f32; 3], s: usize, sums: &[[u32; 17]; 3]) {
+fn compute_least_squares_endpoints4_rgb_sums(
+    xl: &mut Vec3F,
+    xh: &mut Vec3F,
+    total: [i32; 3],
+    iz: [f32; 3],
+    s: usize,
+    sums: &[[u32; 17]; 3],
+) {
     let (iz00, iz10, iz11) = (iz[0], iz[1], iz[2]);
     let iz01 = iz10;
 
@@ -497,14 +538,22 @@ fn compute_least_squares_endpoints4_rgb_sums(xl: &mut Vec3F, xh: &mut Vec3F, tot
     let f3 = f2 + usize::from(order[2]);
     for c in 0..3 {
         let sum = &sums[c];
-        let uq00 = (sum[f2].wrapping_sub(sum[f1])).wrapping_add((sum[f3].wrapping_sub(sum[f2])).wrapping_mul(2)).wrapping_add((sum[16].wrapping_sub(sum[f3])).wrapping_mul(3));
+        let uq00 = (sum[f2].wrapping_sub(sum[f1]))
+            .wrapping_add((sum[f3].wrapping_sub(sum[f2])).wrapping_mul(2))
+            .wrapping_add((sum[16].wrapping_sub(sum[f3])).wrapping_mul(3));
         let q10 = ((total[c].wrapping_mul(3) as u32).wrapping_sub(uq00)) as f32;
         xl[c] = iz00 * uq00 as f32 + iz01 * q10;
         xh[c] = iz10 * uq00 as f32 + iz11 * q10;
     }
 }
 
-fn compute_least_squares_endpoints4_rgb(colors: &[Color32; 16], selectors: &[u8; 16], xl: &mut Vec3F, xh: &mut Vec3F, total: [i32; 3]) -> bool {
+fn compute_least_squares_endpoints4_rgb(
+    colors: &[Color32; 16],
+    selectors: &[u8; 16],
+    xl: &mut Vec3F,
+    xh: &mut Vec3F,
+    total: [i32; 3],
+) -> bool {
     let mut uq00 = [0u32; 3];
     let mut weight_accum = 0u32;
     for i in 0..16 {
@@ -540,7 +589,14 @@ fn compute_least_squares_endpoints4_rgb(colors: &[Color32; 16], selectors: &[u8;
     true
 }
 
-fn compute_least_squares_endpoints3_rgb_sums(xl: &mut Vec3F, xh: &mut Vec3F, total: [i32; 3], iz: [f32; 3], s: usize, sums: &[[u32; 17]; 3]) {
+fn compute_least_squares_endpoints3_rgb_sums(
+    xl: &mut Vec3F,
+    xh: &mut Vec3F,
+    total: [i32; 3],
+    iz: [f32; 3],
+    s: usize,
+    sums: &[[u32; 17]; 3],
+) {
     let (iz00, iz10, iz11) = (iz[0], iz[1], iz[2]);
     let iz01 = iz10;
 
@@ -550,14 +606,22 @@ fn compute_least_squares_endpoints3_rgb_sums(xl: &mut Vec3F, xh: &mut Vec3F, tot
     let f2 = f1 + usize::from(order[2]);
     for c in 0..3 {
         let sum = &sums[c];
-        let uq00 = (sum[16].wrapping_sub(sum[f2])).wrapping_mul(2).wrapping_add(sum[f2].wrapping_sub(sum[f1]));
+        let uq00 = (sum[16].wrapping_sub(sum[f2]))
+            .wrapping_mul(2)
+            .wrapping_add(sum[f2].wrapping_sub(sum[f1]));
         let q10 = ((total[c].wrapping_mul(2) as u32).wrapping_sub(uq00)) as f32;
         xl[c] = iz00 * uq00 as f32 + iz01 * q10;
         xh[c] = iz10 * uq00 as f32 + iz11 * q10;
     }
 }
 
-fn compute_least_squares_endpoints3_rgb(use_black: bool, colors: &[Color32; 16], selectors: &[u8; 16], xl: &mut Vec3F, xh: &mut Vec3F) -> bool {
+fn compute_least_squares_endpoints3_rgb(
+    use_black: bool,
+    colors: &[Color32; 16],
+    selectors: &[u8; 16],
+    xl: &mut Vec3F,
+    xh: &mut Vec3F,
+) -> bool {
     let mut uq00 = [0i32; 3];
     let mut weight_accum = 0u32;
     let mut total = [0i32; 3];
@@ -655,7 +719,16 @@ fn pack_unscaled_color(r: i32, g: i32, b: i32) -> u32 {
     u32::from((b as u32 | ((g as u32) << 5) | ((r as u32) << 11)) as u16)
 }
 
-fn bc1_encode4(dst: &mut [u8; 8], lr: i32, lg: i32, lb: i32, hr: i32, hg: i32, hb: i32, sels: &[u8; 16]) {
+fn bc1_encode4(
+    dst: &mut [u8; 8],
+    lr: i32,
+    lg: i32,
+    lb: i32,
+    hr: i32,
+    hg: i32,
+    hb: i32,
+    sels: &[u8; 16],
+) {
     let mut lc16 = pack_unscaled_color(lr, lg, lb);
     let mut hc16 = pack_unscaled_color(hr, hg, hb);
 
@@ -699,7 +772,16 @@ fn bc1_encode4(dst: &mut [u8; 8], lr: i32, lg: i32, lb: i32, hr: i32, hg: i32, h
     }
 }
 
-fn bc1_encode3(dst: &mut [u8; 8], lr: i32, lg: i32, lb: i32, hr: i32, hg: i32, hb: i32, sels: &[u8; 16]) {
+fn bc1_encode3(
+    dst: &mut [u8; 8],
+    lr: i32,
+    lg: i32,
+    lb: i32,
+    hr: i32,
+    hg: i32,
+    hb: i32,
+    sels: &[u8; 16],
+) {
     let mut lc16 = pack_unscaled_color(lr, lg, lb);
     let mut hc16 = pack_unscaled_color(hr, hg, hb);
 
@@ -729,7 +811,16 @@ fn bc1_encode3(dst: &mut [u8; 8], lr: i32, lg: i32, lb: i32, hr: i32, hg: i32, h
 
 /// The pixels sorted along the line between two endpoints, as sums of each colour over the
 /// pixels before each place: `r_sum`, `g_sum` and `b_sum`, with the totals at [16].
-fn sums_along_axis(pixels: &[Color32; 16], lr: i32, lg: i32, lb: i32, hr: i32, hg: i32, hb: i32, total: [i32; 3]) -> [[u32; 17]; 3] {
+fn sums_along_axis(
+    pixels: &[Color32; 16],
+    lr: i32,
+    lg: i32,
+    lb: i32,
+    hr: i32,
+    hg: i32,
+    hb: i32,
+    total: [i32; 3],
+) -> [[u32; 17]; 3] {
     let r0 = (lr << 3) | (lr >> 2);
     let g0 = (lg << 2) | (lg >> 4);
     let b0 = (lb << 3) | (lb >> 2);
@@ -741,7 +832,11 @@ fn sums_along_axis(pixels: &[Color32; 16], lr: i32, lg: i32, lb: i32, hr: i32, h
 
     let mut dots = [0i32; 16];
     for i in 0..16 {
-        let (r, g, b) = (i32::from(pixels[i][0]), i32::from(pixels[i][1]), i32::from(pixels[i][2]));
+        let (r, g, b) = (
+            i32::from(pixels[i][0]),
+            i32::from(pixels[i][1]),
+            i32::from(pixels[i][2]),
+        );
         let d = 0x1000000 + (r * ar + g * ag + b * ab);
         dots[i] = (d << 4) + i as i32;
     }
@@ -764,7 +859,15 @@ fn sums_along_axis(pixels: &[Color32; 16], lr: i32, lg: i32, lb: i32, hr: i32, h
 }
 
 impl Rgbcx {
-    fn bc1_get_block_colors4(&self, lr: u32, lg: u32, lb: u32, hr: u32, hg: u32, hb: u32) -> [[u32; 4]; 3] {
+    fn bc1_get_block_colors4(
+        &self,
+        lr: u32,
+        lg: u32,
+        lb: u32,
+        hr: u32,
+        hg: u32,
+        hb: u32,
+    ) -> [[u32; 4]; 3] {
         let mut block_r = [0u32; 4];
         let mut block_g = [0u32; 4];
         let mut block_b = [0u32; 4];
@@ -807,7 +910,15 @@ impl Rgbcx {
     }
 
     /// The three colours of a 3-colour block; the fourth of each row is zero (black).
-    fn bc1_get_block_colors3(&self, lr: u32, lg: u32, lb: u32, hr: u32, hg: u32, hb: u32) -> [[u32; 4]; 3] {
+    fn bc1_get_block_colors3(
+        &self,
+        lr: u32,
+        lg: u32,
+        lb: u32,
+        hr: u32,
+        hg: u32,
+        hb: u32,
+    ) -> [[u32; 4]; 3] {
         let mut block_r = [0u32; 4];
         let mut block_g = [0u32; 4];
         let mut block_b = [0u32; 4];
@@ -838,13 +949,26 @@ impl Rgbcx {
         [block_r, block_g, block_b]
     }
 
-    fn bc1_find_sels4_noerr(&self, pixels: &[Color32; 16], lr: i32, lg: i32, lb: i32, hr: i32, hg: i32, hb: i32, sels: &mut [u8; 16], force_selectors: Option<&[u8; 16]>) {
+    fn bc1_find_sels4_noerr(
+        &self,
+        pixels: &[Color32; 16],
+        lr: i32,
+        lg: i32,
+        lb: i32,
+        hr: i32,
+        hg: i32,
+        hb: i32,
+        sels: &mut [u8; 16],
+        force_selectors: Option<&[u8; 16]>,
+    ) {
         if let Some(forced) = force_selectors {
             *sels = *forced;
             return;
         }
 
-        let [block_r, block_g, block_b] = self.bc1_get_block_colors4(lr as u32, lg as u32, lb as u32, hr as u32, hg as u32, hb as u32);
+        let [block_r, block_g, block_b] = self.bc1_get_block_colors4(
+            lr as u32, lg as u32, lb as u32, hr as u32, hg as u32, hb as u32,
+        );
 
         let mut ar = block_r[3] as i32 - block_r[0] as i32;
         let mut ag = block_g[3] as i32 - block_g[0] as i32;
@@ -864,13 +988,28 @@ impl Rgbcx {
         const SELS: [u8; 4] = [3, 2, 1, 0];
 
         for i in 0..16 {
-            let d = i32::from(pixels[i][0]) * ar + i32::from(pixels[i][1]) * ag + i32::from(pixels[i][2]) * ab;
+            let d = i32::from(pixels[i][0]) * ar
+                + i32::from(pixels[i][1]) * ag
+                + i32::from(pixels[i][2]) * ab;
             sels[i] = SELS[usize::from(d <= t0) + usize::from(d < t1) + usize::from(d < t2)];
         }
     }
 
-    fn bc1_find_sels4_fasterr(&self, pixels: &[Color32; 16], lr: i32, lg: i32, lb: i32, hr: i32, hg: i32, hb: i32, sels: &mut [u8; 16], cur_err: u32) -> u32 {
-        let [block_r, block_g, block_b] = self.bc1_get_block_colors4(lr as u32, lg as u32, lb as u32, hr as u32, hg as u32, hb as u32);
+    fn bc1_find_sels4_fasterr(
+        &self,
+        pixels: &[Color32; 16],
+        lr: i32,
+        lg: i32,
+        lb: i32,
+        hr: i32,
+        hg: i32,
+        hb: i32,
+        sels: &mut [u8; 16],
+        cur_err: u32,
+    ) -> u32 {
+        let [block_r, block_g, block_b] = self.bc1_get_block_colors4(
+            lr as u32, lg as u32, lb as u32, hr as u32, hg as u32, hb as u32,
+        );
 
         let mut ar = block_r[3] as i32 - block_r[0] as i32;
         let mut ag = block_g[3] as i32 - block_g[0] as i32;
@@ -893,12 +1032,16 @@ impl Rgbcx {
 
         for row in 0..4 {
             for i in row * 4..row * 4 + 4 {
-                let d = i32::from(pixels[i][0]) * ar + i32::from(pixels[i][1]) * ag + i32::from(pixels[i][2]) * ab;
+                let d = i32::from(pixels[i][0]) * ar
+                    + i32::from(pixels[i][1]) * ag
+                    + i32::from(pixels[i][2]) * ab;
                 sels[i] = SELS[usize::from(d <= t0) + usize::from(d < t1) + usize::from(d < t2)];
             }
             for i in row * 4..row * 4 + 4 {
                 let sel = usize::from(sels[i]);
-                let err = squarei(i32::from(pixels[i][0]) - block_r[sel] as i32) + squarei(i32::from(pixels[i][1]) - block_g[sel] as i32) + squarei(i32::from(pixels[i][2]) - block_b[sel] as i32);
+                let err = squarei(i32::from(pixels[i][0]) - block_r[sel] as i32)
+                    + squarei(i32::from(pixels[i][1]) - block_g[sel] as i32)
+                    + squarei(i32::from(pixels[i][2]) - block_b[sel] as i32);
                 total_err = total_err.wrapping_add(err as u32);
             }
 
@@ -910,8 +1053,21 @@ impl Rgbcx {
         total_err
     }
 
-    fn bc1_find_sels4_check2_err(&self, pixels: &[Color32; 16], lr: i32, lg: i32, lb: i32, hr: i32, hg: i32, hb: i32, sels: &mut [u8; 16], cur_err: u32) -> u32 {
-        let [block_r, block_g, block_b] = self.bc1_get_block_colors4(lr as u32, lg as u32, lb as u32, hr as u32, hg as u32, hb as u32);
+    fn bc1_find_sels4_check2_err(
+        &self,
+        pixels: &[Color32; 16],
+        lr: i32,
+        lg: i32,
+        lb: i32,
+        hr: i32,
+        hg: i32,
+        hb: i32,
+        sels: &mut [u8; 16],
+        cur_err: u32,
+    ) -> u32 {
+        let [block_r, block_g, block_b] = self.bc1_get_block_colors4(
+            lr as u32, lg as u32, lb as u32, hr as u32, hg as u32, hb as u32,
+        );
         let block = |channel: &[u32; 4], sel: i32| channel[sel as usize] as i32;
 
         let dr = block_r[3] as i32 - block_r[0] as i32;
@@ -923,13 +1079,25 @@ impl Rgbcx {
         let mut total_err = 0u32;
 
         for i in 0..16 {
-            let (r, g, b) = (i32::from(pixels[i][0]), i32::from(pixels[i][1]), i32::from(pixels[i][2]));
+            let (r, g, b) = (
+                i32::from(pixels[i][0]),
+                i32::from(pixels[i][1]),
+                i32::from(pixels[i][2]),
+            );
 
-            let mut sel = f2i(((r - block_r[0] as i32) * dr + (g - block_g[0] as i32) * dg + (b - block_b[0] as i32) * db) as f32 * f + 0.5f32);
+            let mut sel = f2i(((r - block_r[0] as i32) * dr
+                + (g - block_g[0] as i32) * dg
+                + (b - block_b[0] as i32) * db) as f32
+                * f
+                + 0.5f32);
             sel = clampi(sel, 1, 3);
 
-            let err0 = (squarei(block(&block_r, sel - 1) - r) + squarei(block(&block_g, sel - 1) - g) + squarei(block(&block_b, sel - 1) - b)) as u32;
-            let err1 = (squarei(block(&block_r, sel) - r) + squarei(block(&block_g, sel) - g) + squarei(block(&block_b, sel) - b)) as u32;
+            let err0 = (squarei(block(&block_r, sel - 1) - r)
+                + squarei(block(&block_g, sel - 1) - g)
+                + squarei(block(&block_b, sel - 1) - b)) as u32;
+            let err1 = (squarei(block(&block_r, sel) - r)
+                + squarei(block(&block_g, sel) - g)
+                + squarei(block(&block_b, sel) - b)) as u32;
 
             let mut best_sel = sel;
             let mut best_err = err1;
@@ -954,20 +1122,41 @@ impl Rgbcx {
         total_err
     }
 
-    fn bc1_find_sels4_fullerr(&self, pixels: &[Color32; 16], lr: i32, lg: i32, lb: i32, hr: i32, hg: i32, hb: i32, sels: &mut [u8; 16], cur_err: u32) -> u32 {
-        let [block_r, block_g, block_b] = self.bc1_get_block_colors4(lr as u32, lg as u32, lb as u32, hr as u32, hg as u32, hb as u32);
+    fn bc1_find_sels4_fullerr(
+        &self,
+        pixels: &[Color32; 16],
+        lr: i32,
+        lg: i32,
+        lb: i32,
+        hr: i32,
+        hg: i32,
+        hb: i32,
+        sels: &mut [u8; 16],
+        cur_err: u32,
+    ) -> u32 {
+        let [block_r, block_g, block_b] = self.bc1_get_block_colors4(
+            lr as u32, lg as u32, lb as u32, hr as u32, hg as u32, hb as u32,
+        );
 
         let mut total_err = 0u32;
 
         for i in 0..16 {
-            let (r, g, b) = (i32::from(pixels[i][0]), i32::from(pixels[i][1]), i32::from(pixels[i][2]));
+            let (r, g, b) = (
+                i32::from(pixels[i][0]),
+                i32::from(pixels[i][1]),
+                i32::from(pixels[i][2]),
+            );
 
-            let mut best_err = (squarei(block_r[0] as i32 - r) + squarei(block_g[0] as i32 - g) + squarei(block_b[0] as i32 - b)) as u32;
+            let mut best_err = (squarei(block_r[0] as i32 - r)
+                + squarei(block_g[0] as i32 - g)
+                + squarei(block_b[0] as i32 - b)) as u32;
             let mut best_sel = 0u8;
 
             let mut j = 1;
             while j < 4 && best_err != 0 {
-                let err = (squarei(block_r[j] as i32 - r) + squarei(block_g[j] as i32 - g) + squarei(block_b[j] as i32 - b)) as u32;
+                let err = (squarei(block_r[j] as i32 - r)
+                    + squarei(block_g[j] as i32 - g)
+                    + squarei(block_b[j] as i32 - b)) as u32;
                 if err < best_err || (err == best_err && j == 3) {
                     best_err = err;
                     best_sel = j as u8;
@@ -986,17 +1175,40 @@ impl Rgbcx {
         total_err
     }
 
-    fn bc1_find_sels4(&self, flags: u32, pixels: &[Color32; 16], lr: i32, lg: i32, lb: i32, hr: i32, hg: i32, hb: i32, sels: &mut [u8; 16], cur_err: u32, force_selectors: Option<&[u8; 16]>) -> u32 {
+    fn bc1_find_sels4(
+        &self,
+        flags: u32,
+        pixels: &[Color32; 16],
+        lr: i32,
+        lg: i32,
+        lb: i32,
+        hr: i32,
+        hg: i32,
+        hb: i32,
+        sels: &mut [u8; 16],
+        cur_err: u32,
+        force_selectors: Option<&[u8; 16]>,
+    ) -> u32 {
         if let Some(forced) = force_selectors {
             *sels = *forced;
 
-            let [block_r, block_g, block_b] = self.bc1_get_block_colors4(lr as u32, lg as u32, lb as u32, hr as u32, hg as u32, hb as u32);
+            let [block_r, block_g, block_b] = self.bc1_get_block_colors4(
+                lr as u32, lg as u32, lb as u32, hr as u32, hg as u32, hb as u32,
+            );
 
             let mut err = 0u32;
             for i in 0..16 {
-                let (r, g, b) = (i32::from(pixels[i][0]), i32::from(pixels[i][1]), i32::from(pixels[i][2]));
+                let (r, g, b) = (
+                    i32::from(pixels[i][0]),
+                    i32::from(pixels[i][1]),
+                    i32::from(pixels[i][2]),
+                );
                 let sel = usize::from(forced[i]) & 3;
-                err = err.wrapping_add((squarei(block_r[sel] as i32 - r) + squarei(block_g[sel] as i32 - g) + squarei(block_b[sel] as i32 - b)) as u32);
+                err = err.wrapping_add(
+                    (squarei(block_r[sel] as i32 - r)
+                        + squarei(block_g[sel] as i32 - g)
+                        + squarei(block_b[sel] as i32 - b)) as u32,
+                );
             }
             err
         } else if flags & ENCODE_BC1_USE_FASTER_MSE_EVAL != 0 {
@@ -1008,9 +1220,24 @@ impl Rgbcx {
         }
     }
 
-    fn bc1_find_sels3_fullerr(&self, use_black: bool, pixels: &[Color32; 16], lr: i32, lg: i32, lb: i32, hr: i32, hg: i32, hb: i32, sels: &mut [u8; 16], cur_err: u32, force_selectors: Option<&[u8; 16]>) -> u32 {
+    fn bc1_find_sels3_fullerr(
+        &self,
+        use_black: bool,
+        pixels: &[Color32; 16],
+        lr: i32,
+        lg: i32,
+        lb: i32,
+        hr: i32,
+        hg: i32,
+        hb: i32,
+        sels: &mut [u8; 16],
+        cur_err: u32,
+        force_selectors: Option<&[u8; 16]>,
+    ) -> u32 {
         // (The fourth colour is black.)
-        let [block_r, block_g, block_b] = self.bc1_get_block_colors3(lr as u32, lg as u32, lb as u32, hr as u32, hg as u32, hb as u32);
+        let [block_r, block_g, block_b] = self.bc1_get_block_colors3(
+            lr as u32, lg as u32, lb as u32, hr as u32, hg as u32, hb as u32,
+        );
 
         let mut total_err = 0u32;
 
@@ -1018,24 +1245,42 @@ impl Rgbcx {
             *sels = *forced;
 
             for i in 0..16 {
-                let (r, g, b) = (i32::from(pixels[i][0]), i32::from(pixels[i][1]), i32::from(pixels[i][2]));
+                let (r, g, b) = (
+                    i32::from(pixels[i][0]),
+                    i32::from(pixels[i][1]),
+                    i32::from(pixels[i][2]),
+                );
                 let sel = usize::from(forced[i]) & 3;
-                total_err = total_err.wrapping_add((squarei(block_r[sel] as i32 - r) + squarei(block_g[sel] as i32 - g) + squarei(block_b[sel] as i32 - b)) as u32);
+                total_err = total_err.wrapping_add(
+                    (squarei(block_r[sel] as i32 - r)
+                        + squarei(block_g[sel] as i32 - g)
+                        + squarei(block_b[sel] as i32 - b)) as u32,
+                );
             }
         } else {
             for i in 0..16 {
-                let (r, g, b) = (i32::from(pixels[i][0]), i32::from(pixels[i][1]), i32::from(pixels[i][2]));
+                let (r, g, b) = (
+                    i32::from(pixels[i][0]),
+                    i32::from(pixels[i][1]),
+                    i32::from(pixels[i][2]),
+                );
 
-                let mut best_err = (squarei(block_r[0] as i32 - r) + squarei(block_g[0] as i32 - g) + squarei(block_b[0] as i32 - b)) as u32;
+                let mut best_err = (squarei(block_r[0] as i32 - r)
+                    + squarei(block_g[0] as i32 - g)
+                    + squarei(block_b[0] as i32 - b)) as u32;
                 let mut best_sel = 0u8;
 
-                let err1 = (squarei(block_r[1] as i32 - r) + squarei(block_g[1] as i32 - g) + squarei(block_b[1] as i32 - b)) as u32;
+                let err1 = (squarei(block_r[1] as i32 - r)
+                    + squarei(block_g[1] as i32 - g)
+                    + squarei(block_b[1] as i32 - b)) as u32;
                 if err1 < best_err {
                     best_err = err1;
                     best_sel = 1;
                 }
 
-                let err2 = (squarei(block_r[2] as i32 - r) + squarei(block_g[2] as i32 - g) + squarei(block_b[2] as i32 - b)) as u32;
+                let err2 = (squarei(block_r[2] as i32 - r)
+                    + squarei(block_g[2] as i32 - g)
+                    + squarei(block_b[2] as i32 - b)) as u32;
                 if err2 < best_err {
                     best_err = err2;
                     best_sel = 2;
@@ -1064,39 +1309,65 @@ impl Rgbcx {
     /// The endpoints a solid block of the average colour would have, in 3-colour mode (`half`)
     /// or 4-colour mode: lr, lg, lb, hr, hg, hb.
     fn match_endpoints(&self, half: bool, avg: [i32; 3]) -> [i32; 6] {
-        let (table5, table6) = if half { (&self.match5_half, &self.match6_half) } else { (&self.match5_equals_1, &self.match6_equals_1) };
-        let (r, g, b) = (table5[avg[0] as usize & 255], table6[avg[1] as usize & 255], table5[avg[2] as usize & 255]);
-        [i32::from(r.hi), i32::from(g.hi), i32::from(b.hi), i32::from(r.lo), i32::from(g.lo), i32::from(b.lo)]
+        let (table5, table6) = if half {
+            (&self.match5_half, &self.match6_half)
+        } else {
+            (&self.match5_equals_1, &self.match6_equals_1)
+        };
+        let (r, g, b) = (
+            table5[avg[0] as usize & 255],
+            table6[avg[1] as usize & 255],
+            table5[avg[2] as usize & 255],
+        );
+        [
+            i32::from(r.hi),
+            i32::from(g.hi),
+            i32::from(b.hi),
+            i32::from(r.lo),
+            i32::from(g.lo),
+            i32::from(b.lo),
+        ]
     }
 }
 
 const ADJACENT_VOXELS: [[i8; 4]; 16] = [
-    [1, 0, 0, 3],    // 0
-    [0, 1, 0, 4],    // 1
-    [0, 0, 1, 5],    // 2
-    [-1, 0, 0, 0],   // 3
-    [0, -1, 0, 1],   // 4
-    [0, 0, -1, 2],   // 5
-    [1, 1, 0, 9],    // 6
-    [1, 0, 1, 10],   // 7
-    [0, 1, 1, 11],   // 8
-    [-1, -1, 0, 6],  // 9
-    [-1, 0, -1, 7],  // 10
-    [0, -1, -1, 8],  // 11
-    [-1, 1, 0, 13],  // 12
-    [1, -1, 0, 12],  // 13
-    [0, -1, 1, 15],  // 14
-    [0, 1, -1, 14],  // 15
+    [1, 0, 0, 3],   // 0
+    [0, 1, 0, 4],   // 1
+    [0, 0, 1, 5],   // 2
+    [-1, 0, 0, 0],  // 3
+    [0, -1, 0, 1],  // 4
+    [0, 0, -1, 2],  // 5
+    [1, 1, 0, 9],   // 6
+    [1, 0, 1, 10],  // 7
+    [0, 1, 1, 11],  // 8
+    [-1, -1, 0, 6], // 9
+    [-1, 0, -1, 7], // 10
+    [0, -1, -1, 8], // 11
+    [-1, 1, 0, 13], // 12
+    [1, -1, 0, 12], // 13
+    [0, -1, 1, 15], // 14
+    [0, 1, -1, 14], // 15
 ];
 
 impl Rgbcx {
-    fn try_3color_block_useblack(&self, pixels: &[Color32; 16], flags: u32, cur_err: &mut u32, results: &mut Bc1EncodeResults, force_selectors: Option<&[u8; 16]>) -> bool {
+    fn try_3color_block_useblack(
+        &self,
+        pixels: &[Color32; 16],
+        flags: u32,
+        cur_err: &mut u32,
+        results: &mut Bc1EncodeResults,
+        force_selectors: Option<&[u8; 16]>,
+    ) -> bool {
         let (mut total_r, mut total_g, mut total_b) = (0i32, 0i32, 0i32);
         let (mut max_r, mut max_g, mut max_b) = (0i32, 0i32, 0i32);
         let (mut min_r, mut min_g, mut min_b) = (255i32, 255i32, 255i32);
         let mut total_pixels = 0i32;
         for pixel in pixels {
-            let (r, g, b) = (i32::from(pixel[0]), i32::from(pixel[1]), i32::from(pixel[2]));
+            let (r, g, b) = (
+                i32::from(pixel[0]),
+                i32::from(pixel[1]),
+                i32::from(pixel[2]),
+            );
             if (r | g | b) < 4 {
                 continue;
             }
@@ -1127,7 +1398,11 @@ impl Rgbcx {
 
         let mut icov = [0i32; 6];
         for pixel in pixels {
-            let (mut r, mut g, mut b) = (i32::from(pixel[0]), i32::from(pixel[1]), i32::from(pixel[2]));
+            let (mut r, mut g, mut b) = (
+                i32::from(pixel[0]),
+                i32::from(pixel[1]),
+                i32::from(pixel[2]),
+            );
 
             if (r | g | b) < 4 {
                 continue;
@@ -1182,13 +1457,20 @@ impl Rgbcx {
 
         let (mut low_dot, mut high_dot) = (i32::MAX, i32::MIN);
         for (i, pixel) in pixels.iter().enumerate() {
-            let (r, g, b) = (i32::from(pixel[0]), i32::from(pixel[1]), i32::from(pixel[2]));
+            let (r, g, b) = (
+                i32::from(pixel[0]),
+                i32::from(pixel[1]),
+                i32::from(pixel[2]),
+            );
 
             if (r | g | b) < 4 {
                 continue;
             }
 
-            let dot = r.wrapping_mul(saxis_r).wrapping_add(g.wrapping_mul(saxis_g)).wrapping_add(b.wrapping_mul(saxis_b));
+            let dot = r
+                .wrapping_mul(saxis_r)
+                .wrapping_add(g.wrapping_mul(saxis_g))
+                .wrapping_add(b.wrapping_mul(saxis_b));
             if dot < low_dot {
                 low_dot = dot;
                 low_c = i;
@@ -1208,13 +1490,35 @@ impl Rgbcx {
         let mut hb = i32::from(to_5(u32::from(pixels[high_c][2])));
 
         let mut trial_sels = [0u8; 16];
-        let mut trial_err = self.bc1_find_sels3_fullerr(true, pixels, lr, lg, lb, hr, hg, hb, &mut trial_sels, u32::MAX, force_selectors);
+        let mut trial_err = self.bc1_find_sels3_fullerr(
+            true,
+            pixels,
+            lr,
+            lg,
+            lb,
+            hr,
+            hg,
+            hb,
+            &mut trial_sels,
+            u32::MAX,
+            force_selectors,
+        );
 
         if trial_err != 0 {
-            let total_ls_passes = if flags & ENCODE_BC1_TWO_LEAST_SQUARES_PASSES != 0 { 2 } else { 1 };
+            let total_ls_passes = if flags & ENCODE_BC1_TWO_LEAST_SQUARES_PASSES != 0 {
+                2
+            } else {
+                1
+            };
             for _ in 0..total_ls_passes {
                 let (mut xl, mut xh) = ([0f32; 3], [0f32; 3]);
-                let [lr2, lg2, lb2, hr2, hg2, hb2] = if !compute_least_squares_endpoints3_rgb(true, pixels, &trial_sels, &mut xl, &mut xh) {
+                let [lr2, lg2, lb2, hr2, hg2, hb2] = if !compute_least_squares_endpoints3_rgb(
+                    true,
+                    pixels,
+                    &trial_sels,
+                    &mut xl,
+                    &mut xh,
+                ) {
                     self.match_endpoints(true, [avg_r, avg_g, avg_b])
                 } else {
                     // (As the C++ calls it: what comes of xl goes to the high endpoint.)
@@ -1227,7 +1531,19 @@ impl Rgbcx {
                 }
 
                 let mut trial_sels2 = [0u8; 16];
-                let trial_err2 = self.bc1_find_sels3_fullerr(true, pixels, lr2, lg2, lb2, hr2, hg2, hb2, &mut trial_sels2, trial_err, force_selectors);
+                let trial_err2 = self.bc1_find_sels3_fullerr(
+                    true,
+                    pixels,
+                    lr2,
+                    lg2,
+                    lb2,
+                    hr2,
+                    hg2,
+                    hb2,
+                    &mut trial_sels2,
+                    trial_err,
+                    force_selectors,
+                );
 
                 if trial_err2 < trial_err {
                     trial_err = trial_err2;
@@ -1286,13 +1602,35 @@ impl Rgbcx {
         }
 
         let mut trial_sels = [0u8; 16];
-        let mut trial_err = self.bc1_find_sels3_fullerr(false, pixels, lr, lg, lb, hr, hg, hb, &mut trial_sels, u32::MAX, force_selectors);
+        let mut trial_err = self.bc1_find_sels3_fullerr(
+            false,
+            pixels,
+            lr,
+            lg,
+            lb,
+            hr,
+            hg,
+            hb,
+            &mut trial_sels,
+            u32::MAX,
+            force_selectors,
+        );
 
         if trial_err != 0 {
-            let total_ls_passes = if flags & ENCODE_BC1_TWO_LEAST_SQUARES_PASSES != 0 { 2 } else { 1 };
+            let total_ls_passes = if flags & ENCODE_BC1_TWO_LEAST_SQUARES_PASSES != 0 {
+                2
+            } else {
+                1
+            };
             for _ in 0..total_ls_passes {
                 let (mut xl, mut xh) = ([0f32; 3], [0f32; 3]);
-                let [lr2, lg2, lb2, hr2, hg2, hb2] = if !compute_least_squares_endpoints3_rgb(false, pixels, &trial_sels, &mut xl, &mut xh) {
+                let [lr2, lg2, lb2, hr2, hg2, hb2] = if !compute_least_squares_endpoints3_rgb(
+                    false,
+                    pixels,
+                    &trial_sels,
+                    &mut xl,
+                    &mut xh,
+                ) {
                     self.match_endpoints(true, avg)
                 } else {
                     let [hr2, hg2, hb2, lr2, lg2, lb2] = precise_round_565(&xl, &xh);
@@ -1304,7 +1642,19 @@ impl Rgbcx {
                 }
 
                 let mut trial_sels2 = [0u8; 16];
-                let trial_err2 = self.bc1_find_sels3_fullerr(false, pixels, lr2, lg2, lb2, hr2, hg2, hb2, &mut trial_sels2, trial_err, force_selectors);
+                let trial_err2 = self.bc1_find_sels3_fullerr(
+                    false,
+                    pixels,
+                    lr2,
+                    lg2,
+                    lb2,
+                    hr2,
+                    hg2,
+                    hb2,
+                    &mut trial_sels2,
+                    trial_err,
+                    force_selectors,
+                );
 
                 if trial_err2 < trial_err {
                     trial_err = trial_err2;
@@ -1321,32 +1671,68 @@ impl Rgbcx {
             }
         }
 
-        if trial_err != 0 && flags & ENCODE_BC1_USE_LIKELY_TOTAL_ORDERINGS != 0 && total_orderings_to_try != 0 {
+        if trial_err != 0
+            && flags & ENCODE_BC1_USE_LIKELY_TOTAL_ORDERINGS != 0
+            && total_orderings_to_try != 0
+        {
             let mut hist = [0u8; 3];
             for i in 0..16 {
                 hist[usize::from(trial_sels[i]) % 3] += 1;
             }
 
-            let orig_total_order_index = lookup_total_ordering_index3(&self.total_ordering3_hash, &hist) as usize;
+            let orig_total_order_index =
+                lookup_total_ordering_index3(&self.total_ordering3_hash, &hist) as usize;
 
             let sums = sums_along_axis(pixels, lr, lg, lb, hr, hg, hb, total);
 
-            let q_total = if flags & ENCODE_BC1_EXHAUSTIVE != 0 { NUM_UNIQUE_TOTAL_ORDERINGS3 as u32 } else { total_orderings_to_try.min(MAX_TOTAL_ORDERINGS3) };
+            let q_total = if flags & ENCODE_BC1_EXHAUSTIVE != 0 {
+                NUM_UNIQUE_TOTAL_ORDERINGS3 as u32
+            } else {
+                total_orderings_to_try.min(MAX_TOTAL_ORDERINGS3)
+            };
             for q in 0..q_total {
-                let s = if flags & ENCODE_BC1_EXHAUSTIVE != 0 { q } else { u32::from(BEST_TOTAL_ORDERINGS3[orig_total_order_index][q as usize]) };
+                let s = if flags & ENCODE_BC1_EXHAUSTIVE != 0 {
+                    q
+                } else {
+                    u32::from(BEST_TOTAL_ORDERINGS3[orig_total_order_index][q as usize])
+                };
 
-                let [trial_lr, trial_lg, trial_lb, trial_hr, trial_hg, trial_hb] = if s == TOTAL_ORDER_3_0_16 || s == TOTAL_ORDER_3_1_16 || s == TOTAL_ORDER_3_2_16 {
+                let [trial_lr, trial_lg, trial_lb, trial_hr, trial_hg, trial_hb] = if s
+                    == TOTAL_ORDER_3_0_16
+                    || s == TOTAL_ORDER_3_1_16
+                    || s == TOTAL_ORDER_3_2_16
+                {
                     self.match_endpoints(true, avg)
                 } else {
                     let (mut xl, mut xh) = ([0f32; 3], [0f32; 3]);
-                    compute_least_squares_endpoints3_rgb_sums(&mut xl, &mut xh, total, self.selector_factors3[s as usize], s as usize, &sums);
+                    compute_least_squares_endpoints3_rgb_sums(
+                        &mut xl,
+                        &mut xh,
+                        total,
+                        self.selector_factors3[s as usize],
+                        s as usize,
+                        &sums,
+                    );
 
-                    let [trial_hr, trial_hg, trial_hb, trial_lr, trial_lg, trial_lb] = precise_round_565(&xl, &xh);
+                    let [trial_hr, trial_hg, trial_hb, trial_lr, trial_lg, trial_lb] =
+                        precise_round_565(&xl, &xh);
                     [trial_lr, trial_lg, trial_lb, trial_hr, trial_hg, trial_hb]
                 };
 
                 let mut trial_sels2 = [0u8; 16];
-                let trial_err2 = self.bc1_find_sels3_fullerr(false, pixels, trial_lr, trial_lg, trial_lb, trial_hr, trial_hg, trial_hb, &mut trial_sels2, u32::MAX, force_selectors);
+                let trial_err2 = self.bc1_find_sels3_fullerr(
+                    false,
+                    pixels,
+                    trial_lr,
+                    trial_lg,
+                    trial_lb,
+                    trial_hr,
+                    trial_hg,
+                    trial_hb,
+                    &mut trial_sels2,
+                    u32::MAX,
+                    force_selectors,
+                );
 
                 if trial_err2 < trial_err {
                     trial_err = trial_err2;
@@ -1392,13 +1778,33 @@ impl Rgbcx {
     /// 3 color modes won't be used at all until level 5 or higher. No transparency supported,
     /// however if you set `use_transparent_texels_for_black` to true the encoder will use
     /// transparent selectors on very dark/black texels to reduce MSE.
-    pub fn encode_bc1(&self, level: u32, dst: &mut [u8; 8], pixels: &[Color32; 16], allow_3color: bool, allow_transparent_texels_for_black: bool, force_selectors: Option<&[u8; 16]>) {
+    pub fn encode_bc1(
+        &self,
+        level: u32,
+        dst: &mut [u8; 8],
+        pixels: &[Color32; 16],
+        allow_3color: bool,
+        allow_transparent_texels_for_black: bool,
+        force_selectors: Option<&[u8; 16]>,
+    ) {
         let flags;
         let (mut total_orderings4, mut total_orderings3) = (1u32, 1u32);
 
-        let three_color = if allow_3color { ENCODE_BC1_USE_3COLOR_BLOCKS } else { 0 } | if allow_transparent_texels_for_black { ENCODE_BC1_USE_3COLOR_BLOCKS_FOR_BLACK_PIXELS } else { 0 };
+        let three_color = if allow_3color {
+            ENCODE_BC1_USE_3COLOR_BLOCKS
+        } else {
+            0
+        } | if allow_transparent_texels_for_black {
+            ENCODE_BC1_USE_3COLOR_BLOCKS_FOR_BLACK_PIXELS
+        } else {
+            0
+        };
         let rounds = |count: u32| count << ENCODE_BC1_ENDPOINT_SEARCH_ROUNDS_SHIFT;
-        const THOROUGH: u32 = ENCODE_BC1_TWO_LEAST_SQUARES_PASSES | ENCODE_BC1_USE_FULL_MSE_EVAL | ENCODE_BC1_USE_LIKELY_TOTAL_ORDERINGS | ENCODE_BC1_USE_6_POWER_ITERS | ENCODE_BC1_TRY_ALL_INITIAL_ENDPOINTS;
+        const THOROUGH: u32 = ENCODE_BC1_TWO_LEAST_SQUARES_PASSES
+            | ENCODE_BC1_USE_FULL_MSE_EVAL
+            | ENCODE_BC1_USE_LIKELY_TOTAL_ORDERINGS
+            | ENCODE_BC1_USE_6_POWER_ITERS
+            | ENCODE_BC1_TRY_ALL_INITIAL_ENDPOINTS;
 
         match level {
             0 => {
@@ -1419,36 +1825,55 @@ impl Rgbcx {
                 flags = ENCODE_BC1_TWO_LEAST_SQUARES_PASSES;
             }
             4 => {
-                flags = ENCODE_BC1_TWO_LEAST_SQUARES_PASSES | ENCODE_BC1_USE_FULL_MSE_EVAL | ENCODE_BC1_USE_6_POWER_ITERS;
+                flags = ENCODE_BC1_TWO_LEAST_SQUARES_PASSES
+                    | ENCODE_BC1_USE_FULL_MSE_EVAL
+                    | ENCODE_BC1_USE_6_POWER_ITERS;
             }
             6 => {
-                flags = ENCODE_BC1_TWO_LEAST_SQUARES_PASSES | ENCODE_BC1_USE_FASTER_MSE_EVAL | ENCODE_BC1_USE_LIKELY_TOTAL_ORDERINGS | three_color;
+                flags = ENCODE_BC1_TWO_LEAST_SQUARES_PASSES
+                    | ENCODE_BC1_USE_FASTER_MSE_EVAL
+                    | ENCODE_BC1_USE_LIKELY_TOTAL_ORDERINGS
+                    | three_color;
             }
             7 => {
-                flags = ENCODE_BC1_TWO_LEAST_SQUARES_PASSES | ENCODE_BC1_USE_FASTER_MSE_EVAL | ENCODE_BC1_USE_LIKELY_TOTAL_ORDERINGS | three_color;
+                flags = ENCODE_BC1_TWO_LEAST_SQUARES_PASSES
+                    | ENCODE_BC1_USE_FASTER_MSE_EVAL
+                    | ENCODE_BC1_USE_LIKELY_TOTAL_ORDERINGS
+                    | three_color;
                 total_orderings4 = 4;
             }
             8 => {
-                flags = ENCODE_BC1_TWO_LEAST_SQUARES_PASSES | ENCODE_BC1_USE_FASTER_MSE_EVAL | ENCODE_BC1_USE_LIKELY_TOTAL_ORDERINGS | three_color;
+                flags = ENCODE_BC1_TWO_LEAST_SQUARES_PASSES
+                    | ENCODE_BC1_USE_FASTER_MSE_EVAL
+                    | ENCODE_BC1_USE_LIKELY_TOTAL_ORDERINGS
+                    | three_color;
                 total_orderings4 = 8;
             }
             9 => {
-                flags = ENCODE_BC1_TWO_LEAST_SQUARES_PASSES | ENCODE_BC1_USE_LIKELY_TOTAL_ORDERINGS | three_color;
+                flags = ENCODE_BC1_TWO_LEAST_SQUARES_PASSES
+                    | ENCODE_BC1_USE_LIKELY_TOTAL_ORDERINGS
+                    | three_color;
                 total_orderings4 = 11;
                 total_orderings3 = 3;
             }
             10 => {
-                flags = ENCODE_BC1_TWO_LEAST_SQUARES_PASSES | ENCODE_BC1_USE_LIKELY_TOTAL_ORDERINGS | three_color;
+                flags = ENCODE_BC1_TWO_LEAST_SQUARES_PASSES
+                    | ENCODE_BC1_USE_LIKELY_TOTAL_ORDERINGS
+                    | three_color;
                 total_orderings4 = 20;
                 total_orderings3 = 8;
             }
             11 => {
-                flags = ENCODE_BC1_TWO_LEAST_SQUARES_PASSES | ENCODE_BC1_USE_LIKELY_TOTAL_ORDERINGS | three_color;
+                flags = ENCODE_BC1_TWO_LEAST_SQUARES_PASSES
+                    | ENCODE_BC1_USE_LIKELY_TOTAL_ORDERINGS
+                    | three_color;
                 total_orderings4 = 28;
                 total_orderings3 = 16;
             }
             12 => {
-                flags = ENCODE_BC1_TWO_LEAST_SQUARES_PASSES | ENCODE_BC1_USE_LIKELY_TOTAL_ORDERINGS | three_color;
+                flags = ENCODE_BC1_TWO_LEAST_SQUARES_PASSES
+                    | ENCODE_BC1_USE_LIKELY_TOTAL_ORDERINGS
+                    | three_color;
                 total_orderings4 = 32;
                 total_orderings3 = 32;
             }
@@ -1484,21 +1909,43 @@ impl Rgbcx {
             }
             19 => {
                 // This hidden mode is *extremely* slow and abuses the encoder. It's just for testing/training.
-                flags = THOROUGH | ENCODE_BC1_EXHAUSTIVE | ENCODE_BC1_ITERATIVE | rounds(256) | three_color;
+                flags = THOROUGH
+                    | ENCODE_BC1_EXHAUSTIVE
+                    | ENCODE_BC1_ITERATIVE
+                    | rounds(256)
+                    | three_color;
                 total_orderings4 = 32;
                 total_orderings3 = 32;
             }
             _ => {
                 // 5 (and any level it doesn't know): stb_dxt HIGHQUAL + permit 3 color (if it's enabled).
-                flags = ENCODE_BC1_TWO_LEAST_SQUARES_PASSES | ENCODE_BC1_USE_FASTER_MSE_EVAL | three_color;
+                flags = ENCODE_BC1_TWO_LEAST_SQUARES_PASSES
+                    | ENCODE_BC1_USE_FASTER_MSE_EVAL
+                    | three_color;
             }
         }
 
-        self.encode_bc1_with_flags(dst, pixels, flags, total_orderings4, total_orderings3, force_selectors);
+        self.encode_bc1_with_flags(
+            dst,
+            pixels,
+            flags,
+            total_orderings4,
+            total_orderings3,
+            force_selectors,
+        );
     }
 
     /// The first guess at a block's endpoints: lr, lg, lb, hr, hg, hb.
-    fn encode_bc1_pick_initial(&self, pixels: &[Color32; 16], flags: u32, grayscale_flag: bool, mut min: [i32; 3], mut max: [i32; 3], avg: [i32; 3], total: [i32; 3]) -> [i32; 6] {
+    fn encode_bc1_pick_initial(
+        &self,
+        pixels: &[Color32; 16],
+        flags: u32,
+        grayscale_flag: bool,
+        mut min: [i32; 3],
+        mut max: [i32; 3],
+        avg: [i32; 3],
+        total: [i32; 3],
+    ) -> [i32; 6] {
         if grayscale_flag {
             let fr = u32::from(pixels[0][0]);
 
@@ -1507,8 +1954,14 @@ impl Rgbcx {
                 let (five, six) = (i32::from(to_5(fr)), i32::from(to_6(fr)));
                 [five, six, five, five, six, five]
             } else {
-                let (low5, low6) = (i32::from(to_5(min[0] as u32)), i32::from(to_6(min[0] as u32)));
-                let (high5, high6) = (i32::from(to_5(max[0] as u32)), i32::from(to_6(max[0] as u32)));
+                let (low5, low6) = (
+                    i32::from(to_5(min[0] as u32)),
+                    i32::from(to_6(min[0] as u32)),
+                );
+                let (high5, high6) = (
+                    i32::from(to_5(max[0] as u32)),
+                    i32::from(to_6(max[0] as u32)),
+                );
                 [low5, low6, low5, high5, high6, high5]
             }
         } else if flags & ENCODE_BC1_USE_2D_LS != 0 {
@@ -1626,7 +2079,11 @@ impl Rgbcx {
             precise_round_565(&l, &h)
         } else if flags & ENCODE_BC1_BOUNDING_BOX_INT != 0 {
             // Algorithm from icbc.h compress_dxt1_fast(), but converted to integer.
-            let inset = [(max[0] - min[0] - 8) >> 4, (max[1] - min[1] - 8) >> 4, (max[2] - min[2] - 8) >> 4];
+            let inset = [
+                (max[0] - min[0] - 8) >> 4,
+                (max[1] - min[1] - 8) >> 4,
+                (max[2] - min[2] - 8) >> 4,
+            ];
 
             for c in 0..3 {
                 min[c] += inset[c];
@@ -1707,7 +2164,11 @@ impl Rgbcx {
                 cov[i] = icov[i] as f32 * (1.0f32 / 255.0f32);
             }
 
-            let total_power_iters = if flags & ENCODE_BC1_USE_6_POWER_ITERS != 0 { 6 } else { 4 };
+            let total_power_iters = if flags & ENCODE_BC1_USE_6_POWER_ITERS != 0 {
+                6
+            } else {
+                4
+            };
             for _ in 0..total_power_iters {
                 let r = xr * cov[0] + xg * cov[1] + xb * cov[2];
                 let g = xr * cov[1] + xg * cov[3] + xb * cov[4];
@@ -1732,7 +2193,12 @@ impl Rgbcx {
             saxis_b = ((saxis_b as u32) << 4) as i32;
 
             for (i, pixel) in pixels.iter().enumerate() {
-                let dot = (i32::from(pixel[0]).wrapping_mul(saxis_r).wrapping_add(i32::from(pixel[1]).wrapping_mul(saxis_g)).wrapping_add(i32::from(pixel[2]).wrapping_mul(saxis_b)) & !0xF).wrapping_add(i as i32);
+                let dot = (i32::from(pixel[0])
+                    .wrapping_mul(saxis_r)
+                    .wrapping_add(i32::from(pixel[1]).wrapping_mul(saxis_g))
+                    .wrapping_add(i32::from(pixel[2]).wrapping_mul(saxis_b))
+                    & !0xF)
+                    .wrapping_add(i as i32);
                 low_dot = low_dot.min(dot);
                 high_dot = high_dot.max(dot);
             }
@@ -1751,19 +2217,41 @@ impl Rgbcx {
     }
 
     // From icbc's high quality mode.
-    fn encode_bc1_endpoint_search(&self, pixels: &[Color32; 16], any_black_pixels: bool, flags: u32, results: &mut Bc1EncodeResults, mut cur_err: u32, force_selectors: Option<&[u8; 16]>) {
+    fn encode_bc1_endpoint_search(
+        &self,
+        pixels: &[Color32; 16],
+        any_black_pixels: bool,
+        flags: u32,
+        results: &mut Bc1EncodeResults,
+        mut cur_err: u32,
+        force_selectors: Option<&[u8; 16]>,
+    ) {
         let (mut prev_improvement_index, mut forbidden_direction) = (0i32, -1i32);
 
-        let endpoint_search_rounds = ((flags & ENCODE_BC1_ENDPOINT_SEARCH_ROUNDS_MASK) >> ENCODE_BC1_ENDPOINT_SEARCH_ROUNDS_SHIFT) as i32;
+        let endpoint_search_rounds = ((flags & ENCODE_BC1_ENDPOINT_SEARCH_ROUNDS_MASK)
+            >> ENCODE_BC1_ENDPOINT_SEARCH_ROUNDS_SHIFT) as i32;
         for i in 0..endpoint_search_rounds {
             if forbidden_direction == (i & 31) {
                 continue;
             }
 
             let voxel = ADJACENT_VOXELS[(i & 15) as usize];
-            let delta = [i32::from(voxel[0]), i32::from(voxel[1]), i32::from(voxel[2])];
+            let delta = [
+                i32::from(voxel[0]),
+                i32::from(voxel[1]),
+                i32::from(voxel[2]),
+            ];
 
-            let (mut trial_lr, mut trial_lg, mut trial_lb, mut trial_hr, mut trial_hg, mut trial_hb) = (results.lr, results.lg, results.lb, results.hr, results.hg, results.hb);
+            let (
+                mut trial_lr,
+                mut trial_lg,
+                mut trial_lb,
+                mut trial_hr,
+                mut trial_hg,
+                mut trial_hb,
+            ) = (
+                results.lr, results.lg, results.lb, results.hr, results.hg, results.hb,
+            );
 
             if (i >> 4) & 1 != 0 {
                 trial_lr = clampi(trial_lr + delta[0], 0, 31);
@@ -1778,9 +2266,33 @@ impl Rgbcx {
             let mut trial_sels = [0u8; 16];
 
             let trial_err = if results.is_3color {
-                self.bc1_find_sels3_fullerr(any_black_pixels && flags & ENCODE_BC1_USE_3COLOR_BLOCKS_FOR_BLACK_PIXELS != 0, pixels, trial_lr, trial_lg, trial_lb, trial_hr, trial_hg, trial_hb, &mut trial_sels, cur_err, force_selectors)
+                self.bc1_find_sels3_fullerr(
+                    any_black_pixels && flags & ENCODE_BC1_USE_3COLOR_BLOCKS_FOR_BLACK_PIXELS != 0,
+                    pixels,
+                    trial_lr,
+                    trial_lg,
+                    trial_lb,
+                    trial_hr,
+                    trial_hg,
+                    trial_hb,
+                    &mut trial_sels,
+                    cur_err,
+                    force_selectors,
+                )
             } else {
-                self.bc1_find_sels4(flags, pixels, trial_lr, trial_lg, trial_lb, trial_hr, trial_hg, trial_hb, &mut trial_sels, cur_err, force_selectors)
+                self.bc1_find_sels4(
+                    flags,
+                    pixels,
+                    trial_lr,
+                    trial_lg,
+                    trial_lb,
+                    trial_hr,
+                    trial_hg,
+                    trial_hb,
+                    &mut trial_sels,
+                    cur_err,
+                    force_selectors,
+                )
             };
 
             if trial_err < cur_err {
@@ -1816,19 +2328,43 @@ impl Rgbcx {
     /// used with [`ENCODE_BC1_USE_LIKELY_TOTAL_ORDERINGS`]. With `force_selectors`, the block
     /// keeps those selectors (in linear order: 0 the low colour, 3 the high) and only its
     /// endpoints are chosen.
-    pub fn encode_bc1_with_flags(&self, dst: &mut [u8; 8], pixels: &[Color32; 16], flags: u32, total_orderings_to_try: u32, total_orderings_to_try3: u32, force_selectors: Option<&[u8; 16]>) {
-        let (fr, fg, fb) = (u32::from(pixels[0][0]), u32::from(pixels[0][1]), u32::from(pixels[0][2]));
+    pub fn encode_bc1_with_flags(
+        &self,
+        dst: &mut [u8; 8],
+        pixels: &[Color32; 16],
+        flags: u32,
+        total_orderings_to_try: u32,
+        total_orderings_to_try3: u32,
+        force_selectors: Option<&[u8; 16]>,
+    ) {
+        let (fr, fg, fb) = (
+            u32::from(pixels[0][0]),
+            u32::from(pixels[0][1]),
+            u32::from(pixels[0][2]),
+        );
 
         let mut j = 15;
         while j >= 1 {
-            if u32::from(pixels[j][0]) != fr || u32::from(pixels[j][1]) != fg || u32::from(pixels[j][2]) != fb {
+            if u32::from(pixels[j][0]) != fr
+                || u32::from(pixels[j][1]) != fg
+                || u32::from(pixels[j][2]) != fb
+            {
                 break;
             }
             j -= 1;
         }
 
         if j == 0 {
-            self.encode_bc1_solid_block(dst, fr, fg, fb, flags & (ENCODE_BC1_USE_3COLOR_BLOCKS | ENCODE_BC1_USE_3COLOR_BLOCKS_FOR_BLACK_PIXELS) != 0);
+            self.encode_bc1_solid_block(
+                dst,
+                fr,
+                fg,
+                fb,
+                flags
+                    & (ENCODE_BC1_USE_3COLOR_BLOCKS
+                        | ENCODE_BC1_USE_3COLOR_BLOCKS_FOR_BLACK_PIXELS)
+                    != 0,
+            );
             return;
         }
 
@@ -1840,7 +2376,11 @@ impl Rgbcx {
         let mut any_black_pixels = (fr | fg | fb) < 4;
 
         for pixel in &pixels[1..] {
-            let (r, g, b) = (i32::from(pixel[0]), i32::from(pixel[1]), i32::from(pixel[2]));
+            let (r, g, b) = (
+                i32::from(pixel[0]),
+                i32::from(pixel[1]),
+                i32::from(pixel[2]),
+            );
 
             grayscale_flag &= r == g && r == b;
             any_black_pixels |= (r | g | b) < 4;
@@ -1852,45 +2392,101 @@ impl Rgbcx {
             }
         }
 
-        let avg = [(total[0] + 8) >> 4, (total[1] + 8) >> 4, (total[2] + 8) >> 4];
+        let avg = [
+            (total[0] + 8) >> 4,
+            (total[1] + 8) >> 4,
+            (total[2] + 8) >> 4,
+        ];
 
         let mut results = Bc1EncodeResults::default();
         let mut orig = [0i32; 6];
 
-        let needs_block_error = flags & (ENCODE_BC1_USE_LIKELY_TOTAL_ORDERINGS | ENCODE_BC1_USE_3COLOR_BLOCKS | ENCODE_BC1_USE_FULL_MSE_EVAL | ENCODE_BC1_ENDPOINT_SEARCH_ROUNDS_MASK) != 0
+        let needs_block_error = flags
+            & (ENCODE_BC1_USE_LIKELY_TOTAL_ORDERINGS
+                | ENCODE_BC1_USE_3COLOR_BLOCKS
+                | ENCODE_BC1_USE_FULL_MSE_EVAL
+                | ENCODE_BC1_ENDPOINT_SEARCH_ROUNDS_MASK)
+            != 0
             || (any_black_pixels && flags & ENCODE_BC1_USE_3COLOR_BLOCKS_FOR_BLACK_PIXELS != 0);
 
         let mut cur_err = u32::MAX;
 
         if !needs_block_error {
-            let [lr, lg, lb, hr, hg, hb] = self.encode_bc1_pick_initial(pixels, flags, grayscale_flag, min, max, avg, total);
-            (results.lr, results.lg, results.lb, results.hr, results.hg, results.hb) = (lr, lg, lb, hr, hg, hb);
+            let [lr, lg, lb, hr, hg, hb] =
+                self.encode_bc1_pick_initial(pixels, flags, grayscale_flag, min, max, avg, total);
+            (
+                results.lr, results.lg, results.lb, results.hr, results.hg, results.hb,
+            ) = (lr, lg, lb, hr, hg, hb);
 
-            self.bc1_find_sels4_noerr(pixels, lr, lg, lb, hr, hg, hb, &mut results.sels, force_selectors);
+            self.bc1_find_sels4_noerr(
+                pixels,
+                lr,
+                lg,
+                lb,
+                hr,
+                hg,
+                hb,
+                &mut results.sels,
+                force_selectors,
+            );
 
-            let total_ls_passes = if flags & ENCODE_BC1_TWO_LEAST_SQUARES_PASSES != 0 { 2 } else { 1 };
+            let total_ls_passes = if flags & ENCODE_BC1_TWO_LEAST_SQUARES_PASSES != 0 {
+                2
+            } else {
+                1
+            };
             for _ in 0..total_ls_passes {
                 let (mut xl, mut xh) = ([0f32; 3], [0f32; 3]);
-                let [trial_lr, trial_lg, trial_lb, trial_hr, trial_hg, trial_hb] = if !compute_least_squares_endpoints4_rgb(pixels, &results.sels, &mut xl, &mut xh, total) {
-                    // All selectors equal - treat it as a solid block which should always be equal or better.
-                    // In high/higher quality mode, let it try again in case the optimal tables have caused the sels to diverge.
-                    self.match_endpoints(false, avg)
-                } else {
-                    // (As the C++ calls it: what comes of xl goes to the high endpoint.)
-                    let [trial_hr, trial_hg, trial_hb, trial_lr, trial_lg, trial_lb] = precise_round_565(&xl, &xh);
-                    [trial_lr, trial_lg, trial_lb, trial_hr, trial_hg, trial_hb]
-                };
+                let [trial_lr, trial_lg, trial_lb, trial_hr, trial_hg, trial_hb] =
+                    if !compute_least_squares_endpoints4_rgb(
+                        pixels,
+                        &results.sels,
+                        &mut xl,
+                        &mut xh,
+                        total,
+                    ) {
+                        // All selectors equal - treat it as a solid block which should always be equal or better.
+                        // In high/higher quality mode, let it try again in case the optimal tables have caused the sels to diverge.
+                        self.match_endpoints(false, avg)
+                    } else {
+                        // (As the C++ calls it: what comes of xl goes to the high endpoint.)
+                        let [trial_hr, trial_hg, trial_hb, trial_lr, trial_lg, trial_lb] =
+                            precise_round_565(&xl, &xh);
+                        [trial_lr, trial_lg, trial_lb, trial_hr, trial_hg, trial_hb]
+                    };
 
-                if results.lr == trial_lr && results.lg == trial_lg && results.lb == trial_lb && results.hr == trial_hr && results.hg == trial_hg && results.hb == trial_hb {
+                if results.lr == trial_lr
+                    && results.lg == trial_lg
+                    && results.lb == trial_lb
+                    && results.hr == trial_hr
+                    && results.hg == trial_hg
+                    && results.hb == trial_hb
+                {
                     break;
                 }
 
-                self.bc1_find_sels4_noerr(pixels, trial_lr, trial_lg, trial_lb, trial_hr, trial_hg, trial_hb, &mut results.sels, force_selectors);
+                self.bc1_find_sels4_noerr(
+                    pixels,
+                    trial_lr,
+                    trial_lg,
+                    trial_lb,
+                    trial_hr,
+                    trial_hg,
+                    trial_hb,
+                    &mut results.sels,
+                    force_selectors,
+                );
 
-                (results.lr, results.lg, results.lb, results.hr, results.hg, results.hb) = (trial_lr, trial_lg, trial_lb, trial_hr, trial_hg, trial_hb);
+                (
+                    results.lr, results.lg, results.lb, results.hr, results.hg, results.hb,
+                ) = (trial_lr, trial_lg, trial_lb, trial_hr, trial_hg, trial_hb);
             }
         } else {
-            let total_rounds = if flags & ENCODE_BC1_TRY_ALL_INITIAL_ENDPOINTS != 0 { 2 } else { 1 };
+            let total_rounds = if flags & ENCODE_BC1_TRY_ALL_INITIAL_ENDPOINTS != 0 {
+                2
+            } else {
+                1
+            };
             for round in 0..total_rounds {
                 let mut modified_flags = flags;
                 if round == 1 {
@@ -1900,28 +2496,79 @@ impl Rgbcx {
 
                 let mut round_sels = [0u8; 16];
 
-                let orig_round = self.encode_bc1_pick_initial(pixels, modified_flags, grayscale_flag, min, max, avg, total);
-                let [mut round_lr, mut round_lg, mut round_lb, mut round_hr, mut round_hg, mut round_hb] = orig_round;
+                let orig_round = self.encode_bc1_pick_initial(
+                    pixels,
+                    modified_flags,
+                    grayscale_flag,
+                    min,
+                    max,
+                    avg,
+                    total,
+                );
+                let [mut round_lr, mut round_lg, mut round_lb, mut round_hr, mut round_hg, mut round_hb] =
+                    orig_round;
 
-                let mut round_err = self.bc1_find_sels4(flags, pixels, round_lr, round_lg, round_lb, round_hr, round_hg, round_hb, &mut round_sels, u32::MAX, force_selectors);
+                let mut round_err = self.bc1_find_sels4(
+                    flags,
+                    pixels,
+                    round_lr,
+                    round_lg,
+                    round_lb,
+                    round_hr,
+                    round_hg,
+                    round_hb,
+                    &mut round_sels,
+                    u32::MAX,
+                    force_selectors,
+                );
 
-                let total_ls_passes = if flags & ENCODE_BC1_TWO_LEAST_SQUARES_PASSES != 0 { 2 } else { 1 };
+                let total_ls_passes = if flags & ENCODE_BC1_TWO_LEAST_SQUARES_PASSES != 0 {
+                    2
+                } else {
+                    1
+                };
                 for _ in 0..total_ls_passes {
                     let (mut xl, mut xh) = ([0f32; 3], [0f32; 3]);
-                    let [trial_lr, trial_lg, trial_lb, trial_hr, trial_hg, trial_hb] = if !compute_least_squares_endpoints4_rgb(pixels, &round_sels, &mut xl, &mut xh, total) {
-                        // All selectors equal - treat it as a solid block which should always be equal or better.
-                        self.match_endpoints(false, avg)
-                    } else {
-                        let [trial_hr, trial_hg, trial_hb, trial_lr, trial_lg, trial_lb] = precise_round_565(&xl, &xh);
-                        [trial_lr, trial_lg, trial_lb, trial_hr, trial_hg, trial_hb]
-                    };
+                    let [trial_lr, trial_lg, trial_lb, trial_hr, trial_hg, trial_hb] =
+                        if !compute_least_squares_endpoints4_rgb(
+                            pixels,
+                            &round_sels,
+                            &mut xl,
+                            &mut xh,
+                            total,
+                        ) {
+                            // All selectors equal - treat it as a solid block which should always be equal or better.
+                            self.match_endpoints(false, avg)
+                        } else {
+                            let [trial_hr, trial_hg, trial_hb, trial_lr, trial_lg, trial_lb] =
+                                precise_round_565(&xl, &xh);
+                            [trial_lr, trial_lg, trial_lb, trial_hr, trial_hg, trial_hb]
+                        };
 
-                    if round_lr == trial_lr && round_lg == trial_lg && round_lb == trial_lb && round_hr == trial_hr && round_hg == trial_hg && round_hb == trial_hb {
+                    if round_lr == trial_lr
+                        && round_lg == trial_lg
+                        && round_lb == trial_lb
+                        && round_hr == trial_hr
+                        && round_hg == trial_hg
+                        && round_hb == trial_hb
+                    {
                         break;
                     }
 
                     let mut trial_sels = [0u8; 16];
-                    let trial_err = self.bc1_find_sels4(flags, pixels, trial_lr, trial_lg, trial_lb, trial_hr, trial_hg, trial_hb, &mut trial_sels, round_err, force_selectors);
+                    let trial_err = self.bc1_find_sels4(
+                        flags,
+                        pixels,
+                        trial_lr,
+                        trial_lg,
+                        trial_lb,
+                        trial_hr,
+                        trial_hg,
+                        trial_hb,
+                        &mut trial_sels,
+                        round_err,
+                        force_selectors,
+                    );
 
                     if trial_err < round_err {
                         round_lr = trial_lr;
@@ -1942,7 +2589,9 @@ impl Rgbcx {
                 if round_err <= cur_err {
                     cur_err = round_err;
 
-                    (results.lr, results.lg, results.lb, results.hr, results.hg, results.hb) = (round_lr, round_lg, round_lb, round_hr, round_hg, round_hb);
+                    (
+                        results.lr, results.lg, results.lb, results.hr, results.hg, results.hb,
+                    ) = (round_lr, round_lg, round_lb, round_hr, round_hg, round_hb);
 
                     orig = orig_round;
 
@@ -1952,7 +2601,11 @@ impl Rgbcx {
         }
 
         if cur_err != 0 && flags & ENCODE_BC1_USE_LIKELY_TOTAL_ORDERINGS != 0 {
-            let total_iters = if flags & ENCODE_BC1_ITERATIVE != 0 { 2 } else { 1 };
+            let total_iters = if flags & ENCODE_BC1_ITERATIVE != 0 {
+                2
+            } else {
+                1
+            };
             for _ in 0..total_iters {
                 let orig_err = cur_err;
 
@@ -1961,32 +2614,75 @@ impl Rgbcx {
                     hist[usize::from(results.sels[i]) & 3] += 1;
                 }
 
-                let orig_total_order_index = lookup_total_ordering_index4(&self.total_ordering4_hash, &hist) as usize;
+                let orig_total_order_index =
+                    lookup_total_ordering_index4(&self.total_ordering4_hash, &hist) as usize;
 
-                let sums = sums_along_axis(pixels, results.lr, results.lg, results.lb, results.hr, results.hg, results.hb, total);
+                let sums = sums_along_axis(
+                    pixels, results.lr, results.lg, results.lb, results.hr, results.hg, results.hb,
+                    total,
+                );
 
-                let q_total = if flags & ENCODE_BC1_EXHAUSTIVE != 0 { NUM_UNIQUE_TOTAL_ORDERINGS4 as u32 } else { clampi(total_orderings_to_try as i32, MIN_TOTAL_ORDERINGS as i32, MAX_TOTAL_ORDERINGS4 as i32) as u32 };
+                let q_total = if flags & ENCODE_BC1_EXHAUSTIVE != 0 {
+                    NUM_UNIQUE_TOTAL_ORDERINGS4 as u32
+                } else {
+                    clampi(
+                        total_orderings_to_try as i32,
+                        MIN_TOTAL_ORDERINGS as i32,
+                        MAX_TOTAL_ORDERINGS4 as i32,
+                    ) as u32
+                };
                 for q in 0..q_total {
-                    let s = if flags & ENCODE_BC1_EXHAUSTIVE != 0 { q } else { u32::from(BEST_TOTAL_ORDERINGS4[orig_total_order_index][q as usize]) };
+                    let s = if flags & ENCODE_BC1_EXHAUSTIVE != 0 {
+                        q
+                    } else {
+                        u32::from(BEST_TOTAL_ORDERINGS4[orig_total_order_index][q as usize])
+                    };
 
-                    let [trial_lr, trial_lg, trial_lb, trial_hr, trial_hg, trial_hb] = if s == TOTAL_ORDER_4_0_16 || s == TOTAL_ORDER_4_1_16 || s == TOTAL_ORDER_4_2_16 || s == TOTAL_ORDER_4_3_16 {
+                    let [trial_lr, trial_lg, trial_lb, trial_hr, trial_hg, trial_hb] = if s
+                        == TOTAL_ORDER_4_0_16
+                        || s == TOTAL_ORDER_4_1_16
+                        || s == TOTAL_ORDER_4_2_16
+                        || s == TOTAL_ORDER_4_3_16
+                    {
                         self.match_endpoints(false, avg)
                     } else {
                         let (mut xl, mut xh) = ([0f32; 3], [0f32; 3]);
-                        compute_least_squares_endpoints4_rgb_sums(&mut xl, &mut xh, total, self.selector_factors4[s as usize], s as usize, &sums);
+                        compute_least_squares_endpoints4_rgb_sums(
+                            &mut xl,
+                            &mut xh,
+                            total,
+                            self.selector_factors4[s as usize],
+                            s as usize,
+                            &sums,
+                        );
 
-                        let [trial_hr, trial_hg, trial_hb, trial_lr, trial_lg, trial_lb] = precise_round_565(&xl, &xh);
+                        let [trial_hr, trial_hg, trial_hb, trial_lr, trial_lg, trial_lb] =
+                            precise_round_565(&xl, &xh);
                         [trial_lr, trial_lg, trial_lb, trial_hr, trial_hg, trial_hb]
                     };
 
                     let mut trial_sels = [0u8; 16];
 
-                    let trial_err = self.bc1_find_sels4(flags, pixels, trial_lr, trial_lg, trial_lb, trial_hr, trial_hg, trial_hb, &mut trial_sels, cur_err, force_selectors);
+                    let trial_err = self.bc1_find_sels4(
+                        flags,
+                        pixels,
+                        trial_lr,
+                        trial_lg,
+                        trial_lb,
+                        trial_hr,
+                        trial_hg,
+                        trial_hb,
+                        &mut trial_sels,
+                        cur_err,
+                        force_selectors,
+                    );
 
                     if trial_err < cur_err {
                         cur_err = trial_err;
 
-                        (results.lr, results.lg, results.lb, results.hr, results.hg, results.hb) = (trial_lr, trial_lg, trial_lb, trial_hr, trial_hg, trial_hb);
+                        (
+                            results.lr, results.lg, results.lb, results.hr, results.hg, results.hb,
+                        ) = (trial_lr, trial_lg, trial_lb, trial_hr, trial_hg, trial_hb);
 
                         results.sels = trial_sels;
                     }
@@ -1998,24 +2694,73 @@ impl Rgbcx {
             }
         }
 
-        if flags & (ENCODE_BC1_USE_3COLOR_BLOCKS | ENCODE_BC1_USE_3COLOR_BLOCKS_FOR_BLACK_PIXELS) != 0 && cur_err != 0 {
+        if flags & (ENCODE_BC1_USE_3COLOR_BLOCKS | ENCODE_BC1_USE_3COLOR_BLOCKS_FOR_BLACK_PIXELS)
+            != 0
+            && cur_err != 0
+        {
             if flags & ENCODE_BC1_USE_3COLOR_BLOCKS != 0 {
-                self.try_3color_block(pixels, flags, &mut cur_err, avg, orig[0], orig[1], orig[2], orig[3], orig[4], orig[5], total, total_orderings_to_try3, &mut results, force_selectors);
+                self.try_3color_block(
+                    pixels,
+                    flags,
+                    &mut cur_err,
+                    avg,
+                    orig[0],
+                    orig[1],
+                    orig[2],
+                    orig[3],
+                    orig[4],
+                    orig[5],
+                    total,
+                    total_orderings_to_try3,
+                    &mut results,
+                    force_selectors,
+                );
             }
 
             if any_black_pixels && flags & ENCODE_BC1_USE_3COLOR_BLOCKS_FOR_BLACK_PIXELS != 0 {
-                self.try_3color_block_useblack(pixels, flags, &mut cur_err, &mut results, force_selectors);
+                self.try_3color_block_useblack(
+                    pixels,
+                    flags,
+                    &mut cur_err,
+                    &mut results,
+                    force_selectors,
+                );
             }
         }
 
         if flags & ENCODE_BC1_ENDPOINT_SEARCH_ROUNDS_MASK != 0 && cur_err != 0 {
-            self.encode_bc1_endpoint_search(pixels, any_black_pixels, flags, &mut results, cur_err, force_selectors);
+            self.encode_bc1_endpoint_search(
+                pixels,
+                any_black_pixels,
+                flags,
+                &mut results,
+                cur_err,
+                force_selectors,
+            );
         }
 
         if results.is_3color {
-            bc1_encode3(dst, results.lr, results.lg, results.lb, results.hr, results.hg, results.hb, &results.sels);
+            bc1_encode3(
+                dst,
+                results.lr,
+                results.lg,
+                results.lb,
+                results.hr,
+                results.hg,
+                results.hb,
+                &results.sels,
+            );
         } else {
-            bc1_encode4(dst, results.lr, results.lg, results.lb, results.hr, results.hg, results.hb, &results.sels);
+            bc1_encode4(
+                dst,
+                results.lr,
+                results.lg,
+                results.lb,
+                results.hr,
+                results.hg,
+                results.hb,
+                &results.sels,
+            );
         }
     }
 
@@ -2029,20 +2774,48 @@ impl Rgbcx {
     }
 
     /// The low-level BC3 encoder: the BC1 flags and total orderings to try given directly.
-    pub fn encode_bc3_with_flags(&self, dst: &mut [u8; 16], pixels: &[Color32; 16], flags: u32, total_orderings_to_try: u32) {
+    pub fn encode_bc3_with_flags(
+        &self,
+        dst: &mut [u8; 16],
+        pixels: &[Color32; 16],
+        flags: u32,
+        total_orderings_to_try: u32,
+    ) {
         // 3-color blocks are not allowed with BC3 (on most GPU's).
-        let flags = flags & !(ENCODE_BC1_USE_3COLOR_BLOCKS_FOR_BLACK_PIXELS | ENCODE_BC1_USE_3COLOR_BLOCKS);
+        let flags =
+            flags & !(ENCODE_BC1_USE_3COLOR_BLOCKS_FOR_BLACK_PIXELS | ENCODE_BC1_USE_3COLOR_BLOCKS);
 
         let (alpha, color) = dst.split_at_mut(8);
         encode_bc4(alpha.try_into().unwrap(), &pixels.as_flattened()[3..], 4);
-        self.encode_bc1_with_flags(color.try_into().unwrap(), pixels, flags, total_orderings_to_try, DEFAULT_TOTAL_ORDERINGS_TO_TRY3, None);
+        self.encode_bc1_with_flags(
+            color.try_into().unwrap(),
+            pixels,
+            flags,
+            total_orderings_to_try,
+            DEFAULT_TOTAL_ORDERINGS_TO_TRY3,
+            None,
+        );
     }
 
     /// Encodes a 4x4 block of RGBA pixels to BC3 format, with the higher-quality (slower)
     /// alpha search of [`encode_bc4_hq`].
-    pub fn encode_bc3_hq(&self, level: u32, dst: &mut [u8; 16], pixels: &[Color32; 16], alpha_search_rad: u32, alpha_modes: u32) {
+    pub fn encode_bc3_hq(
+        &self,
+        level: u32,
+        dst: &mut [u8; 16],
+        pixels: &[Color32; 16],
+        alpha_search_rad: u32,
+        alpha_modes: u32,
+    ) {
         let (alpha, color) = dst.split_at_mut(8);
-        encode_bc4_hq(alpha.try_into().unwrap(), &pixels.as_flattened()[3..], 4, alpha_search_rad, alpha_modes, None);
+        encode_bc4_hq(
+            alpha.try_into().unwrap(),
+            &pixels.as_flattened()[3..],
+            4,
+            alpha_search_rad,
+            alpha_modes,
+            None,
+        );
         self.encode_bc1(level, color.try_into().unwrap(), pixels, false, false, None);
     }
 }
@@ -2072,7 +2845,16 @@ pub fn encode_bc4(dst: &mut [u8; 8], pixels: &[u8], stride: usize) {
     let delta = max_v - min_v;
 
     // min_v is now 0. Compute thresholds between values by scaling max_v. It's x14 because we're adding two x7 scale factors.
-    let thresholds = [delta * 13, delta * 11, delta * 9, delta * 7, delta * 5, delta * 3, delta].map(|t| t as i32);
+    let thresholds = [
+        delta * 13,
+        delta * 11,
+        delta * 9,
+        delta * 7,
+        delta * 5,
+        delta * 3,
+        delta,
+    ]
+    .map(|t| t as i32);
 
     // BC4 floors in its divisions, which we compensate for with the 4 bias.
     // This function is optimal for all possible inputs (i.e. it outputs the same results as checking all 8 values and choosing the closest one).
@@ -2092,12 +2874,30 @@ pub fn encode_bc4(dst: &mut [u8; 8], pixels: &[u8], stride: usize) {
 
 #[inline]
 fn bc4_get_block_values6(l: u32, h: u32) -> [u8; 8] {
-    [l as u8, h as u8, ((l * 4 + h) / 5) as u8, ((l * 3 + h * 2) / 5) as u8, ((l * 2 + h * 3) / 5) as u8, ((l + h * 4) / 5) as u8, 0, 255]
+    [
+        l as u8,
+        h as u8,
+        ((l * 4 + h) / 5) as u8,
+        ((l * 3 + h * 2) / 5) as u8,
+        ((l * 2 + h * 3) / 5) as u8,
+        ((l + h * 4) / 5) as u8,
+        0,
+        255,
+    ]
 }
 
 #[inline]
 fn bc4_get_block_values8(l: u32, h: u32) -> [u8; 8] {
-    [l as u8, h as u8, ((l * 6 + h) / 7) as u8, ((l * 5 + h * 2) / 7) as u8, ((l * 4 + h * 3) / 7) as u8, ((l * 3 + h * 4) / 7) as u8, ((l * 2 + h * 5) / 7) as u8, ((l + h * 6) / 7) as u8]
+    [
+        l as u8,
+        h as u8,
+        ((l * 6 + h) / 7) as u8,
+        ((l * 5 + h * 2) / 7) as u8,
+        ((l * 4 + h * 3) / 7) as u8,
+        ((l * 3 + h * 4) / 7) as u8,
+        ((l * 2 + h * 5) / 7) as u8,
+        ((l + h * 6) / 7) as u8,
+    ]
 }
 
 /// The eight values a BC4 block's two endpoints stand for.
@@ -2113,7 +2913,14 @@ fn bc4_get_block_values(l: u32, h: u32) -> [u8; 8] {
 /// Encodes a single channel to BC4, searching the endpoints near the lowest and highest
 /// values (`search_rad` either way) in the modes `mode_flag` allows ([`BC4_USE_MODE8_FLAG`],
 /// [`BC4_USE_MODE6_FLAG`]). Returns the squared error of the block it chose.
-pub fn encode_bc4_hq(dst: &mut [u8; 8], pixels: &[u8], stride: usize, search_rad: u32, mode_flag: u32, force_selectors: Option<&[u8; 16]>) -> u32 {
+pub fn encode_bc4_hq(
+    dst: &mut [u8; 8],
+    pixels: &[u8],
+    stride: usize,
+    search_rad: u32,
+    mode_flag: u32,
+    force_selectors: Option<&[u8; 16]>,
+) -> u32 {
     let value = |i: usize| u32::from(pixels[i * stride]);
 
     let (mut min_val, mut max_val) = (255u32, 0u32);
@@ -2148,7 +2955,10 @@ pub fn encode_bc4_hq(dst: &mut [u8; 8], pixels: &[u8], stride: usize, search_rad
 
         for lo_delta in -search_rad..=search_rad {
             for hi_delta in -search_rad..=search_rad {
-                let mut endpoints = [clampi((max_val as i32).wrapping_add(hi_delta), 0, 255) as u8, clampi((min_val as i32).wrapping_add(lo_delta), 0, 255) as u8];
+                let mut endpoints = [
+                    clampi((max_val as i32).wrapping_add(hi_delta), 0, 255) as u8,
+                    clampi((min_val as i32).wrapping_add(lo_delta), 0, 255) as u8,
+                ];
 
                 if endpoints[0] == endpoints[1] {
                     continue;
@@ -2160,7 +2970,8 @@ pub fn encode_bc4_hq(dst: &mut [u8; 8], pixels: &[u8], stride: usize, search_rad
                     endpoints.swap(0, 1);
                 }
 
-                let block_vals = bc4_get_block_values(u32::from(endpoints[0]), u32::from(endpoints[1]));
+                let block_vals =
+                    bc4_get_block_values(u32::from(endpoints[0]), u32::from(endpoints[1]));
 
                 let mut trial_err = 0u32;
                 let mut trial_sels = [0u8; 16];
@@ -2168,7 +2979,9 @@ pub fn encode_bc4_hq(dst: &mut [u8; 8], pixels: &[u8], stride: usize, search_rad
                     trial_sels = *forced;
 
                     for i in 0..16 {
-                        trial_err = trial_err.wrapping_add(squarei(i32::from(block_vals[usize::from(forced[i]) & 7]) - value(i) as i32) as u32);
+                        trial_err = trial_err.wrapping_add(squarei(
+                            i32::from(block_vals[usize::from(forced[i]) & 7]) - value(i) as i32,
+                        ) as u32);
                     }
                 } else {
                     for i in 0..16 {
@@ -2222,10 +3035,32 @@ pub fn encode_bc5(dst: &mut [u8; 16], pixels: &[u8], chan0: usize, chan1: usize,
 }
 
 /// Encodes two channels to BC5 with [`encode_bc4_hq`].
-pub fn encode_bc5_hq(dst: &mut [u8; 16], pixels: &[u8], chan0: usize, chan1: usize, stride: usize, alpha_search_rad: u32, alpha_modes: u32) {
+pub fn encode_bc5_hq(
+    dst: &mut [u8; 16],
+    pixels: &[u8],
+    chan0: usize,
+    chan1: usize,
+    stride: usize,
+    alpha_search_rad: u32,
+    alpha_modes: u32,
+) {
     let (first, second) = dst.split_at_mut(8);
-    encode_bc4_hq(first.try_into().unwrap(), &pixels[chan0..], stride, alpha_search_rad, alpha_modes, None);
-    encode_bc4_hq(second.try_into().unwrap(), &pixels[chan1..], stride, alpha_search_rad, alpha_modes, None);
+    encode_bc4_hq(
+        first.try_into().unwrap(),
+        &pixels[chan0..],
+        stride,
+        alpha_search_rad,
+        alpha_modes,
+        None,
+    );
+    encode_bc4_hq(
+        second.try_into().unwrap(),
+        &pixels[chan1..],
+        stride,
+        alpha_search_rad,
+        alpha_modes,
+        None,
+    );
 }
 
 /// The four colours of a BC1 block. Returns true if the block uses 3 color punchthrough alpha
@@ -2259,24 +3094,66 @@ pub fn unpack_bc1_block_colors(block: &[u8; 8], c: &mut [Color32; 4], mode: Bc1A
                 c[3] = rgba((r1 * 2 + r0) / 3, (g1 * 2 + g0) / 3, (b1 * 2 + b0) / 3, 255);
             }
             Bc1ApproxMode::IdealRound4 => {
-                c[2] = rgba((r0 * 2 + r1 + 1) / 3, (g0 * 2 + g1 + 1) / 3, (b0 * 2 + b1 + 1) / 3, 255);
-                c[3] = rgba((r1 * 2 + r0 + 1) / 3, (g1 * 2 + g0 + 1) / 3, (b1 * 2 + b0 + 1) / 3, 255);
+                c[2] = rgba(
+                    (r0 * 2 + r1 + 1) / 3,
+                    (g0 * 2 + g1 + 1) / 3,
+                    (b0 * 2 + b1 + 1) / 3,
+                    255,
+                );
+                c[3] = rgba(
+                    (r1 * 2 + r0 + 1) / 3,
+                    (g1 * 2 + g0 + 1) / 3,
+                    (b1 * 2 + b0 + 1) / 3,
+                    255,
+                );
             }
             Bc1ApproxMode::NVidia => {
-                c[2] = rgba(interp_5_nv(cr0, cr1), interp_6_nv(g0, g1), interp_5_nv(cb0, cb1), 255);
-                c[3] = rgba(interp_5_nv(cr1, cr0), interp_6_nv(g1, g0), interp_5_nv(cb1, cb0), 255);
+                c[2] = rgba(
+                    interp_5_nv(cr0, cr1),
+                    interp_6_nv(g0, g1),
+                    interp_5_nv(cb0, cb1),
+                    255,
+                );
+                c[3] = rgba(
+                    interp_5_nv(cr1, cr0),
+                    interp_6_nv(g1, g0),
+                    interp_5_nv(cb1, cb0),
+                    255,
+                );
             }
             Bc1ApproxMode::Amd => {
-                c[2] = rgba(interp_5_6_amd(r0, r1), interp_5_6_amd(g0, g1), interp_5_6_amd(b0, b1), 255);
-                c[3] = rgba(interp_5_6_amd(r1, r0), interp_5_6_amd(g1, g0), interp_5_6_amd(b1, b0), 255);
+                c[2] = rgba(
+                    interp_5_6_amd(r0, r1),
+                    interp_5_6_amd(g0, g1),
+                    interp_5_6_amd(b0, b1),
+                    255,
+                );
+                c[3] = rgba(
+                    interp_5_6_amd(r1, r0),
+                    interp_5_6_amd(g1, g0),
+                    interp_5_6_amd(b1, b0),
+                    255,
+                );
             }
         }
         false
     } else {
         c[2] = match mode {
-            Bc1ApproxMode::Ideal | Bc1ApproxMode::IdealRound4 => rgba((r0 + r1) / 2, (g0 + g1) / 2, (b0 + b1) / 2, 255),
-            Bc1ApproxMode::NVidia => rgba(interp_half_5_nv(cr0, cr1), interp_half_6_nv(g0, g1), interp_half_5_nv(cb0, cb1), 255),
-            Bc1ApproxMode::Amd => rgba(interp_half_5_6_amd(r0, r1), interp_half_5_6_amd(g0, g1), interp_half_5_6_amd(b0, b1), 255),
+            Bc1ApproxMode::Ideal | Bc1ApproxMode::IdealRound4 => {
+                rgba((r0 + r1) / 2, (g0 + g1) / 2, (b0 + b1) / 2, 255)
+            }
+            Bc1ApproxMode::NVidia => rgba(
+                interp_half_5_nv(cr0, cr1),
+                interp_half_6_nv(g0, g1),
+                interp_half_5_nv(cb0, cb1),
+                255,
+            ),
+            Bc1ApproxMode::Amd => rgba(
+                interp_half_5_6_amd(r0, r1),
+                interp_half_5_6_amd(g0, g1),
+                interp_half_5_6_amd(b0, b1),
+                255,
+            ),
         };
         c[3] = [0, 0, 0, 0];
         true
@@ -2285,7 +3162,12 @@ pub fn unpack_bc1_block_colors(block: &[u8; 8], c: &mut [Color32; 4], mode: Bc1A
 
 /// Unpacks a BC1 block to 16 pixels, in rows from the top. With `set_alpha` false the pixels'
 /// alpha is left as it was. Returns true if the block uses 3 color punchthrough alpha mode.
-pub fn unpack_bc1(block: &[u8; 8], pixels: &mut [Color32; 16], set_alpha: bool, mode: Bc1ApproxMode) -> bool {
+pub fn unpack_bc1(
+    block: &[u8; 8],
+    pixels: &mut [Color32; 16],
+    set_alpha: bool,
+    mode: Bc1ApproxMode,
+) -> bool {
     let mut c = [[0u8; 4]; 4];
     let used_punchthrough = unpack_bc1_block_colors(block, &mut c, mode);
 
@@ -2321,7 +3203,11 @@ pub fn unpack_bc3(block: &[u8; 16], pixels: &mut [Color32; 16], mode: Bc1ApproxM
     let (alpha, color) = block.split_at(8);
     let success = !unpack_bc1(color.try_into().unwrap(), pixels, true, mode);
 
-    unpack_bc4(alpha.try_into().unwrap(), &mut pixels.as_flattened_mut()[3..], 4);
+    unpack_bc4(
+        alpha.try_into().unwrap(),
+        &mut pixels.as_flattened_mut()[3..],
+        4,
+    );
 
     success
 }
@@ -2342,12 +3228,20 @@ mod tests {
     fn a_solid_block_comes_back_as_its_colour() {
         let encoder = Rgbcx::default();
         // Colours that 5:6:5 holds exactly come back exactly, at every level.
-        for color in [[0u8, 0, 0, 255], [255, 255, 255, 255], [132, 130, 132, 255], [8, 4, 8, 255]] {
+        for color in [
+            [0u8, 0, 0, 255],
+            [255, 255, 255, 255],
+            [132, 130, 132, 255],
+            [8, 4, 8, 255],
+        ] {
             for level in [0, 5, 10, 18] {
                 let mut block = [0u8; 8];
                 encoder.encode_bc1(level, &mut block, &[color; 16], false, false, None);
                 let mut pixels = [[0u8; 4]; 16];
-                assert!(!unpack_bc1(&block, &mut pixels, true, Bc1ApproxMode::Ideal), "a 4-colour block");
+                assert!(
+                    !unpack_bc1(&block, &mut pixels, true, Bc1ApproxMode::Ideal),
+                    "a 4-colour block"
+                );
                 assert_eq!(pixels, [color; 16]);
             }
         }
@@ -2383,7 +3277,17 @@ mod tests {
         assert_eq!(unpacked, values);
 
         let mut searched = [0u8; 8];
-        assert_eq!(encode_bc4_hq(&mut searched, &values, 1, BC4_DEFAULT_SEARCH_RAD, BC4_USE_ALL_MODES, None), 0);
+        assert_eq!(
+            encode_bc4_hq(
+                &mut searched,
+                &values,
+                1,
+                BC4_DEFAULT_SEARCH_RAD,
+                BC4_USE_ALL_MODES,
+                None
+            ),
+            0
+        );
         unpack_bc4(&searched, &mut unpacked, 1);
         assert_eq!(unpacked, values);
     }
@@ -2399,7 +3303,10 @@ mod tests {
         encoder.encode_bc3(5, &mut block, &source);
         let mut pixels = [[0u8; 4]; 16];
         assert!(unpack_bc3(&block, &mut pixels, Bc1ApproxMode::Ideal));
-        assert!(pixels.iter().enumerate().all(|(i, pixel)| pixel[3] == source[i][3]));
+        assert!(pixels
+            .iter()
+            .enumerate()
+            .all(|(i, pixel)| pixel[3] == source[i][3]));
 
         encode_bc5(&mut block, source.as_flattened(), 0, 3, 4);
         let mut two = [0u8; 64];

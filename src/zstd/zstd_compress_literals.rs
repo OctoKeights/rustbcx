@@ -2,7 +2,9 @@
 //! zstd v1.5.7.
 
 use super::common::{write_le16, write_le24, write_le32, CError, CResult};
-use super::huf_compress::{self, HufCTable, HufCompressTables, HufNbStreams, HufRepeat, HUF_SYMBOLVALUE_MAX};
+use super::huf_compress::{
+    self, HufCTable, HufCompressTables, HufNbStreams, HufRepeat, HUF_SYMBOLVALUE_MAX,
+};
 use super::zstd_compress::{min_gain, Strategy, SET_BASIC, SET_COMPRESSED, SET_REPEAT, SET_RLE};
 
 /// `LitHufLog`.
@@ -18,7 +20,14 @@ pub(crate) struct HufCTables {
 /// `ZSTD_buildBlockEntropyStats_literals`: for the block splitter's estimates, the kind of
 /// literals section the literals `src` would have (`hType`), with its table in `next_huf`;
 /// and the size of the table's description (`hufDesSize`).
-pub(crate) fn build_block_entropy_stats_literals(src: &[u8], prev_huf: &HufCTables, next_huf: &mut HufCTables, literals_compression_is_disabled: bool, workspace: &mut HufCompressTables, optimal_depth: bool) -> CResult<(u32, usize)> {
+pub(crate) fn build_block_entropy_stats_literals(
+    src: &[u8],
+    prev_huf: &HufCTables,
+    next_huf: &mut HufCTables,
+    literals_compression_is_disabled: bool,
+    workspace: &mut HufCompressTables,
+    optimal_depth: bool,
+) -> CResult<(u32, usize)> {
     let src_size = src.len();
     let mut huff_log = LIT_HUF_LOG;
     let mut repeat = prev_huf.repeat_mode;
@@ -33,7 +42,11 @@ pub(crate) fn build_block_entropy_stats_literals(src: &[u8], prev_huf: &HufCTabl
     // small ? don't even attempt compression (speed opt)
     {
         const COMPRESS_LITERALS_SIZE_MIN: usize = 63; // heuristic
-        let min_lit_size = if prev_huf.repeat_mode == HufRepeat::Valid { 6 } else { COMPRESS_LITERALS_SIZE_MIN };
+        let min_lit_size = if prev_huf.repeat_mode == HufRepeat::Valid {
+            6
+        } else {
+            COMPRESS_LITERALS_SIZE_MIN
+        };
         if src_size <= min_lit_size {
             return Ok((SET_BASIC, 0));
         }
@@ -51,21 +64,36 @@ pub(crate) fn build_block_entropy_stats_literals(src: &[u8], prev_huf: &HufCTabl
     }
 
     // Validate the previous Huffman table.
-    if repeat == HufRepeat::Check && !huf_compress::counted_fit(workspace, &prev_huf.ctable, max_symbol_value) {
+    if repeat == HufRepeat::Check
+        && !huf_compress::counted_fit(workspace, &prev_huf.ctable, max_symbol_value)
+    {
         repeat = HufRepeat::None;
     }
 
     // Build Huffman Tree.
     next_huf.ctable.fill(0);
-    huff_log = huf_compress::build_table_for_counts(workspace, &mut next_huf.ctable, src_size, max_symbol_value, huff_log, optimal_depth)?;
+    huff_log = huf_compress::build_table_for_counts(
+        workspace,
+        &mut next_huf.ctable,
+        src_size,
+        max_symbol_value,
+        huff_log,
+        optimal_depth,
+    )?;
 
     // Build and write the CTable.
     let new_c_size = huf_compress::estimate_counted(workspace, &next_huf.ctable, max_symbol_value);
     let mut huf_des_buffer = [0u8; 128]; // ZSTD_MAX_HUF_HEADER_SIZE
-    let h_size = huf_compress::write_table(&mut huf_des_buffer, &next_huf.ctable, max_symbol_value, huff_log)?;
+    let h_size = huf_compress::write_table(
+        &mut huf_des_buffer,
+        &next_huf.ctable,
+        max_symbol_value,
+        huff_log,
+    )?;
     // Check against repeating the previous CTable.
     if repeat != HufRepeat::None {
-        let old_c_size = huf_compress::estimate_counted(workspace, &prev_huf.ctable, max_symbol_value);
+        let old_c_size =
+            huf_compress::estimate_counted(workspace, &prev_huf.ctable, max_symbol_value);
         if old_c_size < src_size && (old_c_size <= h_size + new_c_size || h_size + 12 >= src_size) {
             next_huf.clone_from(prev_huf);
             return Ok((SET_REPEAT, 0));
@@ -81,9 +109,17 @@ pub(crate) fn build_block_entropy_stats_literals(src: &[u8], prev_huf: &HufCTabl
 
 /// `ZSTD_estimateBlockSize_literal`: the size the block splitter estimates for the literals
 /// section (header and content) of a block.
-pub(crate) fn estimate_block_size_literal(literals: &[u8], huf: &HufCTables, h_type: u32, huf_des_size: usize, workspace: &mut HufCompressTables, write_entropy: bool) -> usize {
+pub(crate) fn estimate_block_size_literal(
+    literals: &[u8],
+    huf: &HufCTables,
+    h_type: u32,
+    huf_des_size: usize,
+    workspace: &mut HufCompressTables,
+    write_entropy: bool,
+) -> usize {
     let lit_size = literals.len();
-    let literal_section_header_size = 3 + usize::from(lit_size >= 1024) + usize::from(lit_size >= 16 * 1024);
+    let literal_section_header_size =
+        3 + usize::from(lit_size >= 1024) + usize::from(lit_size >= 16 * 1024);
     let single_stream = lit_size < 256;
 
     match h_type {
@@ -91,7 +127,8 @@ pub(crate) fn estimate_block_size_literal(literals: &[u8], huf: &HufCTables, h_t
         SET_RLE => 1,
         _ => {
             let (_, max_symbol_value) = huf_compress::count_literals(workspace, literals);
-            let mut c_lit_size_estimate = huf_compress::estimate_counted(workspace, &huf.ctable, max_symbol_value);
+            let mut c_lit_size_estimate =
+                huf_compress::estimate_counted(workspace, &huf.ctable, max_symbol_value);
             if write_entropy {
                 c_lit_size_estimate += huf_des_size;
             }
@@ -114,7 +151,11 @@ pub(crate) fn no_compress_literals(dst: &mut [u8], src: &[u8]) -> CResult<usize>
 
     match fl_size {
         1 => dst[0] = (SET_BASIC + ((src_size as u32) << 3)) as u8, // 2 - 1 - 5
-        2 => write_le16(dst, 0, (SET_BASIC + (1 << 2) + ((src_size as u32) << 4)) as u16), // 2 - 2 - 12
+        2 => write_le16(
+            dst,
+            0,
+            (SET_BASIC + (1 << 2) + ((src_size as u32) << 4)) as u16,
+        ), // 2 - 2 - 12
         _ => write_le32(dst, 0, SET_BASIC + (3 << 2) + ((src_size as u32) << 4)), // 2 - 2 - 20
     }
 
@@ -135,7 +176,11 @@ pub(crate) fn compress_rle_literals_block(dst: &mut [u8], src: &[u8]) -> usize {
 
     match fl_size {
         1 => dst[0] = (SET_RLE + ((src_size as u32) << 3)) as u8, // 2 - 1 - 5
-        2 => write_le16(dst, 0, (SET_RLE + (1 << 2) + ((src_size as u32) << 4)) as u16), // 2 - 2 - 12
+        2 => write_le16(
+            dst,
+            0,
+            (SET_RLE + (1 << 2) + ((src_size as u32) << 4)) as u16,
+        ), // 2 - 2 - 12
         _ => write_le32(dst, 0, SET_RLE + (3 << 2) + ((src_size as u32) << 4)), // 2 - 2 - 20
     }
 
@@ -197,8 +242,24 @@ pub(crate) fn compress_literals(
         if repeat == HufRepeat::Valid && lh_size == 3 {
             single_stream = true;
         }
-        let nb_streams = if single_stream { HufNbStreams::Single } else { HufNbStreams::Four };
-        let result = huf_compress::compress_repeat(&mut dst[lh_size..], src, HUF_SYMBOLVALUE_MAX, LIT_HUF_LOG, nb_streams, entropy_workspace, &mut next_huf.ctable, &mut repeat, prefer_repeat, suspect_uncompressible, strategy as u32 >= Strategy::Btultra as u32);
+        let nb_streams = if single_stream {
+            HufNbStreams::Single
+        } else {
+            HufNbStreams::Four
+        };
+        let result = huf_compress::compress_repeat(
+            &mut dst[lh_size..],
+            src,
+            HUF_SYMBOLVALUE_MAX,
+            LIT_HUF_LOG,
+            nb_streams,
+            entropy_workspace,
+            &mut next_huf.ctable,
+            &mut repeat,
+            prefer_repeat,
+            suspect_uncompressible,
+            strategy as u32 >= Strategy::Btultra as u32,
+        );
         if repeat != HufRepeat::None {
             // Reused the existing table.
             h_type = SET_REPEAT;
@@ -233,7 +294,10 @@ pub(crate) fn compress_literals(
     match lh_size {
         3 => {
             // 2 - 2 - 10 - 10
-            let lhc = h_type + (u32::from(!single_stream) << 2) + ((src_size as u32) << 4) + ((c_lit_size as u32) << 14);
+            let lhc = h_type
+                + (u32::from(!single_stream) << 2)
+                + ((src_size as u32) << 4)
+                + ((c_lit_size as u32) << 14);
             write_le24(dst, 0, lhc);
         }
         4 => {

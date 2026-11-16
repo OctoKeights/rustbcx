@@ -41,13 +41,37 @@ pub enum ZfpSettings {
 impl ZfpSettings {
     /// The attributes, to go in a header's `custom_attributes`.
     pub fn attributes(&self) -> Vec<Attribute> {
-        let attribute = |name: &str, type_name: &str, value: Vec<u8>| Attribute { name: name.to_string(), type_name: type_name.to_string(), value };
-        let (kind, value) = match *self {
-            ZfpSettings::Rate(rate) => (ZFP_COMPRESSIONTYPE_RATE, attribute("zfpCompressionRate", "double", rate.to_le_bytes().to_vec())),
-            ZfpSettings::Precision(precision) => (ZFP_COMPRESSIONTYPE_PRECISION, attribute("zfpCompressionPrecision", "int", precision.to_le_bytes().to_vec())),
-            ZfpSettings::Accuracy(tolerance) => (ZFP_COMPRESSIONTYPE_ACCURACY, attribute("zfpCompressionTolerance", "double", tolerance.to_le_bytes().to_vec())),
+        let attribute = |name: &str, type_name: &str, value: Vec<u8>| Attribute {
+            name: name.to_string(),
+            type_name: type_name.to_string(),
+            value,
         };
-        vec![attribute("zfpCompressionType", "uchar", vec![kind as u8]), value]
+        let (kind, value) = match *self {
+            ZfpSettings::Rate(rate) => (
+                ZFP_COMPRESSIONTYPE_RATE,
+                attribute("zfpCompressionRate", "double", rate.to_le_bytes().to_vec()),
+            ),
+            ZfpSettings::Precision(precision) => (
+                ZFP_COMPRESSIONTYPE_PRECISION,
+                attribute(
+                    "zfpCompressionPrecision",
+                    "int",
+                    precision.to_le_bytes().to_vec(),
+                ),
+            ),
+            ZfpSettings::Accuracy(tolerance) => (
+                ZFP_COMPRESSIONTYPE_ACCURACY,
+                attribute(
+                    "zfpCompressionTolerance",
+                    "double",
+                    tolerance.to_le_bytes().to_vec(),
+                ),
+            ),
+        };
+        vec![
+            attribute("zfpCompressionType", "uchar", vec![kind as u8]),
+            value,
+        ]
     }
 }
 
@@ -62,7 +86,12 @@ pub(crate) struct ZfpParam {
 
 impl Default for ZfpParam {
     fn default() -> Self {
-        ZfpParam { rate: 2.0, precision: 0, tolerance: 0.0, kind: ZFP_COMPRESSIONTYPE_RATE }
+        ZfpParam {
+            rate: 2.0,
+            precision: 0,
+            tolerance: 0.0,
+            kind: ZFP_COMPRESSIONTYPE_RATE,
+        }
     }
 }
 
@@ -70,7 +99,10 @@ impl Default for ZfpParam {
 ///
 /// (As in the original, the precision of `zfpCompressionPrecision` is put where the rate goes,
 /// and so a precision is always that of 64 planes: as many as a float has.)
-pub(crate) fn find_zfp_compression_param(attributes: &[Attribute], err: &mut String) -> Option<ZfpParam> {
+pub(crate) fn find_zfp_compression_param(
+    attributes: &[Attribute],
+    err: &mut String,
+) -> Option<ZfpParam> {
     let mut param = ZfpParam::default();
     let mut found_type = false;
 
@@ -92,7 +124,12 @@ pub(crate) fn find_zfp_compression_param(attributes: &[Attribute], err: &mut Str
         return None;
     }
 
-    let value_of = |name: &str, size: usize| attributes.iter().find(|attribute| attribute.name == name && attribute.value.len() == size).map(|attribute| attribute.value.as_slice());
+    let value_of = |name: &str, size: usize| {
+        attributes
+            .iter()
+            .find(|attribute| attribute.name == name && attribute.value.len() == size)
+            .map(|attribute| attribute.value.as_slice())
+    };
     if param.kind == ZFP_COMPRESSIONTYPE_RATE {
         if let Some(value) = value_of("zfpCompressionRate", 8) {
             param.rate = f64::from_le_bytes(value.try_into().expect("eight bytes"));
@@ -155,7 +192,12 @@ struct ZfpStream {
 impl ZfpStream {
     /// `zfp_stream_open`.
     fn open() -> Self {
-        ZfpStream { minbits: ZFP_MIN_BITS, maxbits: ZFP_MAX_BITS, maxprec: ZFP_MAX_PREC, minexp: ZFP_MIN_EXP }
+        ZfpStream {
+            minbits: ZFP_MIN_BITS,
+            maxbits: ZFP_MAX_BITS,
+            maxprec: ZFP_MAX_PREC,
+            minexp: ZFP_MIN_EXP,
+        }
     }
 
     /// `zfp_stream_set_rate` for floats in two dimensions, without alignment for writing at
@@ -175,7 +217,11 @@ impl ZfpStream {
     fn set_precision(&mut self, precision: u32) {
         self.minbits = ZFP_MIN_BITS;
         self.maxbits = ZFP_MAX_BITS;
-        self.maxprec = if precision != 0 { precision.min(ZFP_MAX_PREC) } else { ZFP_MAX_PREC };
+        self.maxprec = if precision != 0 {
+            precision.min(ZFP_MAX_PREC)
+        } else {
+            ZFP_MAX_PREC
+        };
         self.minexp = ZFP_MIN_EXP;
     }
 
@@ -218,14 +264,25 @@ impl ZfpStream {
         maxbits += values - 1 + values * self.maxprec.min(32);
         maxbits = maxbits.min(self.maxbits);
         maxbits = maxbits.max(self.minbits);
-        (ZFP_HEADER_MAX_BITS.wrapping_add(blocks.wrapping_mul(maxbits as usize)).wrapping_add(63) & !63) / 8
+        (ZFP_HEADER_MAX_BITS
+            .wrapping_add(blocks.wrapping_mul(maxbits as usize))
+            .wrapping_add(63)
+            & !63)
+            / 8
     }
 }
 
 /// `(uint)` of a double as x86-64 converts it: through a 64-bit integer, of which the low 32
 /// bits are kept; what is not a number, or is out of that integer's reach, gives its least.
 fn double_to_uint(value: f64) -> u32 {
-    let wide = if value.is_nan() || value >= 9_223_372_036_854_775_808.0 || value < -9_223_372_036_854_775_808.0 { i64::MIN } else { value as i64 };
+    let wide = if value.is_nan()
+        || value >= 9_223_372_036_854_775_808.0
+        || value < -9_223_372_036_854_775_808.0
+    {
+        i64::MIN
+    } else {
+        value as i64
+    };
     wide as u32
 }
 
@@ -285,7 +342,12 @@ struct BitStream {
 impl BitStream {
     /// `stream_open` and `stream_rewind`, over `words`.
     fn new(words: Vec<u64>) -> Self {
-        BitStream { bits: 0, buffer: 0, ptr: 0, words }
+        BitStream {
+            bits: 0,
+            buffer: 0,
+            ptr: 0,
+            words,
+        }
     }
 
     fn read_word(&mut self) -> u64 {
@@ -440,7 +502,13 @@ fn exponent(x: f32) -> i32 {
         let bits = x.to_bits();
         let biased = (bits >> 23) as i32;
         // (frexpf: 0 for an infinity; a subnormal's own, which is below the clamp.)
-        e = if biased == 0xff { 0 } else if biased == 0 { -126 } else { biased - 126 };
+        e = if biased == 0xff {
+            0
+        } else if biased == 0 {
+            -126
+        } else {
+            biased - 126
+        };
         // clamp exponent in case x is subnormal; may still result in overflow
         e = e.max(1 - EBIAS);
     }
@@ -584,7 +652,12 @@ fn encode_few_ints_prec(s: &mut BitStream, maxprec: u32, data: &[u32; BLOCK_SIZE
 }
 
 /// `decode_few_ints`.
-fn decode_few_ints(s: &mut BitStream, maxbits: u32, maxprec: u32, data: &mut [u32; BLOCK_SIZE]) -> u32 {
+fn decode_few_ints(
+    s: &mut BitStream,
+    maxbits: u32,
+    maxprec: u32,
+    data: &mut [u32; BLOCK_SIZE],
+) -> u32 {
     let size = BLOCK_SIZE as u32;
     let intprec = 32u32;
     let kmin = intprec.saturating_sub(maxprec);
@@ -671,7 +744,13 @@ fn decode_few_ints_prec(s: &mut BitStream, maxprec: u32, data: &mut [u32; BLOCK_
 
 /// `encode_block` of integers: transformed, reordered, and their planes of bits, with at
 /// least `minbits` bits.
-fn encode_int_block(s: &mut BitStream, minbits: u32, maxbits: u32, maxprec: u32, iblock: &mut [i32; BLOCK_SIZE]) -> u32 {
+fn encode_int_block(
+    s: &mut BitStream,
+    minbits: u32,
+    maxbits: u32,
+    maxprec: u32,
+    iblock: &mut [i32; BLOCK_SIZE],
+) -> u32 {
     // perform decorrelating transform: along x, then along y
     for y in 0..4 {
         fwd_lift(iblock, 4 * y, 1);
@@ -685,7 +764,11 @@ fn encode_int_block(s: &mut BitStream, minbits: u32, maxbits: u32, maxprec: u32,
         *u = (iblock[at] as u32).wrapping_add(NBMASK) ^ NBMASK;
     }
     // encode integer coefficients
-    let mut bits = if with_maxbits(maxbits, maxprec, BLOCK_SIZE as u32) { encode_few_ints(s, maxbits, maxprec, &ublock) } else { encode_few_ints_prec(s, maxprec, &ublock) };
+    let mut bits = if with_maxbits(maxbits, maxprec, BLOCK_SIZE as u32) {
+        encode_few_ints(s, maxbits, maxprec, &ublock)
+    } else {
+        encode_few_ints_prec(s, maxprec, &ublock)
+    };
     // write at least minbits bits by padding with zeros
     if bits < minbits {
         s.pad(minbits - bits);
@@ -695,10 +778,20 @@ fn encode_int_block(s: &mut BitStream, minbits: u32, maxbits: u32, maxprec: u32,
 }
 
 /// `decode_block` of integers.
-fn decode_int_block(s: &mut BitStream, minbits: u32, maxbits: u32, maxprec: u32, iblock: &mut [i32; BLOCK_SIZE]) -> u32 {
+fn decode_int_block(
+    s: &mut BitStream,
+    minbits: u32,
+    maxbits: u32,
+    maxprec: u32,
+    iblock: &mut [i32; BLOCK_SIZE],
+) -> u32 {
     let mut ublock = [0u32; BLOCK_SIZE];
     // decode integer coefficients
-    let mut bits = if with_maxbits(maxbits, maxprec, BLOCK_SIZE as u32) { decode_few_ints(s, maxbits, maxprec, &mut ublock) } else { decode_few_ints_prec(s, maxprec, &mut ublock) };
+    let mut bits = if with_maxbits(maxbits, maxprec, BLOCK_SIZE as u32) {
+        decode_few_ints(s, maxbits, maxprec, &mut ublock)
+    } else {
+        decode_few_ints_prec(s, maxprec, &mut ublock)
+    };
     // read at least minbits bits
     if bits < minbits {
         s.skip(minbits - bits);
@@ -724,7 +817,11 @@ fn encode_block(zfp: &ZfpStream, s: &mut BitStream, fblock: &[f32; BLOCK_SIZE]) 
     // compute maximum exponent
     let emax = exponent_block(fblock);
     let maxprec = precision(emax, zfp.maxprec, zfp.minexp);
-    let e = if maxprec != 0 { (emax + EBIAS) as u32 } else { 0 };
+    let e = if maxprec != 0 {
+        (emax + EBIAS) as u32
+    } else {
+        0
+    };
     // encode block only if biased exponent is nonzero
     if e != 0 {
         // encode common exponent; LSB indicates that exponent is nonzero
@@ -737,7 +834,13 @@ fn encode_block(zfp: &ZfpStream, s: &mut BitStream, fblock: &[f32; BLOCK_SIZE]) 
             *i = float_to_int(scale * f);
         }
         // encode integer block
-        bits += encode_int_block(s, zfp.minbits - bits.min(zfp.minbits), zfp.maxbits - bits, maxprec, &mut iblock);
+        bits += encode_int_block(
+            s,
+            zfp.minbits - bits.min(zfp.minbits),
+            zfp.maxbits - bits,
+            maxprec,
+            &mut iblock,
+        );
     } else {
         // write single zero-bit to indicate that all values are zero
         s.write_bit(0);
@@ -760,7 +863,13 @@ fn decode_block(zfp: &ZfpStream, s: &mut BitStream, fblock: &mut [f32; BLOCK_SIZ
         let maxprec = precision(emax, zfp.maxprec, zfp.minexp);
         // decode integer block
         let mut iblock = [0i32; BLOCK_SIZE];
-        bits += decode_int_block(s, zfp.minbits - bits.min(zfp.minbits), zfp.maxbits - bits, maxprec, &mut iblock);
+        bits += decode_int_block(
+            s,
+            zfp.minbits - bits.min(zfp.minbits),
+            zfp.maxbits - bits,
+            maxprec,
+            &mut iblock,
+        );
         // perform inverse block-floating-point transform
         let scale = power_of_two(emax - 30);
         for (f, &i) in fblock.iter_mut().zip(iblock.iter()) {
@@ -782,9 +891,17 @@ const MAX_STREAM: usize = 1 << 30;
 
 /// The bytes the stream of a block of `width` by `lines` pixels of `num_channels` channels is
 /// given, or none where that is more than a gigabyte.
-pub(crate) fn zfp_stream_size(param: &ZfpParam, width: i32, lines: i32, num_channels: usize) -> Option<usize> {
+pub(crate) fn zfp_stream_size(
+    param: &ZfpParam,
+    width: i32,
+    lines: i32,
+    num_channels: usize,
+) -> Option<usize> {
     let zfp = ZfpStream::with(param)?;
-    let size = zfp.maximum_size(width.max(0) as usize, (lines as u32).wrapping_mul(num_channels as u32) as usize);
+    let size = zfp.maximum_size(
+        width.max(0) as usize,
+        (lines as u32).wrapping_mul(num_channels as u32) as usize,
+    );
     (size <= MAX_STREAM).then_some(size)
 }
 
@@ -800,7 +917,13 @@ pub(crate) enum ZfpRefusal {
 /// `CompressZfp`: `num_lines` lines of `width` floats of each of `num_channels` channels, one
 /// plane after the other (as tinyexr takes the block it hands over, whose lines are in fact
 /// the channels of one line after the other), compressed.
-pub(crate) fn compress_zfp(input: &[u8], width: i32, num_lines: i32, num_channels: usize, param: &ZfpParam) -> Result<Vec<u8>, ZfpRefusal> {
+pub(crate) fn compress_zfp(
+    input: &[u8],
+    width: i32,
+    num_lines: i32,
+    num_channels: usize,
+    param: &ZfpParam,
+) -> Result<Vec<u8>, ZfpRefusal> {
     if width % 4 != 0 || num_lines % 4 != 0 {
         return Err(ZfpRefusal::NotMultipleOfFour);
     }
@@ -808,14 +931,23 @@ pub(crate) fn compress_zfp(input: &[u8], width: i32, num_lines: i32, num_channel
     let zfp = ZfpStream::with(param).ok_or(ZfpRefusal::NotMultipleOfFour)?;
     let (width, num_lines) = (width as usize, num_lines as usize);
 
-    let buf_size = zfp.maximum_size(width, (num_lines as u32).wrapping_mul(num_channels as u32) as usize);
+    let buf_size = zfp.maximum_size(
+        width,
+        (num_lines as u32).wrapping_mul(num_channels as u32) as usize,
+    );
     if buf_size > MAX_STREAM {
         return Err(ZfpRefusal::TooLarge);
     }
     let mut stream = BitStream::new(vec![0u64; buf_size / 8]);
 
     let image_size = width * num_lines;
-    let float_at = |index: usize| f32::from_bits(u32::from_le_bytes(input[4 * index..4 * index + 4].try_into().expect("four bytes")));
+    let float_at = |index: usize| {
+        f32::from_bits(u32::from_le_bytes(
+            input[4 * index..4 * index + 4]
+                .try_into()
+                .expect("four bytes"),
+        ))
+    };
     for c in 0..num_channels {
         // compress 4x4 pixel block.
         for y in (0..num_lines).step_by(4) {
@@ -849,8 +981,17 @@ pub(crate) fn compress_zfp(input: &[u8], width: i32, num_lines: i32, num_channel
 /// compressed, copies it, and then goes on; and writes past `dst` for a block with a channel
 /// that is not of floats (which then is not read), and past the buffer it reads from for a
 /// block longer than the most its settings make. Here what is past them is left out.
-pub(crate) fn decompress_zfp(dst: &mut [u8], dst_width: i32, dst_num_lines: i32, num_channels: usize, src: &[u8], param: &ZfpParam) -> Option<bool> {
-    let uncompressed_size = (dst_width as usize).wrapping_mul(dst_num_lines as usize).wrapping_mul(num_channels);
+pub(crate) fn decompress_zfp(
+    dst: &mut [u8],
+    dst_width: i32,
+    dst_num_lines: i32,
+    num_channels: usize,
+    src: &[u8],
+    param: &ZfpParam,
+) -> Option<bool> {
+    let uncompressed_size = (dst_width as usize)
+        .wrapping_mul(dst_num_lines as usize)
+        .wrapping_mul(num_channels);
 
     if uncompressed_size == src.len() {
         // Data is not compressed(Issue 40).
@@ -861,10 +1002,15 @@ pub(crate) fn decompress_zfp(dst: &mut [u8], dst_width: i32, dst_num_lines: i32,
         return Some(false);
     }
 
-    let Some(zfp) = ZfpStream::with(param) else { return Some(false) };
+    let Some(zfp) = ZfpStream::with(param) else {
+        return Some(false);
+    };
     let (width, num_lines) = (dst_width as usize, dst_num_lines as usize);
 
-    let buf_size = zfp.maximum_size(width, (num_lines as u32).wrapping_mul(num_channels as u32) as usize);
+    let buf_size = zfp.maximum_size(
+        width,
+        (num_lines as u32).wrapping_mul(num_channels as u32) as usize,
+    );
     if buf_size > MAX_STREAM {
         return None;
     }
@@ -924,7 +1070,10 @@ mod tests {
     #[test]
     fn blocks_come_back() {
         // At full precision, smooth values come back nearly as they were.
-        let param = ZfpParam { kind: ZFP_COMPRESSIONTYPE_PRECISION, ..ZfpParam::default() };
+        let param = ZfpParam {
+            kind: ZFP_COMPRESSIONTYPE_PRECISION,
+            ..ZfpParam::default()
+        };
         let (width, lines, channels) = (8, 4, 2);
         let mut input = Vec::new();
         let mut values = Vec::new();
@@ -933,11 +1082,25 @@ mod tests {
             values.push(value);
             input.extend_from_slice(&value.to_bits().to_le_bytes());
         }
-        let Ok(packed) = compress_zfp(&input, width as i32, lines as i32, channels, &param) else { panic!("not compressed") };
+        let Ok(packed) = compress_zfp(&input, width as i32, lines as i32, channels, &param) else {
+            panic!("not compressed")
+        };
         let mut out = vec![0u8; input.len()];
-        assert_eq!(decompress_zfp(&mut out, width as i32, lines as i32, channels, &packed, &param), Some(true));
+        assert_eq!(
+            decompress_zfp(
+                &mut out,
+                width as i32,
+                lines as i32,
+                channels,
+                &packed,
+                &param
+            ),
+            Some(true)
+        );
         for (k, &value) in values.iter().enumerate() {
-            let got = f32::from_bits(u32::from_le_bytes(out[4 * k..4 * k + 4].try_into().unwrap()));
+            let got = f32::from_bits(u32::from_le_bytes(
+                out[4 * k..4 * k + 4].try_into().unwrap(),
+            ));
             assert!((got - value).abs() < 1e-4, "{k}: {got} {value}");
         }
     }

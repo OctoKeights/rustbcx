@@ -79,7 +79,12 @@ struct IStream<'a> {
 impl<'a> IStream<'a> {
     /// `IO_make_istream`
     fn new(src: &'a [u8]) -> IStream<'a> {
-        IStream { src, ptr: 0, len: src.len(), bit_offset: 0 }
+        IStream {
+            src,
+            ptr: 0,
+            len: src.len(),
+            bit_offset: 0,
+        }
     }
 
     /// `IO_read_bits`: reads `num` bits from a bitstream, and updates the internal offset
@@ -172,14 +177,22 @@ impl<'a> IStream<'a> {
     fn make_sub_istream(&mut self, len: usize) -> R<IStream<'a>> {
         let ptr = self.ptr;
         self.get_read_ptr(len)?;
-        Ok(IStream { src: self.src, ptr, len, bit_offset: 0 })
+        Ok(IStream {
+            src: self.src,
+            ptr,
+            len,
+            bit_offset: 0,
+        })
     }
 }
 
 impl OStream {
     /// `IO_make_ostream`
     fn new(len: usize) -> OStream {
-        OStream { out: Vec::new(), len }
+        OStream {
+            out: Vec::new(),
+            len,
+        }
     }
 
     /// `IO_write_byte`: write the given byte into the output stream
@@ -381,7 +394,11 @@ pub fn decompress(src: &[u8], dst_len: usize) -> Result<Vec<u8>, ZstdError> {
 
 /// Decompresses a Zstandard frame that was compressed with a dictionary:
 /// `ZSTD_decompress_with_dict`.
-pub fn decompress_with_dict(src: &[u8], dst_len: usize, parsed_dict: &Dictionary) -> Result<Vec<u8>, ZstdError> {
+pub fn decompress_with_dict(
+    src: &[u8],
+    dst_len: usize,
+    parsed_dict: &Dictionary,
+) -> Result<Vec<u8>, ZstdError> {
     let mut input = IStream::new(src);
     let mut out = OStream::new(dst_len);
 
@@ -695,7 +712,12 @@ fn decode_literals_simple(input: &mut IStream, block_type: i32, size_format: i32
 }
 
 /// `decode_literals_compressed`: decodes Huffman compressed literals
-fn decode_literals_compressed(ctx: &mut FrameContext, input: &mut IStream, block_type: i32, size_format: i32) -> R<Vec<u8>> {
+fn decode_literals_compressed(
+    ctx: &mut FrameContext,
+    input: &mut IStream,
+    block_type: i32,
+    size_format: i32,
+) -> R<Vec<u8>> {
     // Only size_format=0 has 1 stream, so default to 4
     let mut num_streams = 4;
     let (regenerated_size, compressed_size) = match size_format {
@@ -786,7 +808,11 @@ fn decode_huf_table(input: &mut IStream) -> R<HufDtable> {
             // and the second taking the bottom four (e.g. the following
             // operations could be used to read the weights:
             // Weight[0] = (Byte[0] >> 4), Weight[1] = (Byte[0] & 0xf), etc.)."
-            weights[i] = if i % 2 == 0 { weight_src[i / 2] >> 4 } else { weight_src[i / 2] & 0xf };
+            weights[i] = if i % 2 == 0 {
+                weight_src[i / 2] >> 4
+            } else {
+                weight_src[i / 2] & 0xf
+            };
         }
     } else {
         // The weights are FSE encoded, decode them before we can construct the
@@ -838,23 +864,38 @@ enum SeqPart {
 }
 
 // The predefined FSE distribution tables for `seq_predefined` mode
-static SEQ_LITERAL_LENGTH_DEFAULT_DIST: [i16; 36] = [4, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 1, 1, 1, 1, 1, -1, -1, -1, -1];
-static SEQ_OFFSET_DEFAULT_DIST: [i16; 29] = [1, 1, 1, 1, 1, 1, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, -1, -1, -1, -1, -1];
-static SEQ_MATCH_LENGTH_DEFAULT_DIST: [i16; 53] =
-    [1, 4, 3, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, -1, -1, -1, -1, -1, -1, -1];
+static SEQ_LITERAL_LENGTH_DEFAULT_DIST: [i16; 36] = [
+    4, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 2, 1, 1, 1, 1, 1,
+    -1, -1, -1, -1,
+];
+static SEQ_OFFSET_DEFAULT_DIST: [i16; 29] = [
+    1, 1, 1, 1, 1, 1, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, -1, -1, -1, -1, -1,
+];
+static SEQ_MATCH_LENGTH_DEFAULT_DIST: [i16; 53] = [
+    1, 4, 3, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, -1, -1, -1, -1, -1, -1, -1,
+];
 
 // The sequence decoding baseline and number of additional bits to read/add
 // https://github.com/facebook/zstd/blob/dev/doc/zstd_compression_format.md#the-codes-for-literals-lengths-match-lengths-and-offsets
-static SEQ_LITERAL_LENGTH_BASELINES: [u32; 36] =
-    [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 20, 22, 24, 28, 32, 40, 48, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536];
-static SEQ_LITERAL_LENGTH_EXTRA_BITS: [u8; 36] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 3, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+static SEQ_LITERAL_LENGTH_BASELINES: [u32; 36] = [
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 20, 22, 24, 28, 32, 40, 48, 64,
+    128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536,
+];
+static SEQ_LITERAL_LENGTH_EXTRA_BITS: [u8; 36] = [
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 3, 3, 4, 6, 7, 8, 9, 10, 11,
+    12, 13, 14, 15, 16,
+];
 
 static SEQ_MATCH_LENGTH_BASELINES: [u32; 53] = [
-    3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 37, 39, 41, 43, 47, 51, 59, 67, 83, 99, 131, 259, 515, 1027, 2051, 4099, 8195,
-    16387, 32771, 65539,
+    3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
+    28, 29, 30, 31, 32, 33, 34, 35, 37, 39, 41, 43, 47, 51, 59, 67, 83, 99, 131, 259, 515, 1027,
+    2051, 4099, 8195, 16387, 32771, 65539,
 ];
-static SEQ_MATCH_LENGTH_EXTRA_BITS: [u8; 53] =
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 3, 3, 4, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+static SEQ_MATCH_LENGTH_EXTRA_BITS: [u8; 53] = [
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    1, 1, 1, 1, 2, 2, 3, 3, 4, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+];
 
 // Offset decoding is simpler so we just need a maximum code value
 static SEQ_MAX_CODES: [u8; 3] = [35, u8::MAX, 52];
@@ -893,7 +934,11 @@ fn decode_sequences(ctx: &mut FrameContext, input: &mut IStream) -> R<Vec<Sequen
 }
 
 /// `decompress_sequences`: decompress the FSE encoded sequence commands
-fn decompress_sequences(ctx: &mut FrameContext, input: &mut IStream, num_sequences: usize) -> R<Vec<SequenceCommand>> {
+fn decompress_sequences(
+    ctx: &mut FrameContext,
+    input: &mut IStream,
+    num_sequences: usize,
+) -> R<Vec<SequenceCommand>> {
     // "The Sequences_Section regroup all symbols required to decode commands.
     // There are 3 symbol types : literals lengths, offsets and match lengths.
     // They are encoded together, interleaved, in a single bitstream."
@@ -922,13 +967,35 @@ fn decompress_sequences(ctx: &mut FrameContext, input: &mut IStream, num_sequenc
     // Offsets
     // Match Lengths"
     // Update the tables we have stored in the context
-    decode_seq_table(&mut ctx.ll_dtable, input, SeqPart::LiteralLength, (compression_modes >> 6) & 3)?;
+    decode_seq_table(
+        &mut ctx.ll_dtable,
+        input,
+        SeqPart::LiteralLength,
+        (compression_modes >> 6) & 3,
+    )?;
 
-    decode_seq_table(&mut ctx.of_dtable, input, SeqPart::Offset, (compression_modes >> 4) & 3)?;
+    decode_seq_table(
+        &mut ctx.of_dtable,
+        input,
+        SeqPart::Offset,
+        (compression_modes >> 4) & 3,
+    )?;
 
-    decode_seq_table(&mut ctx.ml_dtable, input, SeqPart::MatchLength, (compression_modes >> 2) & 3)?;
+    decode_seq_table(
+        &mut ctx.ml_dtable,
+        input,
+        SeqPart::MatchLength,
+        (compression_modes >> 2) & 3,
+    )?;
 
-    let mut states = SequenceStates { ll_table: &ctx.ll_dtable, of_table: &ctx.of_dtable, ml_table: &ctx.ml_dtable, ll_state: 0, of_state: 0, ml_state: 0 };
+    let mut states = SequenceStates {
+        ll_table: &ctx.ll_dtable,
+        of_table: &ctx.of_dtable,
+        ml_table: &ctx.ml_dtable,
+        ll_state: 0,
+        of_state: 0,
+        ml_state: 0,
+    };
 
     let len = input.istream_len();
     let src = input.get_read_ptr(len)?;
@@ -960,7 +1027,12 @@ fn decompress_sequences(ctx: &mut FrameContext, input: &mut IStream, num_sequenc
     let mut sequences = Vec::with_capacity(num_sequences);
     for i in 0..num_sequences {
         // Decode sequences one by one
-        sequences.push(decode_sequence(&mut states, src, &mut bit_offset, i == num_sequences - 1)?);
+        sequences.push(decode_sequence(
+            &mut states,
+            src,
+            &mut bit_offset,
+            i == num_sequences - 1,
+        )?);
     }
 
     if bit_offset != 0 {
@@ -970,7 +1042,12 @@ fn decompress_sequences(ctx: &mut FrameContext, input: &mut IStream, num_sequenc
 }
 
 /// `decode_sequence`: decode a single sequence and update the state
-fn decode_sequence(states: &mut SequenceStates, src: &[u8], offset: &mut i64, last_sequence: bool) -> R<SequenceCommand> {
+fn decode_sequence(
+    states: &mut SequenceStates,
+    src: &[u8],
+    offset: &mut i64,
+    last_sequence: bool,
+) -> R<SequenceCommand> {
     // "Each symbol is a code in its own context, which specifies Baseline and
     // Number_of_Bits to add. Codes are FSE compressed, and interleaved with raw
     // additional bits in the same bitstream."
@@ -981,7 +1058,9 @@ fn decode_sequence(states: &mut SequenceStates, src: &[u8], offset: &mut i64, la
     let ml_code = fse_peek_symbol(states.ml_table, states.ml_state);
 
     // Offset doesn't need a max value as it's not decoded using a table
-    if ll_code > SEQ_MAX_CODES[SeqPart::LiteralLength as usize] || ml_code > SEQ_MAX_CODES[SeqPart::MatchLength as usize] {
+    if ll_code > SEQ_MAX_CODES[SeqPart::LiteralLength as usize]
+        || ml_code > SEQ_MAX_CODES[SeqPart::MatchLength as usize]
+    {
         return corruption();
     }
 
@@ -990,9 +1069,21 @@ fn decode_sequence(states: &mut SequenceStates, src: &[u8], offset: &mut i64, la
     // It then does the same for Match_Length, and then for Literals_Length."
     // (For an offset code of 32 or more the original shifts a 32-bit one further than it is
     // wide: what an x86 processor makes of that.)
-    let offset_value = u64::from(1u32.wrapping_shl(u32::from(of_code))).wrapping_add(stream_read_bits(src, i32::from(of_code), offset)?) as u32;
-    let match_length = (u64::from(SEQ_MATCH_LENGTH_BASELINES[usize::from(ml_code)]) + stream_read_bits(src, i32::from(SEQ_MATCH_LENGTH_EXTRA_BITS[usize::from(ml_code)]), offset)?) as u32;
-    let literal_length = (u64::from(SEQ_LITERAL_LENGTH_BASELINES[usize::from(ll_code)]) + stream_read_bits(src, i32::from(SEQ_LITERAL_LENGTH_EXTRA_BITS[usize::from(ll_code)]), offset)?) as u32;
+    let offset_value = u64::from(1u32.wrapping_shl(u32::from(of_code)))
+        .wrapping_add(stream_read_bits(src, i32::from(of_code), offset)?)
+        as u32;
+    let match_length = (u64::from(SEQ_MATCH_LENGTH_BASELINES[usize::from(ml_code)])
+        + stream_read_bits(
+            src,
+            i32::from(SEQ_MATCH_LENGTH_EXTRA_BITS[usize::from(ml_code)]),
+            offset,
+        )?) as u32;
+    let literal_length = (u64::from(SEQ_LITERAL_LENGTH_BASELINES[usize::from(ll_code)])
+        + stream_read_bits(
+            src,
+            i32::from(SEQ_LITERAL_LENGTH_EXTRA_BITS[usize::from(ll_code)]),
+            offset,
+        )?) as u32;
 
     // "If it is not the last sequence in the block, the next operation is to
     // update states. Using the rules pre-calculated in the decoding tables,
@@ -1005,13 +1096,21 @@ fn decode_sequence(states: &mut SequenceStates, src: &[u8], offset: &mut i64, la
         fse_update_state(states.of_table, &mut states.of_state, src, offset)?;
     }
 
-    Ok(SequenceCommand { literal_length, match_length, offset: offset_value })
+    Ok(SequenceCommand {
+        literal_length,
+        match_length,
+        offset: offset_value,
+    })
 }
 
 /// `decode_seq_table`: given a sequence part and table mode, decode the FSE distribution
 fn decode_seq_table(table: &mut FseDtable, input: &mut IStream, part: SeqPart, mode: u8) -> R<()> {
     // Constant arrays indexed by seq_part_t
-    let default_distributions: [&[i16]; 3] = [&SEQ_LITERAL_LENGTH_DEFAULT_DIST, &SEQ_OFFSET_DEFAULT_DIST, &SEQ_MATCH_LENGTH_DEFAULT_DIST];
+    let default_distributions: [&[i16]; 3] = [
+        &SEQ_LITERAL_LENGTH_DEFAULT_DIST,
+        &SEQ_OFFSET_DEFAULT_DIST,
+        &SEQ_MATCH_LENGTH_DEFAULT_DIST,
+    ];
     const DEFAULT_DISTRIBUTION_ACCURACIES: [i32; 3] = [6, 5, 6];
 
     // "The maximum accuracy log is 9 for literal and match lengths, and 8 for offsets"
@@ -1056,7 +1155,12 @@ fn decode_seq_table(table: &mut FseDtable, input: &mut IStream, part: SeqPart, m
 /******* SEQUENCE EXECUTION ***************************************************/
 
 /// `execute_sequences`
-fn execute_sequences(ctx: &mut FrameContext, out: &mut OStream, literals: &[u8], sequences: &[SequenceCommand]) -> R<()> {
+fn execute_sequences(
+    ctx: &mut FrameContext,
+    out: &mut OStream,
+    literals: &[u8],
+    sequences: &[SequenceCommand],
+) -> R<()> {
     let mut litstream = IStream::new(literals);
 
     let mut total_output = ctx.current_total_output;
@@ -1129,7 +1233,11 @@ fn compute_offset(seq: SequenceCommand, offset_hist: &mut [u64; 3]) -> u64 {
         } else {
             // If idx == 3 then literal length was 0 and the offset was 3,
             // as per the exception listed above
-            offset = if idx < 3 { offset_hist[idx as usize] } else { offset_hist[0].wrapping_sub(1) };
+            offset = if idx < 3 {
+                offset_hist[idx as usize]
+            } else {
+                offset_hist[0].wrapping_sub(1)
+            };
 
             // If idx == 1 we don't need to modify offset_hist[2], since
             // we're using the second-most recent code
@@ -1153,7 +1261,13 @@ fn compute_offset(seq: SequenceCommand, offset_hist: &mut [u64; 3]) -> u64 {
 }
 
 /// `execute_match_copy`
-fn execute_match_copy(ctx: &FrameContext, offset: u64, mut match_length: usize, total_output: usize, out: &mut OStream) -> R<()> {
+fn execute_match_copy(
+    ctx: &FrameContext,
+    offset: u64,
+    mut match_length: usize,
+    total_output: usize,
+    out: &mut OStream,
+) -> R<()> {
     out.get_write_ptr(match_length)?;
     if total_output as u64 <= ctx.header.window_size {
         // In this case offset might go back into the dictionary
@@ -1169,7 +1283,8 @@ fn execute_match_copy(ctx: &FrameContext, offset: u64, mut match_length: usize, 
             let dict_copy = (offset as usize - total_output).min(match_length);
             let dict_offset = ctx.dict_content.len() - (offset as usize - total_output);
 
-            out.out.extend_from_slice(&ctx.dict_content[dict_offset..dict_offset + dict_copy]);
+            out.out
+                .extend_from_slice(&ctx.dict_content[dict_offset..dict_offset + dict_copy]);
             match_length -= dict_copy;
         }
     } else if offset > ctx.header.window_size {
@@ -1184,7 +1299,11 @@ fn execute_match_copy(ctx: &FrameContext, offset: u64, mut match_length: usize, 
     // into room that starts as zeros, that is zeros.)
     let offset = offset as usize;
     for _ in 0..match_length {
-        let byte = if offset == 0 { 0 } else { out.out[out.out.len() - offset] };
+        let byte = if offset == 0 {
+            0
+        } else {
+            out.out[out.out.len() - offset]
+        };
         out.out.push(byte);
     }
     Ok(())
@@ -1340,7 +1459,8 @@ fn huf_decode_symbol(dtable: &HufDtable, state: &mut u16, src: &[u8], offset: &m
     // Shift `bits` bits out of the state, keeping the low order bits that
     // weren't necessary to determine this symbol.  Then add in the new bits
     // read from the stream.
-    *state = ((u32::from(*state) << bits).wrapping_add(u32::from(rest)) & ((1u32 << dtable.max_bits) - 1)) as u16;
+    *state = ((u32::from(*state) << bits).wrapping_add(u32::from(rest))
+        & ((1u32 << dtable.max_bits) - 1)) as u16;
 
     Ok(symb)
 }
@@ -1454,7 +1574,11 @@ fn huf_init_dtable(bits: &[u8]) -> R<HufDtable> {
     }
 
     let table_size = 1usize << max_bits;
-    let mut table = HufDtable { symbols: vec![0; table_size], num_bits: vec![0; table_size], max_bits: max_bits as i32 };
+    let mut table = HufDtable {
+        symbols: vec![0; table_size],
+        num_bits: vec![0; table_size],
+        max_bits: max_bits as i32,
+    };
 
     // "Symbols are sorted by Weight. Within same Weight, symbols keep natural
     // order. Symbols with a Weight of zero are removed. Then, starting from
@@ -1528,7 +1652,11 @@ fn huf_init_dtable_usingweights(weights: &[u8; HUF_MAX_SYMBS], num_symbs: usize)
 
     for i in 0..num_symbs {
         // "Number_of_Bits = Number_of_Bits ? Max_Number_of_Bits + 1 - Weight : 0"
-        bits[i] = if weights[i] > 0 { (max_bits + 1 - i32::from(weights[i])) as u8 } else { 0 };
+        bits[i] = if weights[i] > 0 {
+            (max_bits + 1 - i32::from(weights[i])) as u8
+        } else {
+            0
+        };
     }
     bits[num_symbs] = (max_bits + 1 - last_weight) as u8; // Last weight is always non-zero
 
@@ -1570,7 +1698,11 @@ fn fse_init_state(dtable: &FseDtable, src: &[u8], offset: &mut i64) -> R<u16> {
 /// `FSE_decompress_interleaved2`: decompress two interleaved bitstreams (e.g. compressed
 /// Huffman weights) using an FSE decoding table. `src_len` must be the exact length of the
 /// block.
-fn fse_decompress_interleaved2(dtable: &FseDtable, out: &mut OStream, input: &mut IStream) -> R<usize> {
+fn fse_decompress_interleaved2(
+    dtable: &FseDtable,
+    out: &mut OStream,
+    input: &mut IStream,
+) -> R<usize> {
     let len = input.istream_len();
     if len == 0 {
         return inp_size();
@@ -1642,7 +1774,12 @@ fn fse_init_dtable(norm_freqs: &[i16], accuracy_log: i32) -> R<FseDtable> {
     }
 
     let size = 1usize << accuracy_log;
-    let mut dtable = FseDtable { symbols: vec![0; size], num_bits: vec![0; size], new_state_base: vec![0; size], accuracy_log };
+    let mut dtable = FseDtable {
+        symbols: vec![0; size],
+        num_bits: vec![0; size],
+        new_state_base: vec![0; size],
+        accuracy_log,
+    };
 
     // Used to determine how many bits need to be read for each state,
     // and where the destination range should start
@@ -1723,7 +1860,8 @@ fn fse_init_dtable(norm_freqs: &[i16], accuracy_log: i32) -> R<FseDtable> {
         dtable.num_bits[i] = (accuracy_log - highest_set_bit(u64::from(next_state_desc))) as u8;
         // Baseline increases until the bit threshold is passed, at which point
         // it resets to 0
-        dtable.new_state_base[i] = ((u32::from(next_state_desc) << dtable.num_bits[i]) as u16).wrapping_sub(size as u16);
+        dtable.new_state_base[i] =
+            ((u32::from(next_state_desc) << dtable.num_bits[i]) as u16).wrapping_sub(size as u16);
     }
     Ok(dtable)
 }
@@ -1840,7 +1978,12 @@ fn fse_decode_header(input: &mut IStream, max_accuracy_log: i32) -> R<FseDtable>
 /// consume 0 bits per symbol, to be used for RLE mode in sequence commands
 fn fse_init_dtable_rle(symb: u8) -> FseDtable {
     // This table only has one symbol, and it never needs any more bits to transition
-    FseDtable { symbols: vec![symb], num_bits: vec![0], new_state_base: vec![0], accuracy_log: 0 }
+    FseDtable {
+        symbols: vec![symb],
+        num_bits: vec![0],
+        new_state_base: vec![0],
+        accuracy_log: 0,
+    }
 }
 
 #[cfg(test)]
@@ -1880,11 +2023,21 @@ mod tests {
     #[test]
     fn frames_by_hand() {
         // A frame of one raw block, with its size in the header.
-        let raw = [0x28, 0xb5, 0x2f, 0xfd, 0x20, 5, 0x29, 0, 0, b'h', b'e', b'l', b'l', b'o'];
+        let raw = [
+            0x28, 0xb5, 0x2f, 0xfd, 0x20, 5, 0x29, 0, 0, b'h', b'e', b'l', b'l', b'o',
+        ];
         assert_eq!(decompress(&raw, 5).as_deref(), Ok(&b"hello"[..]));
         assert_eq!(get_decompressed_size(&raw), Ok(Some(5)));
-        assert_eq!(decompress(&raw, 4), Err(ZstdError("Output buffer too small for output")));
-        assert_eq!(decompress(&raw[..12], 5), Err(ZstdError("Input buffer smaller than it should be or input is corrupted")));
+        assert_eq!(
+            decompress(&raw, 4),
+            Err(ZstdError("Output buffer too small for output"))
+        );
+        assert_eq!(
+            decompress(&raw[..12], 5),
+            Err(ZstdError(
+                "Input buffer smaller than it should be or input is corrupted"
+            ))
+        );
         // One block of a byte repeated, with a window and no size.
         let rle = [0x28, 0xb5, 0x2f, 0xfd, 0x00, 0x00, 0x53, 0, 0, b'z'];
         assert_eq!(decompress(&rle, 100).as_deref(), Ok(&[b'z'; 10][..]));
@@ -1893,25 +2046,57 @@ mod tests {
         // more (literal length 3, match length 6, offset 3: the predefined codes 3, 3 and 2,
         // with two extra bits for the offset). Its bits, from the last read to the first:
         // the two extra bits, the three states, and the bit that marks the end.
-        let state = |distribution: &[i16], accuracy_log, code: u8| fse_init_dtable(distribution, accuracy_log).unwrap().symbols.iter().position(|&s| s == code).unwrap() as u32;
+        let state = |distribution: &[i16], accuracy_log, code: u8| {
+            fse_init_dtable(distribution, accuracy_log)
+                .unwrap()
+                .symbols
+                .iter()
+                .position(|&s| s == code)
+                .unwrap() as u32
+        };
         let ll = state(&SEQ_LITERAL_LENGTH_DEFAULT_DIST, 6, 3);
         let of = state(&SEQ_OFFSET_DEFAULT_DIST, 5, 2);
         let ml = state(&SEQ_MATCH_LENGTH_DEFAULT_DIST, 6, 3);
         let bits = (1 << 19) | (ll << 13) | (of << 8) | (ml << 2) | 0b10;
-        let mut packed = vec![0x28, 0xb5, 0x2f, 0xfd, 0x20, 9, 0x4d, 0, 0, 0x18, b'a', b'b', b'c', 1, 0];
+        let mut packed = vec![
+            0x28, 0xb5, 0x2f, 0xfd, 0x20, 9, 0x4d, 0, 0, 0x18, b'a', b'b', b'c', 1, 0,
+        ];
         packed.extend_from_slice(&bits.to_le_bytes()[..3]);
         assert_eq!(decompress(&packed, 9).as_deref(), Ok(&b"abcabcabc"[..]));
-        assert_eq!(decompress(&packed, 8), Err(ZstdError("Output buffer too small for output")));
+        assert_eq!(
+            decompress(&packed, 8),
+            Err(ZstdError("Output buffer too small for output"))
+        );
         // The same with one bit more than the sequence takes.
         let mut longer = packed.clone();
         longer[15..18].copy_from_slice(&(((bits & !(1 << 19)) | (1 << 20)).to_le_bytes()[..3]));
-        assert_eq!(decompress(&longer, 9), Err(ZstdError("Corruption detected while decompressing")));
+        assert_eq!(
+            decompress(&longer, 9),
+            Err(ZstdError("Corruption detected while decompressing"))
+        );
         // No frame, a reserved bit, a block of the kind there is none of.
-        assert_eq!(decompress(b"not zstd", 10), Err(ZstdError("Tried to decode non-ZSTD frame")));
-        assert_eq!(get_decompressed_size(b"not zstd"), Err(ZstdError("ZSTD frame magic number did not match")));
-        assert_eq!(decompress(&[0x28, 0xb5, 0x2f, 0xfd, 0x28, 0], 10), Err(ZstdError("Corruption detected while decompressing")));
-        assert_eq!(decompress(&[0x28, 0xb5, 0x2f, 0xfd, 0x20, 0, 0x07, 0, 0], 10), Err(ZstdError("Corruption detected while decompressing")));
-        assert_eq!(decompress(&[], 10), Err(ZstdError("Input buffer smaller than it should be or input is corrupted")));
+        assert_eq!(
+            decompress(b"not zstd", 10),
+            Err(ZstdError("Tried to decode non-ZSTD frame"))
+        );
+        assert_eq!(
+            get_decompressed_size(b"not zstd"),
+            Err(ZstdError("ZSTD frame magic number did not match"))
+        );
+        assert_eq!(
+            decompress(&[0x28, 0xb5, 0x2f, 0xfd, 0x28, 0], 10),
+            Err(ZstdError("Corruption detected while decompressing"))
+        );
+        assert_eq!(
+            decompress(&[0x28, 0xb5, 0x2f, 0xfd, 0x20, 0, 0x07, 0, 0], 10),
+            Err(ZstdError("Corruption detected while decompressing"))
+        );
+        assert_eq!(
+            decompress(&[], 10),
+            Err(ZstdError(
+                "Input buffer smaller than it should be or input is corrupted"
+            ))
+        );
     }
 
     #[test]
@@ -1921,18 +2106,31 @@ mod tests {
         weights[0] = 1;
         weights[1] = 1;
         let table = huf_init_dtable_usingweights(&weights, 2).unwrap();
-        assert_eq!((table.max_bits, &table.symbols[..], &table.num_bits[..]), (2, &[0u8, 1, 2, 2][..], &[2u8, 2, 1, 1][..]));
+        assert_eq!(
+            (table.max_bits, &table.symbols[..], &table.num_bits[..]),
+            (2, &[0u8, 1, 2, 2][..], &[2u8, 2, 1, 1][..])
+        );
         // Weights that leave no power of two for the last, and none at all.
         weights[0] = 3;
         assert!(huf_init_dtable_usingweights(&weights, 2).is_err());
         assert!(huf_init_dtable_usingweights(&[0; HUF_MAX_SYMBS], 4).is_err());
-        assert_eq!(huf_init_dtable_usingweights(&weights, 256).err(), Some(ZstdError("Too many symbols for Huffman")));
-        assert_eq!(huf_init_dtable(&[17]).err(), Some(ZstdError("Huffman table depth too large")));
+        assert_eq!(
+            huf_init_dtable_usingweights(&weights, 256).err(),
+            Some(ZstdError("Too many symbols for Huffman"))
+        );
+        assert_eq!(
+            huf_init_dtable(&[17]).err(),
+            Some(ZstdError("Huffman table depth too large"))
+        );
     }
 
     #[test]
     fn the_predefined_tables_are_whole() {
-        for (distribution, accuracy_log) in [(&SEQ_LITERAL_LENGTH_DEFAULT_DIST[..], 6), (&SEQ_OFFSET_DEFAULT_DIST[..], 5), (&SEQ_MATCH_LENGTH_DEFAULT_DIST[..], 6)] {
+        for (distribution, accuracy_log) in [
+            (&SEQ_LITERAL_LENGTH_DEFAULT_DIST[..], 6),
+            (&SEQ_OFFSET_DEFAULT_DIST[..], 5),
+            (&SEQ_MATCH_LENGTH_DEFAULT_DIST[..], 6),
+        ] {
             let table = fse_init_dtable(distribution, accuracy_log).unwrap();
             let size = 1usize << accuracy_log;
             assert_eq!(table.symbols.len(), size);
@@ -1942,7 +2140,14 @@ mod tests {
             }
             // Each symbol has as many cells as its share (one for "less than one").
             for (symbol, &share) in distribution.iter().enumerate() {
-                assert_eq!(table.symbols.iter().filter(|&&s| usize::from(s) == symbol).count(), share.unsigned_abs() as usize);
+                assert_eq!(
+                    table
+                        .symbols
+                        .iter()
+                        .filter(|&&s| usize::from(s) == symbol)
+                        .count(),
+                    share.unsigned_abs() as usize
+                );
             }
         }
         // Shares that do not come to the size of the table.

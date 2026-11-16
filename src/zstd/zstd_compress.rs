@@ -22,10 +22,13 @@ use super::common::{highbit32, read16, read32, read64, write_le24, write_le32, C
 use super::fse_compress::FseCTable;
 use super::hist;
 use super::huf_compress::{HufCompressTables, HufRepeat};
-use super::zstd_compress_literals::{build_block_entropy_stats_literals, compress_literals, estimate_block_size_literal, HufCTables};
+use super::zstd_compress_literals::{
+    build_block_entropy_stats_literals, compress_literals, estimate_block_size_literal, HufCTables,
+};
 use super::zstd_compress_sequences::{
-    self as sequences, FseRepeat, DEFAULT_MAX_OFF, LL_BITS, ML_BITS, LL_DEFAULT_NORM, LL_DEFAULT_NORM_LOG, LL_FSE_LOG, MAX_LL, MAX_ML, MAX_OFF, MAX_SEQ, ML_DEFAULT_NORM, ML_DEFAULT_NORM_LOG, ML_FSE_LOG, OFF_FSE_LOG,
-    OF_DEFAULT_NORM, OF_DEFAULT_NORM_LOG,
+    self as sequences, FseRepeat, DEFAULT_MAX_OFF, LL_BITS, LL_DEFAULT_NORM, LL_DEFAULT_NORM_LOG,
+    LL_FSE_LOG, MAX_LL, MAX_ML, MAX_OFF, MAX_SEQ, ML_BITS, ML_DEFAULT_NORM, ML_DEFAULT_NORM_LOG,
+    ML_FSE_LOG, OFF_FSE_LOG, OF_DEFAULT_NORM, OF_DEFAULT_NORM_LOG,
 };
 use super::zstd_decompress::ZstdError;
 use super::zstd_double_fast::compress_block_double_fast;
@@ -111,19 +114,32 @@ pub(crate) struct CompressionParameters {
 /// It is what [`compress`] gives its output to start with, as the bytes depend on the room
 /// there is in a few places.
 pub fn compress_bound(src_size: usize) -> usize {
-    src_size + (src_size >> 8) + if src_size < (128 << 10) { ((128 << 10) - src_size) >> 11 } else { 0 }
+    src_size
+        + (src_size >> 8)
+        + if src_size < (128 << 10) {
+            ((128 << 10) - src_size) >> 11
+        } else {
+            0
+        }
 }
 
 /// `ZSTD_adjustCParams_internal`, for a source of a known size and no dictionary: the
 /// tables are not made larger than the source can use.
-fn adjust_cparams_internal(mut c_par: CompressionParameters, src_size: u64) -> CompressionParameters {
+fn adjust_cparams_internal(
+    mut c_par: CompressionParameters,
+    src_size: u64,
+) -> CompressionParameters {
     const MAX_WINDOW_RESIZE: u64 = 1 << (ZSTD_WINDOWLOG_MAX - 1);
 
     // Resize windowLog if the input is small enough, to use less memory.
     if src_size <= MAX_WINDOW_RESIZE {
         let t_size = src_size as u32;
         const HASH_SIZE_MIN: u32 = 1 << ZSTD_HASHLOG_MIN;
-        let src_log = if t_size < HASH_SIZE_MIN { ZSTD_HASHLOG_MIN } else { highbit32(t_size - 1) + 1 };
+        let src_log = if t_size < HASH_SIZE_MIN {
+            ZSTD_HASHLOG_MIN
+        } else {
+            highbit32(t_size - 1) + 1
+        };
         if c_par.window_log > src_log {
             c_par.window_log = src_log;
         }
@@ -131,7 +147,8 @@ fn adjust_cparams_internal(mut c_par: CompressionParameters, src_size: u64) -> C
     {
         let dict_and_window_log = c_par.window_log;
         // `ZSTD_cycleLog`.
-        let cycle_log = c_par.chain_log - u32::from(c_par.strategy as u32 >= Strategy::Btlazy2 as u32);
+        let cycle_log =
+            c_par.chain_log - u32::from(c_par.strategy as u32 >= Strategy::Btlazy2 as u32);
         if c_par.hash_log > dict_and_window_log + 1 {
             c_par.hash_log = dict_and_window_log + 1;
         }
@@ -152,9 +169,14 @@ fn adjust_cparams_internal(mut c_par: CompressionParameters, src_size: u64) -> C
 
 /// `ZSTD_getCParams_internal`, for a source of a known size and no dictionary: the
 /// parameters of a level.
-pub(crate) fn get_cparams_internal(compression_level: i32, src_size_hint: u64) -> CompressionParameters {
+pub(crate) fn get_cparams_internal(
+    compression_level: i32,
+    src_size_hint: u64,
+) -> CompressionParameters {
     let r_size = src_size_hint;
-    let table_id = usize::from(r_size <= 256 * 1024) + usize::from(r_size <= 128 * 1024) + usize::from(r_size <= 16 * 1024);
+    let table_id = usize::from(r_size <= 256 * 1024)
+        + usize::from(r_size <= 128 * 1024)
+        + usize::from(r_size <= 16 * 1024);
 
     // Row.
     let row = if compression_level == 0 {
@@ -167,8 +189,17 @@ pub(crate) fn get_cparams_internal(compression_level: i32, src_size_hint: u64) -
         compression_level
     };
 
-    let (window_log, chain_log, hash_log, search_log, min_match, target_length, strategy) = ZSTD_DEFAULT_CPARAMETERS[table_id][row as usize];
-    let mut cp = CompressionParameters { window_log, chain_log, hash_log, search_log, min_match, target_length, strategy };
+    let (window_log, chain_log, hash_log, search_log, min_match, target_length, strategy) =
+        ZSTD_DEFAULT_CPARAMETERS[table_id][row as usize];
+    let mut cp = CompressionParameters {
+        window_log,
+        chain_log,
+        hash_log,
+        search_log,
+        min_match,
+        target_length,
+        strategy,
+    };
     // Acceleration factor.
     if compression_level < 0 {
         // `ZSTD_minCLevel` is `-ZSTD_TARGETLENGTH_MAX`.
@@ -181,7 +212,11 @@ pub(crate) fn get_cparams_internal(compression_level: i32, src_size_hint: u64) -
 
 /// `ZSTD_minGain`: what a block has to save to be kept compressed.
 pub(crate) fn min_gain(src_size: usize, strat: Strategy) -> usize {
-    let minlog = if strat as u32 >= Strategy::Btultra as u32 { strat as u32 - 1 } else { 6 };
+    let minlog = if strat as u32 >= Strategy::Btultra as u32 {
+        strat as u32 - 1
+    } else {
+        6
+    };
     (src_size >> minlog) + 2
 }
 
@@ -255,7 +290,15 @@ pub(crate) struct SeqStore {
 
 impl SeqStore {
     fn new() -> SeqStore {
-        SeqStore { sequences: Vec::new(), lit: Vec::new(), ll_code: Vec::new(), ml_code: Vec::new(), of_code: Vec::new(), long_length_type: LongLengthType::None, long_length_pos: 0 }
+        SeqStore {
+            sequences: Vec::new(),
+            lit: Vec::new(),
+            ll_code: Vec::new(),
+            ml_code: Vec::new(),
+            of_code: Vec::new(),
+            long_length_type: LongLengthType::None,
+            long_length_pos: 0,
+        }
     }
 
     /// How many sequences there are.
@@ -272,9 +315,17 @@ impl SeqStore {
 
     /// `ZSTD_storeSeq`: one sequence, with its `lit_length` literals from `src[literals..]`.
     #[inline]
-    pub(crate) fn store_seq(&mut self, src: &[u8], literals: usize, lit_length: usize, off_base: u32, match_length: usize) {
+    pub(crate) fn store_seq(
+        &mut self,
+        src: &[u8],
+        literals: usize,
+        lit_length: usize,
+        off_base: u32,
+        match_length: usize,
+    ) {
         // Copy the literals.
-        self.lit.extend_from_slice(&src[literals..literals + lit_length]);
+        self.lit
+            .extend_from_slice(&src[literals..literals + lit_length]);
 
         // `ZSTD_storeSeqOnly`.
         // Literal length.
@@ -288,12 +339,23 @@ impl SeqStore {
             self.long_length_type = LongLengthType::MatchLength;
             self.long_length_pos = self.sequences.len() as u32;
         }
-        self.sequences.push(SeqDef { off_base, lit_length: lit_length as u16, ml_base: ml_base as u16 });
+        self.sequences.push(SeqDef {
+            off_base,
+            lit_length: lit_length as u16,
+            ml_base: ml_base as u16,
+        });
     }
 
     /// The whole of the store, as a chunk.
     fn whole(&self) -> SeqChunk {
-        SeqChunk { seq_start: 0, seq_end: self.sequences.len(), lit_start: 0, lit_end: self.lit.len(), long_length_type: self.long_length_type, long_length_pos: self.long_length_pos }
+        SeqChunk {
+            seq_start: 0,
+            seq_end: self.sequences.len(),
+            lit_start: 0,
+            lit_end: self.lit.len(),
+            long_length_type: self.long_length_type,
+            long_length_pos: self.long_length_pos,
+        }
     }
 
     /// `ZSTD_seqToCodes`: the codes of the lengths and offsets of the sequences of a chunk,
@@ -306,7 +368,10 @@ impl SeqStore {
                 table.resize(room, 0);
             }
         }
-        for (i, seq) in self.sequences[chunk.seq_start..chunk.seq_end].iter().enumerate() {
+        for (i, seq) in self.sequences[chunk.seq_start..chunk.seq_end]
+            .iter()
+            .enumerate()
+        {
             self.ll_code[chunk.seq_start + i] = ll_code(seq.lit_length as u32) as u8;
             self.of_code[chunk.seq_start + i] = highbit32(seq.off_base) as u8;
             self.ml_code[chunk.seq_start + i] = ml_code(seq.ml_base as u32) as u8;
@@ -479,7 +544,11 @@ impl OptState {
 pub(crate) fn get_lowest_match_index(ms: &MatchState, curr: u32, window_log: u32) -> u32 {
     let max_distance = 1u32 << window_log;
     let lowest_valid = ms.window.low_limit;
-    let within_window = if curr.wrapping_sub(lowest_valid) > max_distance { curr - max_distance } else { lowest_valid };
+    let within_window = if curr.wrapping_sub(lowest_valid) > max_distance {
+        curr - max_distance
+    } else {
+        lowest_valid
+    };
     let is_dictionary = ms.loaded_dict_end != 0;
     // When using a dictionary the entire dictionary is valid if a single byte of the
     // dictionary is within the window. It is invalidated as soon as the first byte of the
@@ -496,7 +565,11 @@ pub(crate) fn get_lowest_match_index(ms: &MatchState, curr: u32, window_log: u32
 pub(crate) fn get_lowest_prefix_index(ms: &MatchState, curr: u32, window_log: u32) -> u32 {
     let max_distance = 1u32 << window_log;
     let lowest_valid = ms.window.dict_limit;
-    let within_window = if curr.wrapping_sub(lowest_valid) > max_distance { curr - max_distance } else { lowest_valid };
+    let within_window = if curr.wrapping_sub(lowest_valid) > max_distance {
+        curr - max_distance
+    } else {
+        lowest_valid
+    };
     let is_dictionary = ms.loaded_dict_end != 0;
     // When using a dictionary the entire dictionary is valid if a single byte of the
     // dictionary is within the window. It is invalidated as soon as the first byte of the
@@ -557,9 +630,15 @@ const PRIME_8_BYTES: u64 = 0xCF1BBCDCB7A56463;
 #[inline]
 pub(crate) fn hash_ptr(src: &[u8], pos: usize, h_bits: u32, mls: u32) -> usize {
     match mls {
-        5 => ((read64(src, pos) << (64 - 40)).wrapping_mul(PRIME_5_BYTES) >> (64 - h_bits)) as usize,
-        6 => ((read64(src, pos) << (64 - 48)).wrapping_mul(PRIME_6_BYTES) >> (64 - h_bits)) as usize,
-        7 => ((read64(src, pos) << (64 - 56)).wrapping_mul(PRIME_7_BYTES) >> (64 - h_bits)) as usize,
+        5 => {
+            ((read64(src, pos) << (64 - 40)).wrapping_mul(PRIME_5_BYTES) >> (64 - h_bits)) as usize
+        }
+        6 => {
+            ((read64(src, pos) << (64 - 48)).wrapping_mul(PRIME_6_BYTES) >> (64 - h_bits)) as usize
+        }
+        7 => {
+            ((read64(src, pos) << (64 - 56)).wrapping_mul(PRIME_7_BYTES) >> (64 - h_bits)) as usize
+        }
         8 => (read64(src, pos).wrapping_mul(PRIME_8_BYTES) >> (64 - h_bits)) as usize,
         _ => (read32(src, pos).wrapping_mul(PRIME_4_BYTES) >> (32 - h_bits)) as usize,
     }
@@ -569,11 +648,22 @@ pub(crate) fn hash_ptr(src: &[u8], pos: usize, h_bits: u32, mls: u32) -> usize {
 #[inline]
 pub(crate) fn hash_ptr_salted(src: &[u8], pos: usize, h_bits: u32, mls: u32, salt: u64) -> u32 {
     (match mls {
-        5 => (((read64(src, pos) << (64 - 40)).wrapping_mul(PRIME_5_BYTES) ^ salt) >> (64 - h_bits)) as usize,
-        6 => (((read64(src, pos) << (64 - 48)).wrapping_mul(PRIME_6_BYTES) ^ salt) >> (64 - h_bits)) as usize,
-        7 => (((read64(src, pos) << (64 - 56)).wrapping_mul(PRIME_7_BYTES) ^ salt) >> (64 - h_bits)) as usize,
+        5 => {
+            (((read64(src, pos) << (64 - 40)).wrapping_mul(PRIME_5_BYTES) ^ salt) >> (64 - h_bits))
+                as usize
+        }
+        6 => {
+            (((read64(src, pos) << (64 - 48)).wrapping_mul(PRIME_6_BYTES) ^ salt) >> (64 - h_bits))
+                as usize
+        }
+        7 => {
+            (((read64(src, pos) << (64 - 56)).wrapping_mul(PRIME_7_BYTES) ^ salt) >> (64 - h_bits))
+                as usize
+        }
         8 => ((read64(src, pos).wrapping_mul(PRIME_8_BYTES) ^ salt) >> (64 - h_bits)) as usize,
-        _ => ((read32(src, pos).wrapping_mul(PRIME_4_BYTES) ^ salt as u32) >> (32 - h_bits)) as usize,
+        _ => {
+            ((read32(src, pos).wrapping_mul(PRIME_4_BYTES) ^ salt as u32) >> (32 - h_bits)) as usize
+        }
     }) as u32
 }
 
@@ -596,7 +686,10 @@ fn bitmix(mut val: u64, len: u64) -> u64 {
 /// `ZSTD_rowMatchFinderUsed` with the mode `ZSTD_resolveRowMatchFinderMode` gives: the
 /// greedy and lazy strategies search by rows when the window is larger than 16 KB.
 pub(crate) fn row_match_finder_used(cparams: &CompressionParameters) -> bool {
-    matches!(cparams.strategy, Strategy::Greedy | Strategy::Lazy | Strategy::Lazy2) && cparams.window_log > 14
+    matches!(
+        cparams.strategy,
+        Strategy::Greedy | Strategy::Lazy | Strategy::Lazy2
+    ) && cparams.window_log > 14
 }
 
 /// `ZSTD_blockSplitterEnabled` with the mode `ZSTD_resolveBlockSplitterMode` gives: the
@@ -642,7 +735,10 @@ impl CompressedBlockState {
     fn new() -> CompressedBlockState {
         CompressedBlockState {
             entropy: EntropyCTables {
-                huf: HufCTables { ctable: [0; 257], repeat_mode: HufRepeat::None },
+                huf: HufCTables {
+                    ctable: [0; 257],
+                    repeat_mode: HufRepeat::None,
+                },
                 fse: FseCTables {
                     offcode_ctable: FseCTable::new(OFF_FSE_LOG, MAX_OFF),
                     matchlength_ctable: FseCTable::new(ML_FSE_LOG, MAX_ML),
@@ -670,9 +766,23 @@ struct SymbolEncodingTypeStats {
 
 /// `ZSTD_buildSequencesStatistics`: the kinds of the three tables of the sequences, the
 /// tables themselves in `next_entropy`, and what describes them in `dst`.
-fn build_sequences_statistics(seq_store: &mut SeqStore, chunk: &SeqChunk, prev_entropy: &FseCTables, next_entropy: &mut FseCTables, dst: &mut [u8], strategy: Strategy, count_workspace: &mut [u32; MAX_SEQ + 1]) -> CResult<SymbolEncodingTypeStats> {
+fn build_sequences_statistics(
+    seq_store: &mut SeqStore,
+    chunk: &SeqChunk,
+    prev_entropy: &FseCTables,
+    next_entropy: &mut FseCTables,
+    dst: &mut [u8],
+    strategy: Strategy,
+    count_workspace: &mut [u32; MAX_SEQ + 1],
+) -> CResult<SymbolEncodingTypeStats> {
     let mut op = 0usize;
-    let mut stats = SymbolEncodingTypeStats { ll_type: 0, off_type: 0, ml_type: 0, size: 0, last_count_size: 0 };
+    let mut stats = SymbolEncodingTypeStats {
+        ll_type: 0,
+        off_type: 0,
+        ml_type: 0,
+        size: 0,
+        last_count_size: 0,
+    };
     let nb_seq = chunk.nb_seq();
 
     // Convert the lengths and distances into codes.
@@ -684,9 +794,22 @@ fn build_sequences_statistics(seq_store: &mut SeqStore, chunk: &SeqChunk, prev_e
     // Build the table for the literal lengths.
     {
         let mut max = MAX_LL;
-        let most_frequent = hist::count_simple(count_workspace, &mut max, &ll_code_table[..nb_seq]) as usize;
+        let most_frequent =
+            hist::count_simple(count_workspace, &mut max, &ll_code_table[..nb_seq]) as usize;
         next_entropy.litlength_repeat_mode = prev_entropy.litlength_repeat_mode;
-        stats.ll_type = sequences::select_encoding_type(&mut next_entropy.litlength_repeat_mode, count_workspace, max, most_frequent, nb_seq, LL_FSE_LOG, &prev_entropy.litlength_ctable, &LL_DEFAULT_NORM, LL_DEFAULT_NORM_LOG, true, strategy);
+        stats.ll_type = sequences::select_encoding_type(
+            &mut next_entropy.litlength_repeat_mode,
+            count_workspace,
+            max,
+            most_frequent,
+            nb_seq,
+            LL_FSE_LOG,
+            &prev_entropy.litlength_ctable,
+            &LL_DEFAULT_NORM,
+            LL_DEFAULT_NORM_LOG,
+            true,
+            strategy,
+        );
         {
             let count_size = sequences::build_ctable(
                 &mut dst[op..],
@@ -711,12 +834,25 @@ fn build_sequences_statistics(seq_store: &mut SeqStore, chunk: &SeqChunk, prev_e
     // Build the table for the offsets.
     {
         let mut max = MAX_OFF;
-        let most_frequent = hist::count_simple(count_workspace, &mut max, &of_code_table[..nb_seq]) as usize;
+        let most_frequent =
+            hist::count_simple(count_workspace, &mut max, &of_code_table[..nb_seq]) as usize;
         // We can only use the basic table if max <= DefaultMaxOff, otherwise the offsets
         // are too large.
         let default_policy = max <= DEFAULT_MAX_OFF;
         next_entropy.offcode_repeat_mode = prev_entropy.offcode_repeat_mode;
-        stats.off_type = sequences::select_encoding_type(&mut next_entropy.offcode_repeat_mode, count_workspace, max, most_frequent, nb_seq, OFF_FSE_LOG, &prev_entropy.offcode_ctable, &OF_DEFAULT_NORM, OF_DEFAULT_NORM_LOG, default_policy, strategy);
+        stats.off_type = sequences::select_encoding_type(
+            &mut next_entropy.offcode_repeat_mode,
+            count_workspace,
+            max,
+            most_frequent,
+            nb_seq,
+            OFF_FSE_LOG,
+            &prev_entropy.offcode_ctable,
+            &OF_DEFAULT_NORM,
+            OF_DEFAULT_NORM_LOG,
+            default_policy,
+            strategy,
+        );
         {
             let count_size = sequences::build_ctable(
                 &mut dst[op..],
@@ -741,9 +877,22 @@ fn build_sequences_statistics(seq_store: &mut SeqStore, chunk: &SeqChunk, prev_e
     // Build the table for the match lengths.
     {
         let mut max = MAX_ML;
-        let most_frequent = hist::count_simple(count_workspace, &mut max, &ml_code_table[..nb_seq]) as usize;
+        let most_frequent =
+            hist::count_simple(count_workspace, &mut max, &ml_code_table[..nb_seq]) as usize;
         next_entropy.matchlength_repeat_mode = prev_entropy.matchlength_repeat_mode;
-        stats.ml_type = sequences::select_encoding_type(&mut next_entropy.matchlength_repeat_mode, count_workspace, max, most_frequent, nb_seq, ML_FSE_LOG, &prev_entropy.matchlength_ctable, &ML_DEFAULT_NORM, ML_DEFAULT_NORM_LOG, true, strategy);
+        stats.ml_type = sequences::select_encoding_type(
+            &mut next_entropy.matchlength_repeat_mode,
+            count_workspace,
+            max,
+            most_frequent,
+            nb_seq,
+            ML_FSE_LOG,
+            &prev_entropy.matchlength_ctable,
+            &ML_DEFAULT_NORM,
+            ML_DEFAULT_NORM_LOG,
+            true,
+            strategy,
+        );
         {
             let count_size = sequences::build_ctable(
                 &mut dst[op..],
@@ -782,7 +931,11 @@ pub(crate) fn update_rep(rep: &mut [u32; 3], off_base: u32, ll0: bool) {
         let rep_code = off_base - 1 + u32::from(ll0);
         if rep_code > 0 {
             // note : if repCode==0, no change
-            let current_offset = if rep_code == ZSTD_REP_NUM { rep[0].wrapping_sub(1) } else { rep[rep_code as usize] };
+            let current_offset = if rep_code == ZSTD_REP_NUM {
+                rep[0].wrapping_sub(1)
+            } else {
+                rep[rep_code as usize]
+            };
             rep[2] = if rep_code >= 2 { rep[1] } else { rep[2] };
             rep[1] = rep[0];
             rep[0] = current_offset;
@@ -802,7 +955,12 @@ fn no_compress_block(dst: &mut [u8], src: &[u8], last_block: u32) -> CResult<usi
 }
 
 /// `ZSTD_rleCompressBlock`: one byte for the block, behind its header.
-fn rle_compress_block(dst: &mut [u8], byte: u8, src_size: usize, last_block: u32) -> CResult<usize> {
+fn rle_compress_block(
+    dst: &mut [u8],
+    byte: u8,
+    src_size: usize,
+    last_block: u32,
+) -> CResult<usize> {
     let c_block_header = last_block + (BT_RLE << 1) + ((src_size as u32) << 3);
     if dst.len() < 4 {
         return Err(CError::DstSizeTooSmall);
@@ -824,7 +982,16 @@ struct FseMetadata {
 /// `ZSTD_estimateBlockSize_symbolType`: the size of the codes of one kind (and their extra
 /// bits) with a table of the kind `encoding_type`.
 #[allow(clippy::too_many_arguments)]
-fn estimate_block_size_symbol_type(encoding_type: u32, code_table: &[u8], max_code: u32, fse_ctable: &FseCTable, additional_bits: Option<&[u8]>, default_norm: &[i16], default_norm_log: u32, count: &mut [u32; MAX_SEQ + 1]) -> usize {
+fn estimate_block_size_symbol_type(
+    encoding_type: u32,
+    code_table: &[u8],
+    max_code: u32,
+    fse_ctable: &FseCTable,
+    additional_bits: Option<&[u8]>,
+    default_norm: &[i16],
+    default_norm_log: u32,
+    count: &mut [u32; MAX_SEQ + 1],
+) -> usize {
     let nb_seq = code_table.len();
     let mut max = max_code;
     let mut c_symbol_type_size_estimate_in_bits = 0usize;
@@ -832,7 +999,8 @@ fn estimate_block_size_symbol_type(encoding_type: u32, code_table: &[u8], max_co
     hist::count_simple(count, &mut max, code_table); // can't fail
     if encoding_type == SET_BASIC {
         // We selected this encoding type, so it must be valid.
-        c_symbol_type_size_estimate_in_bits = sequences::cross_entropy_cost(default_norm, default_norm_log, count, max);
+        c_symbol_type_size_estimate_in_bits =
+            sequences::cross_entropy_cost(default_norm, default_norm_log, count, max);
     } else if encoding_type == SET_RLE {
         c_symbol_type_size_estimate_in_bits = 0;
     } else if encoding_type == SET_COMPRESSED || encoding_type == SET_REPEAT {
@@ -890,10 +1058,22 @@ impl CCtx {
         // `ZSTD_allocateChainTable`: every strategy but the fast one and those that search by
         // rows has one.
         let use_row = row_match_finder_used(&cparams);
-        let chain_size = if cparams.strategy != Strategy::Fast && !use_row { 1usize << cparams.chain_log } else { 0 };
+        let chain_size = if cparams.strategy != Strategy::Fast && !use_row {
+            1usize << cparams.chain_log
+        } else {
+            0
+        };
         let h_size = 1usize << cparams.hash_log;
-        let hash_log3 = if cparams.min_match == 3 { ZSTD_HASHLOG3_MAX.min(cparams.window_log) } else { 0 };
-        let h3_size = if hash_log3 != 0 { 1usize << hash_log3 } else { 0 };
+        let hash_log3 = if cparams.min_match == 3 {
+            ZSTD_HASHLOG3_MAX.min(cparams.window_log)
+        } else {
+            0
+        };
+        let h3_size = if hash_log3 != 0 {
+            1usize << hash_log3
+        } else {
+            0
+        };
         CCtx {
             cparams,
             block_size_max: block_size,
@@ -905,7 +1085,11 @@ impl CCtx {
             next_cblock: Box::new(CompressedBlockState::new()),
             match_state: MatchState {
                 // `ZSTD_window_init`.
-                window: Window { base: ZSTD_WINDOW_START_INDEX, dict_limit: ZSTD_WINDOW_START_INDEX, low_limit: ZSTD_WINDOW_START_INDEX },
+                window: Window {
+                    base: ZSTD_WINDOW_START_INDEX,
+                    dict_limit: ZSTD_WINDOW_START_INDEX,
+                    low_limit: ZSTD_WINDOW_START_INDEX,
+                },
                 loaded_dict_end: 0,
                 next_to_update: ZSTD_WINDOW_START_INDEX,
                 hash_table: vec![0; h_size],
@@ -915,15 +1099,27 @@ impl CCtx {
                 // (A new context's tags are all zeros, and its salt comes of a salt and a
                 // count of 0: `ZSTD_advanceHashSalt`.)
                 tag_table: if use_row { vec![0; h_size] } else { Vec::new() },
-                row_hash_log: if use_row { cparams.hash_log - cparams.search_log.clamp(4, 6) } else { 0 },
-                hash_salt: if use_row { bitmix(0, 8) ^ bitmix(0, 4) } else { 0 },
+                row_hash_log: if use_row {
+                    cparams.hash_log - cparams.search_log.clamp(4, 6)
+                } else {
+                    0
+                },
+                hash_salt: if use_row {
+                    bitmix(0, 8) ^ bitmix(0, 4)
+                } else {
+                    0
+                },
                 hash_cache: [0; ZSTD_ROW_HASH_CACHE_SIZE],
                 lazy_skipping: false,
                 opt: OptState::new(cparams.strategy as u32 >= Strategy::Btopt as u32),
                 cparams,
             },
             seq_store: SeqStore::new(),
-            ldm: if ldm_enabled(&cparams) { Some(Box::new(LdmState::new(&cparams, block_size))) } else { None },
+            ldm: if ldm_enabled(&cparams) {
+                Some(Box::new(LdmState::new(&cparams, block_size)))
+            } else {
+                None
+            },
             ldm_sequences: Vec::new(),
             count: [0; MAX_SEQ + 1],
             huf_workspace: Box::new(HufCompressTables::new()),
@@ -938,7 +1134,11 @@ impl CCtx {
 
     /// `ZSTD_entropyCompressSeqStore_internal`: the literals and the sequences of the block
     /// in the sequence store, as the two sections of a compressed block.
-    fn entropy_compress_seq_store_internal(&mut self, dst: &mut [u8], chunk: &SeqChunk) -> CResult<usize> {
+    fn entropy_compress_seq_store_internal(
+        &mut self,
+        dst: &mut [u8],
+        chunk: &SeqChunk,
+    ) -> CResult<usize> {
         let strategy = self.cparams.strategy;
         let disable_literal_compression = self.literals_compression_is_disabled();
         let seq_store = &mut self.seq_store;
@@ -955,14 +1155,26 @@ impl CCtx {
             let lit_size = literals.len();
             let num_sequences = nb_seq;
             // Base suspicion of uncompressibility on ratio of literals to sequences.
-            let suspect_uncompressible = (num_sequences == 0) || (lit_size / num_sequences >= SUSPECT_UNCOMPRESSIBLE_LITERAL_RATIO);
+            let suspect_uncompressible = (num_sequences == 0)
+                || (lit_size / num_sequences >= SUSPECT_UNCOMPRESSIBLE_LITERAL_RATIO);
 
-            let c_size = compress_literals(dst, literals, &mut self.huf_workspace, &prev_entropy.huf, &mut next_entropy.huf, strategy, disable_literal_compression, suspect_uncompressible)?;
+            let c_size = compress_literals(
+                dst,
+                literals,
+                &mut self.huf_workspace,
+                &prev_entropy.huf,
+                &mut next_entropy.huf,
+                strategy,
+                disable_literal_compression,
+                suspect_uncompressible,
+            )?;
             op += c_size;
         }
 
         // Sequences header.
-        if (oend - op) < 3 /* max nbSeq Size */ + 1 /* seqHead */ {
+        if (oend - op) < 3 /* max nbSeq Size */ + 1
+        /* seqHead */
+        {
             return Err(CError::DstSizeTooSmall); // can't fit the sequences header in the output
         }
         if nb_seq < 128 {
@@ -986,24 +1198,32 @@ impl CCtx {
             let seq_head = op;
             op += 1;
             // Build the stats for the sequences.
-            let stats = build_sequences_statistics(seq_store, chunk, &prev_entropy.fse, &mut next_entropy.fse, &mut dst[op..], strategy, &mut self.count)?;
-            dst[seq_head] = ((stats.ll_type << 6) + (stats.off_type << 4) + (stats.ml_type << 2)) as u8;
+            let stats = build_sequences_statistics(
+                seq_store,
+                chunk,
+                &prev_entropy.fse,
+                &mut next_entropy.fse,
+                &mut dst[op..],
+                strategy,
+                &mut self.count,
+            )?;
+            dst[seq_head] =
+                ((stats.ll_type << 6) + (stats.off_type << 4) + (stats.ml_type << 2)) as u8;
             last_count_size = stats.last_count_size;
             op += stats.size;
         }
 
         {
-            let bitstream_size =
-                sequences::encode_sequences(
-                    &mut dst[op..],
-                    &next_entropy.fse.matchlength_ctable,
-                    &seq_store.ml_code[chunk.seq_start..chunk.seq_end],
-                    &next_entropy.fse.offcode_ctable,
-                    &seq_store.of_code[chunk.seq_start..chunk.seq_end],
-                    &next_entropy.fse.litlength_ctable,
-                    &seq_store.ll_code[chunk.seq_start..chunk.seq_end],
-                    &seq_store.sequences[chunk.seq_start..chunk.seq_end],
-                )?;
+            let bitstream_size = sequences::encode_sequences(
+                &mut dst[op..],
+                &next_entropy.fse.matchlength_ctable,
+                &seq_store.ml_code[chunk.seq_start..chunk.seq_end],
+                &next_entropy.fse.offcode_ctable,
+                &seq_store.of_code[chunk.seq_start..chunk.seq_end],
+                &next_entropy.fse.litlength_ctable,
+                &seq_store.ll_code[chunk.seq_start..chunk.seq_end],
+                &seq_store.sequences[chunk.seq_start..chunk.seq_end],
+            )?;
             op += bitstream_size;
             // zstd versions <= 1.3.4 mistakenly report corruption when FSE_readNCount()
             // receives a buffer < 4 bytes. This can happen when the last set_compressed
@@ -1020,7 +1240,12 @@ impl CCtx {
 
     /// `ZSTD_entropyCompressSeqStore`: as above, or 0 when the block is better left as it
     /// is. `block_size` is the size of the block's source.
-    fn entropy_compress_seq_store(&mut self, dst: &mut [u8], block_size: usize, chunk: &SeqChunk) -> CResult<usize> {
+    fn entropy_compress_seq_store(
+        &mut self,
+        dst: &mut [u8],
+        block_size: usize,
+        chunk: &SeqChunk,
+    ) -> CResult<usize> {
         let dst_capacity = dst.len();
         let c_size = self.entropy_compress_seq_store_internal(dst, chunk);
         match c_size {
@@ -1064,37 +1289,101 @@ impl CCtx {
             // `ZSTD_selectBlockCompressor`.
             let rep = &mut self.next_cblock.rep;
             let seq_store = &mut self.seq_store;
-            let row = if row_match_finder_used(&ms.cparams) { SearchMethod::RowHash } else { SearchMethod::HashChain };
+            let row = if row_match_finder_used(&ms.cparams) {
+                SearchMethod::RowHash
+            } else {
+                SearchMethod::HashChain
+            };
             let last_ll_size = if let Some(ldm) = &mut self.ldm {
                 // Long-distance matching: its matches for the block (`ZSTD_ldm_generateSequences`),
                 // as candidates for the optimal parser (`ZSTD_ldm_blockCompress`, which the
                 // original takes for no other strategies of its own).
                 self.ldm_sequences.clear();
-                if ldm.generate_sequences(&mut self.ldm_sequences, src, ip, src_size).is_err() {
+                if ldm
+                    .generate_sequences(&mut self.ldm_sequences, src, ip, src_size)
+                    .is_err()
+                {
                     return Err(CError::DstSizeTooSmall);
                 }
                 let ldm_seq_store = (&self.ldm_sequences[..], RawSeqPos::default());
                 match ms.cparams.strategy {
-                    Strategy::Btopt => compress_block_opt(ms, seq_store, rep, src, ip, src_size, 0, ldm_seq_store),
-                    Strategy::Btultra => compress_block_opt(ms, seq_store, rep, src, ip, src_size, 2, ldm_seq_store),
-                    _ => compress_block_btultra2(ms, seq_store, rep, src, ip, src_size, ldm_seq_store),
+                    Strategy::Btopt => {
+                        compress_block_opt(ms, seq_store, rep, src, ip, src_size, 0, ldm_seq_store)
+                    }
+                    Strategy::Btultra => {
+                        compress_block_opt(ms, seq_store, rep, src, ip, src_size, 2, ldm_seq_store)
+                    }
+                    _ => compress_block_btultra2(
+                        ms,
+                        seq_store,
+                        rep,
+                        src,
+                        ip,
+                        src_size,
+                        ldm_seq_store,
+                    ),
                 }
             } else {
                 match ms.cparams.strategy {
-                Strategy::Fast => compress_block_fast(ms, seq_store, rep, src, ip, src_size),
-                Strategy::Dfast => compress_block_double_fast(ms, seq_store, rep, src, ip, src_size),
-                Strategy::Greedy => compress_block_lazy(ms, seq_store, rep, src, ip, src_size, row, 0),
-                Strategy::Lazy => compress_block_lazy(ms, seq_store, rep, src, ip, src_size, row, 1),
-                Strategy::Lazy2 => compress_block_lazy(ms, seq_store, rep, src, ip, src_size, row, 2),
-                Strategy::Btlazy2 => compress_block_lazy(ms, seq_store, rep, src, ip, src_size, SearchMethod::BinaryTree, 2),
-                Strategy::Btopt => compress_block_opt(ms, seq_store, rep, src, ip, src_size, 0, (&[], RawSeqPos::default())),
-                Strategy::Btultra => compress_block_opt(ms, seq_store, rep, src, ip, src_size, 2, (&[], RawSeqPos::default())),
-                Strategy::Btultra2 => compress_block_btultra2(ms, seq_store, rep, src, ip, src_size, (&[], RawSeqPos::default())),
+                    Strategy::Fast => compress_block_fast(ms, seq_store, rep, src, ip, src_size),
+                    Strategy::Dfast => {
+                        compress_block_double_fast(ms, seq_store, rep, src, ip, src_size)
+                    }
+                    Strategy::Greedy => {
+                        compress_block_lazy(ms, seq_store, rep, src, ip, src_size, row, 0)
+                    }
+                    Strategy::Lazy => {
+                        compress_block_lazy(ms, seq_store, rep, src, ip, src_size, row, 1)
+                    }
+                    Strategy::Lazy2 => {
+                        compress_block_lazy(ms, seq_store, rep, src, ip, src_size, row, 2)
+                    }
+                    Strategy::Btlazy2 => compress_block_lazy(
+                        ms,
+                        seq_store,
+                        rep,
+                        src,
+                        ip,
+                        src_size,
+                        SearchMethod::BinaryTree,
+                        2,
+                    ),
+                    Strategy::Btopt => compress_block_opt(
+                        ms,
+                        seq_store,
+                        rep,
+                        src,
+                        ip,
+                        src_size,
+                        0,
+                        (&[], RawSeqPos::default()),
+                    ),
+                    Strategy::Btultra => compress_block_opt(
+                        ms,
+                        seq_store,
+                        rep,
+                        src,
+                        ip,
+                        src_size,
+                        2,
+                        (&[], RawSeqPos::default()),
+                    ),
+                    Strategy::Btultra2 => compress_block_btultra2(
+                        ms,
+                        seq_store,
+                        rep,
+                        src,
+                        ip,
+                        src_size,
+                        (&[], RawSeqPos::default()),
+                    ),
                 }
             };
             // `ZSTD_storeLastLiterals`.
             let last_literals = ip + src_size - last_ll_size;
-            self.seq_store.lit.extend_from_slice(&src[last_literals..last_literals + last_ll_size]);
+            self.seq_store
+                .lit
+                .extend_from_slice(&src[last_literals..last_literals + last_ll_size]);
         }
         Ok(true)
     }
@@ -1102,7 +1391,14 @@ impl CCtx {
     /// `ZSTD_compressBlock_internal`: the block `src[ip..ip + src_size]`, compressed, with
     /// no header. 0 if it is better left as it is; 1 if it is one byte over and over, which
     /// is then in `dst[0]`.
-    fn compress_block_internal(&mut self, dst: &mut [u8], src: &[u8], ip: usize, src_size: usize, frame: bool) -> CResult<usize> {
+    fn compress_block_internal(
+        &mut self,
+        dst: &mut [u8],
+        src: &[u8],
+        ip: usize,
+        src_size: usize,
+        frame: bool,
+    ) -> CResult<usize> {
         // This is the upper bound for the length of an rle block. This isn't the actual
         // upper bound; finding the real threshold needs further investigation.
         const RLE_MAX_LENGTH: usize = 25;
@@ -1153,23 +1449,54 @@ impl CCtx {
         let literals = chunk.lit_start..chunk.lit_end;
 
         // `ZSTD_buildBlockEntropyStats`.
-        let (h_type, huf_des_size) =
-            build_block_entropy_stats_literals(&seq_store.lit[literals.clone()], &prev_entropy.huf, &mut next_entropy.huf, literals_compression_is_disabled, &mut self.huf_workspace, strategy as u32 >= Strategy::Btultra as u32)?;
+        let (h_type, huf_des_size) = build_block_entropy_stats_literals(
+            &seq_store.lit[literals.clone()],
+            &prev_entropy.huf,
+            &mut next_entropy.huf,
+            literals_compression_is_disabled,
+            &mut self.huf_workspace,
+            strategy as u32 >= Strategy::Btultra as u32,
+        )?;
         // `ZSTD_buildBlockEntropyStats_sequences`.
         let fse_metadata = if chunk.nb_seq() != 0 {
             let mut fse_tables_buffer = [0u8; 133]; // ZSTD_MAX_FSE_HEADERS_SIZE
-            let stats = build_sequences_statistics(seq_store, chunk, &prev_entropy.fse, &mut next_entropy.fse, &mut fse_tables_buffer, strategy, &mut self.count)?;
-            FseMetadata { ll_type: stats.ll_type, of_type: stats.off_type, ml_type: stats.ml_type, fse_tables_size: stats.size }
+            let stats = build_sequences_statistics(
+                seq_store,
+                chunk,
+                &prev_entropy.fse,
+                &mut next_entropy.fse,
+                &mut fse_tables_buffer,
+                strategy,
+                &mut self.count,
+            )?;
+            FseMetadata {
+                ll_type: stats.ll_type,
+                of_type: stats.off_type,
+                ml_type: stats.ml_type,
+                fse_tables_size: stats.size,
+            }
         } else {
             // `ZSTD_buildDummySequencesStatistics`.
             next_entropy.fse.litlength_repeat_mode = FseRepeat::None;
             next_entropy.fse.offcode_repeat_mode = FseRepeat::None;
             next_entropy.fse.matchlength_repeat_mode = FseRepeat::None;
-            FseMetadata { ll_type: SET_BASIC, of_type: SET_BASIC, ml_type: SET_BASIC, fse_tables_size: 0 }
+            FseMetadata {
+                ll_type: SET_BASIC,
+                of_type: SET_BASIC,
+                ml_type: SET_BASIC,
+                fse_tables_size: 0,
+            }
         };
 
         // `ZSTD_estimateBlockSize`.
-        let literals_size = estimate_block_size_literal(&seq_store.lit[literals], &next_entropy.huf, h_type, huf_des_size, &mut self.huf_workspace, h_type == SET_COMPRESSED);
+        let literals_size = estimate_block_size_literal(
+            &seq_store.lit[literals],
+            &next_entropy.huf,
+            h_type,
+            huf_des_size,
+            &mut self.huf_workspace,
+            h_type == SET_COMPRESSED,
+        );
         let seq_size = {
             // `ZSTD_estimateBlockSize_sequences`, with the tables' descriptions.
             let nb_seq = chunk.nb_seq();
@@ -1177,9 +1504,36 @@ impl CCtx {
             let codes = chunk.seq_start..chunk.seq_end;
             let fse = &next_entropy.fse;
             let mut c_seq_size_estimate = 0;
-            c_seq_size_estimate += estimate_block_size_symbol_type(fse_metadata.of_type, &seq_store.of_code[codes.clone()], MAX_OFF, &fse.offcode_ctable, None, &OF_DEFAULT_NORM, OF_DEFAULT_NORM_LOG, &mut self.count);
-            c_seq_size_estimate += estimate_block_size_symbol_type(fse_metadata.ll_type, &seq_store.ll_code[codes.clone()], MAX_LL, &fse.litlength_ctable, Some(&LL_BITS), &LL_DEFAULT_NORM, LL_DEFAULT_NORM_LOG, &mut self.count);
-            c_seq_size_estimate += estimate_block_size_symbol_type(fse_metadata.ml_type, &seq_store.ml_code[codes], MAX_ML, &fse.matchlength_ctable, Some(&ML_BITS), &ML_DEFAULT_NORM, ML_DEFAULT_NORM_LOG, &mut self.count);
+            c_seq_size_estimate += estimate_block_size_symbol_type(
+                fse_metadata.of_type,
+                &seq_store.of_code[codes.clone()],
+                MAX_OFF,
+                &fse.offcode_ctable,
+                None,
+                &OF_DEFAULT_NORM,
+                OF_DEFAULT_NORM_LOG,
+                &mut self.count,
+            );
+            c_seq_size_estimate += estimate_block_size_symbol_type(
+                fse_metadata.ll_type,
+                &seq_store.ll_code[codes.clone()],
+                MAX_LL,
+                &fse.litlength_ctable,
+                Some(&LL_BITS),
+                &LL_DEFAULT_NORM,
+                LL_DEFAULT_NORM_LOG,
+                &mut self.count,
+            );
+            c_seq_size_estimate += estimate_block_size_symbol_type(
+                fse_metadata.ml_type,
+                &seq_store.ml_code[codes],
+                MAX_ML,
+                &fse.matchlength_ctable,
+                Some(&ML_BITS),
+                &ML_DEFAULT_NORM,
+                ML_DEFAULT_NORM_LOG,
+                &mut self.count,
+            );
             c_seq_size_estimate += fse_metadata.fse_tables_size;
             c_seq_size_estimate + sequences_section_header_size
         };
@@ -1189,9 +1543,14 @@ impl CCtx {
     /// `ZSTD_countSeqStoreLiteralsBytes`: the literals of the sequences of a chunk.
     fn count_seq_store_literals_bytes(&self, chunk: &SeqChunk) -> usize {
         let mut literals_bytes = 0usize;
-        for (i, seq) in self.seq_store.sequences[chunk.seq_start..chunk.seq_end].iter().enumerate() {
+        for (i, seq) in self.seq_store.sequences[chunk.seq_start..chunk.seq_end]
+            .iter()
+            .enumerate()
+        {
             literals_bytes += seq.lit_length as usize;
-            if i == chunk.long_length_pos as usize && chunk.long_length_type == LongLengthType::LiteralLength {
+            if i == chunk.long_length_pos as usize
+                && chunk.long_length_type == LongLengthType::LiteralLength
+            {
                 literals_bytes += 0x10000;
             }
         }
@@ -1201,9 +1560,14 @@ impl CCtx {
     /// `ZSTD_countSeqStoreMatchBytes`: the bytes of the matches of the sequences of a chunk.
     fn count_seq_store_match_bytes(&self, chunk: &SeqChunk) -> usize {
         let mut match_bytes = 0usize;
-        for (i, seq) in self.seq_store.sequences[chunk.seq_start..chunk.seq_end].iter().enumerate() {
+        for (i, seq) in self.seq_store.sequences[chunk.seq_start..chunk.seq_end]
+            .iter()
+            .enumerate()
+        {
             match_bytes += seq.ml_base as usize + MINMATCH;
-            if i == chunk.long_length_pos as usize && chunk.long_length_type == LongLengthType::MatchLength {
+            if i == chunk.long_length_pos as usize
+                && chunk.long_length_type == LongLengthType::MatchLength
+            {
                 match_bytes += 0x10000;
             }
         }
@@ -1222,7 +1586,9 @@ impl CCtx {
 
         // Move longLengthPos into the correct position if necessary.
         if original.long_length_type != LongLengthType::None {
-            if (original.long_length_pos as usize) < start_idx || original.long_length_pos as usize > end_idx {
+            if (original.long_length_pos as usize) < start_idx
+                || original.long_length_pos as usize > end_idx
+            {
                 result.long_length_type = LongLengthType::None;
             } else {
                 result.long_length_pos -= start_idx as u32;
@@ -1245,7 +1611,12 @@ impl CCtx {
     /// the blocks before left raw or as one byte over and over may cause, and replaces the
     /// repeat offsets of the chunk that have come to mean another offset. `d_rep` follows the
     /// history as the decoder will have it; `c_rep` as the sequences have it.
-    fn seq_store_resolve_off_codes(&mut self, d_rep: &mut [u32; 3], c_rep: &mut [u32; 3], chunk: &SeqChunk) {
+    fn seq_store_resolve_off_codes(
+        &mut self,
+        d_rep: &mut [u32; 3],
+        c_rep: &mut [u32; 3],
+        chunk: &SeqChunk,
+    ) {
         // `ZSTD_resolveRepcodeToRawOffset`.
         fn raw_offset(rep: &[u32; 3], off_base: u32, ll0: bool) -> u32 {
             let adjusted_rep_code = off_base - 1 + u32::from(ll0); // [ 0 - 3 ]
@@ -1257,7 +1628,11 @@ impl CCtx {
             rep[adjusted_rep_code as usize]
         }
         let nb_seq = chunk.nb_seq();
-        let long_lit_len_idx = if chunk.long_length_type == LongLengthType::LiteralLength { chunk.long_length_pos as usize } else { nb_seq };
+        let long_lit_len_idx = if chunk.long_length_type == LongLengthType::LiteralLength {
+            chunk.long_length_pos as usize
+        } else {
+            nb_seq
+        };
         for idx in 0..nb_seq {
             let seq = &mut self.seq_store.sequences[chunk.seq_start + idx];
             let ll0 = seq.lit_length == 0 && idx != long_lit_len_idx;
@@ -1283,7 +1658,18 @@ impl CCtx {
     /// `ZSTD_compressSeqStore_singleBlock`: a chunk of the sequences as a block with its
     /// header, for the source `src[ip..ip + src_size]`.
     #[allow(clippy::too_many_arguments)]
-    fn compress_seq_store_single_block(&mut self, chunk: &SeqChunk, d_rep: &mut [u32; 3], c_rep: &mut [u32; 3], dst: &mut [u8], src: &[u8], ip: usize, src_size: usize, last_block: u32, is_partition: bool) -> CResult<usize> {
+    fn compress_seq_store_single_block(
+        &mut self,
+        chunk: &SeqChunk,
+        d_rep: &mut [u32; 3],
+        c_rep: &mut [u32; 3],
+        dst: &mut [u8],
+        src: &[u8],
+        ip: usize,
+        src_size: usize,
+        last_block: u32,
+        is_partition: bool,
+    ) -> CResult<usize> {
         const RLE_MAX_LENGTH: usize = 25;
 
         // In case of an RLE or raw block, the simulated decompression repcode history must
@@ -1296,7 +1682,8 @@ impl CCtx {
         if dst.len() < ZSTD_BLOCK_HEADER_SIZE {
             return Err(CError::DstSizeTooSmall); // Block header doesn't fit
         }
-        let mut c_seqs_size = self.entropy_compress_seq_store(&mut dst[ZSTD_BLOCK_HEADER_SIZE..], src_size, chunk)?;
+        let mut c_seqs_size =
+            self.entropy_compress_seq_store(&mut dst[ZSTD_BLOCK_HEADER_SIZE..], src_size, chunk)?;
 
         if !self.is_first_block && c_seqs_size < RLE_MAX_LENGTH && is_rle(&src[ip..ip + src_size]) {
             // We don't want to emit our first block as a RLE even if it qualifies because
@@ -1316,7 +1703,11 @@ impl CCtx {
             // `ZSTD_blockState_confirmRepcodesAndEntropyTables`.
             std::mem::swap(&mut self.prev_cblock, &mut self.next_cblock);
             // `writeBlockHeader`.
-            write_le24(dst, 0, last_block + (BT_COMPRESSED << 1) + ((c_seqs_size as u32) << 3));
+            write_le24(
+                dst,
+                0,
+                last_block + (BT_COMPRESSED << 1) + ((c_seqs_size as u32) << 3),
+            );
             c_size = ZSTD_BLOCK_HEADER_SIZE + c_seqs_size;
         }
 
@@ -1329,12 +1720,19 @@ impl CCtx {
 
     /// `ZSTD_deriveBlockSplitsHelper`: where the sequences `[start_idx, end_idx)` are better
     /// split in two, the splits of each half, and the place between them, into `splits`.
-    fn derive_block_splits_helper(&mut self, splits: &mut Vec<u32>, start_idx: usize, end_idx: usize) {
+    fn derive_block_splits_helper(
+        &mut self,
+        splits: &mut Vec<u32>,
+        start_idx: usize,
+        end_idx: usize,
+    ) {
         const MIN_SEQUENCES_BLOCK_SPLITTING: usize = 300;
         const ZSTD_MAX_NB_BLOCK_SPLITS: usize = 196;
         let mid_idx = (start_idx + end_idx) / 2;
 
-        if end_idx - start_idx < MIN_SEQUENCES_BLOCK_SPLITTING || splits.len() >= ZSTD_MAX_NB_BLOCK_SPLITS {
+        if end_idx - start_idx < MIN_SEQUENCES_BLOCK_SPLITTING
+            || splits.len() >= ZSTD_MAX_NB_BLOCK_SPLITS
+        {
             return;
         }
         let full_seq_store_chunk = self.derive_seq_store_chunk(start_idx, end_idx);
@@ -1343,7 +1741,16 @@ impl CCtx {
         let estimated_original_size = self.estimate_sub_block_size(&full_seq_store_chunk);
         let estimated_first_half_size = self.estimate_sub_block_size(&first_half_seq_store);
         let estimated_second_half_size = self.estimate_sub_block_size(&second_half_seq_store);
-        let (Ok(estimated_original_size), Ok(estimated_first_half_size), Ok(estimated_second_half_size)) = (estimated_original_size, estimated_first_half_size, estimated_second_half_size) else {
+        let (
+            Ok(estimated_original_size),
+            Ok(estimated_first_half_size),
+            Ok(estimated_second_half_size),
+        ) = (
+            estimated_original_size,
+            estimated_first_half_size,
+            estimated_second_half_size,
+        )
+        else {
             return;
         };
         if estimated_first_half_size + estimated_second_half_size < estimated_original_size {
@@ -1355,7 +1762,15 @@ impl CCtx {
 
     /// `ZSTD_compressBlock_splitBlock_internal`: the block's sequences as one block, or as
     /// several where the estimates say that comes out smaller.
-    fn compress_block_split_block_internal(&mut self, dst: &mut [u8], src: &[u8], ip: usize, block_size: usize, last_block: u32, nb_seq: usize) -> CResult<usize> {
+    fn compress_block_split_block_internal(
+        &mut self,
+        dst: &mut [u8],
+        src: &[u8],
+        ip: usize,
+        block_size: usize,
+        last_block: u32,
+        nb_seq: usize,
+    ) -> CResult<usize> {
         let mut c_size = 0usize;
         let mut ip = ip;
         let mut op = 0usize;
@@ -1380,7 +1795,9 @@ impl CCtx {
 
         if num_splits == 0 {
             let whole = self.seq_store.whole();
-            return self.compress_seq_store_single_block(&whole, &mut d_rep, &mut c_rep, dst, src, ip, block_size, last_block, false);
+            return self.compress_seq_store_single_block(
+                &whole, &mut d_rep, &mut c_rep, dst, src, ip, block_size, last_block, false,
+            );
         }
 
         let mut curr_seq_store = self.derive_seq_store_chunk(0, partitions[0] as usize);
@@ -1388,7 +1805,8 @@ impl CCtx {
             let last_partition = i == num_splits;
             let mut last_block_entire_src = 0;
 
-            let mut src_bytes = self.count_seq_store_literals_bytes(&curr_seq_store) + self.count_seq_store_match_bytes(&curr_seq_store);
+            let mut src_bytes = self.count_seq_store_literals_bytes(&curr_seq_store)
+                + self.count_seq_store_match_bytes(&curr_seq_store);
             src_bytes_total += src_bytes;
             let next_seq_store = if last_partition {
                 // This is the final partition, need to account for possible last literals.
@@ -1396,10 +1814,22 @@ impl CCtx {
                 last_block_entire_src = last_block;
                 None
             } else {
-                Some(self.derive_seq_store_chunk(partitions[i] as usize, partitions[i + 1] as usize))
+                Some(
+                    self.derive_seq_store_chunk(partitions[i] as usize, partitions[i + 1] as usize),
+                )
             };
 
-            let c_size_chunk = self.compress_seq_store_single_block(&curr_seq_store, &mut d_rep, &mut c_rep, &mut dst[op..], src, ip, src_bytes, last_block_entire_src, true)?;
+            let c_size_chunk = self.compress_seq_store_single_block(
+                &curr_seq_store,
+                &mut d_rep,
+                &mut c_rep,
+                &mut dst[op..],
+                src,
+                ip,
+                src_bytes,
+                last_block_entire_src,
+                true,
+            )?;
 
             ip += src_bytes;
             op += c_size_chunk;
@@ -1416,7 +1846,14 @@ impl CCtx {
 
     /// `ZSTD_compressBlock_splitBlock`: the block `src[ip..ip + src_size]` as one or more
     /// blocks, headers and all.
-    fn compress_block_split_block(&mut self, dst: &mut [u8], src: &[u8], ip: usize, src_size: usize, last_block: u32) -> CResult<usize> {
+    fn compress_block_split_block(
+        &mut self,
+        dst: &mut [u8],
+        src: &[u8],
+        ip: usize,
+        src_size: usize,
+        last_block: u32,
+    ) -> CResult<usize> {
         if !self.build_seq_store(src, ip, src_size)? {
             if self.prev_cblock.entropy.fse.offcode_repeat_mode == FseRepeat::Valid {
                 self.prev_cblock.entropy.fse.offcode_repeat_mode = FseRepeat::Check;
@@ -1493,12 +1930,22 @@ impl CCtx {
                 let c_size = if block_splitter_enabled(&self.cparams) {
                     self.compress_block_split_block(block_dst, src, ip, block_size, last_block)?
                 } else {
-                    let c_size = self.compress_block_internal(&mut block_dst[ZSTD_BLOCK_HEADER_SIZE..], src, ip, block_size, true)?;
+                    let c_size = self.compress_block_internal(
+                        &mut block_dst[ZSTD_BLOCK_HEADER_SIZE..],
+                        src,
+                        ip,
+                        block_size,
+                        true,
+                    )?;
                     if c_size == 0 {
                         // Block is not compressible.
                         no_compress_block(block_dst, &src[ip..ip + block_size], last_block)?
                     } else {
-                        let c_block_header = if c_size == 1 { last_block + (BT_RLE << 1) + ((block_size as u32) << 3) } else { last_block + (BT_COMPRESSED << 1) + ((c_size as u32) << 3) };
+                        let c_block_header = if c_size == 1 {
+                            last_block + (BT_RLE << 1) + ((block_size as u32) << 3)
+                        } else {
+                            last_block + (BT_COMPRESSED << 1) + ((c_size as u32) << 3)
+                        };
                         write_le24(block_dst, 0, c_block_header);
                         c_size + ZSTD_BLOCK_HEADER_SIZE
                     }
@@ -1527,8 +1974,11 @@ impl CCtx {
         let window_size = 1u32 << self.cparams.window_log;
         let single_segment = window_size as u64 >= pledged_src_size;
         let window_log_byte = ((self.cparams.window_log - ZSTD_WINDOWLOG_ABSOLUTEMIN) << 3) as u8;
-        let fcs_code = u32::from(pledged_src_size >= 256) + u32::from(pledged_src_size >= 65536 + 256) + u32::from(pledged_src_size >= 0xFFFFFFFF);
-        let frame_header_description_byte = ((u32::from(single_segment) << 5) + (fcs_code << 6)) as u8;
+        let fcs_code = u32::from(pledged_src_size >= 256)
+            + u32::from(pledged_src_size >= 65536 + 256)
+            + u32::from(pledged_src_size >= 0xFFFFFFFF);
+        let frame_header_description_byte =
+            ((u32::from(single_segment) << 5) + (fcs_code << 6)) as u8;
         let mut pos = 0usize;
 
         if dst.len() < ZSTD_FRAMEHEADERSIZE_MAX {
@@ -1636,7 +2086,9 @@ mod tests {
     fn noise(len: usize, mut state: u64, mask: u8) -> Vec<u8> {
         (0..len)
             .map(|_| {
-                state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                state = state
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
                 (state >> 56) as u8 & mask
             })
             .collect()
@@ -1646,7 +2098,10 @@ mod tests {
     fn nothing_is_a_frame_of_nine_bytes() {
         // The magic number, a header that says "one segment, of no bytes", and one last,
         // empty block.
-        assert_eq!(compress(&[], 3).unwrap(), [0x28, 0xB5, 0x2F, 0xFD, 0x20, 0x00, 0x01, 0x00, 0x00]);
+        assert_eq!(
+            compress(&[], 3).unwrap(),
+            [0x28, 0xB5, 0x2F, 0xFD, 0x20, 0x00, 0x01, 0x00, 0x00]
+        );
         assert_eq!(compress_bound(0), 64);
         assert_eq!(compress_bound(1 << 20), (1 << 20) + (1 << 12));
     }
@@ -1656,14 +2111,32 @@ mod tests {
         let mut text = Vec::new();
         while text.len() < 300_000 {
             let n = text.len();
-            text.extend_from_slice(format!("line {n} of a text that says much the same again and again, {}\n", n % 7).as_bytes());
+            text.extend_from_slice(
+                format!(
+                    "line {n} of a text that says much the same again and again, {}\n",
+                    n % 7
+                )
+                .as_bytes(),
+            );
         }
-        let sources = [vec![7u8], vec![0u8; 5000], noise(70_000, 1, 0xFF), noise(200_000, 2, 0x0F), text.clone(), [noise(150_000, 3, 0xFF), text].concat()];
+        let sources = [
+            vec![7u8],
+            vec![0u8; 5000],
+            noise(70_000, 1, 0xFF),
+            noise(200_000, 2, 0x0F),
+            text.clone(),
+            [noise(150_000, 3, 0xFF), text].concat(),
+        ];
         for source in &sources {
             for level in [-100, -1, 0, 1, 2, 3] {
                 let frame = compress(source, level).unwrap();
                 assert!(frame.len() <= compress_bound(source.len()));
-                assert_eq!(decompress(&frame, source.len()).as_deref(), Ok(&source[..]), "{} bytes at level {level}", source.len());
+                assert_eq!(
+                    decompress(&frame, source.len()).as_deref(),
+                    Ok(&source[..]),
+                    "{} bytes at level {level}",
+                    source.len()
+                );
             }
         }
         // What compresses does.
@@ -1676,12 +2149,23 @@ mod tests {
         let mut text = Vec::new();
         while text.len() < 300_000 {
             let n = text.len();
-            text.extend_from_slice(format!("line {n} of a text that says much the same again and again, {}\n", n % 7).as_bytes());
+            text.extend_from_slice(
+                format!(
+                    "line {n} of a text that says much the same again and again, {}\n",
+                    n % 7
+                )
+                .as_bytes(),
+            );
         }
         for level in 4..=23 {
             for source in [&text[..1000], &text[..40_000], &text[..]] {
                 let frame = compress(source, level).unwrap();
-                assert_eq!(decompress(&frame, source.len()).as_deref(), Ok(source), "{} bytes at level {level}", source.len());
+                assert_eq!(
+                    decompress(&frame, source.len()).as_deref(),
+                    Ok(source),
+                    "{} bytes at level {level}",
+                    source.len()
+                );
             }
         }
     }
@@ -1690,15 +2174,46 @@ mod tests {
     fn the_parameters_of_a_level_follow_the_size_of_the_source() {
         // Level 3 for a large source, as the table has it.
         let p = get_cparams_internal(3, 10 << 20);
-        assert_eq!((p.window_log, p.chain_log, p.hash_log, p.min_match, p.target_length, p.strategy), (21, 16, 17, 5, 0, Strategy::Dfast));
+        assert_eq!(
+            (
+                p.window_log,
+                p.chain_log,
+                p.hash_log,
+                p.min_match,
+                p.target_length,
+                p.strategy
+            ),
+            (21, 16, 17, 5, 0, Strategy::Dfast)
+        );
         // For a hundred bytes: the tables shrink with the window, which is then set to the
         // least a frame can say.
         let p = get_cparams_internal(3, 100);
-        assert_eq!((p.window_log, p.chain_log, p.hash_log, p.min_match, p.strategy), (10, 7, 8, 4, Strategy::Dfast));
+        assert_eq!(
+            (
+                p.window_log,
+                p.chain_log,
+                p.hash_log,
+                p.min_match,
+                p.strategy
+            ),
+            (10, 7, 8, 4, Strategy::Dfast)
+        );
         // A negative level is the fast strategy with the level as its acceleration.
         let p = get_cparams_internal(-7, 1 << 20);
-        assert_eq!((p.window_log, p.hash_log, p.min_match, p.target_length, p.strategy), (19, 13, 6, 7, Strategy::Fast));
-        assert_eq!(get_cparams_internal(-1 << 20, 1 << 20).target_length, 1 << 17);
+        assert_eq!(
+            (
+                p.window_log,
+                p.hash_log,
+                p.min_match,
+                p.target_length,
+                p.strategy
+            ),
+            (19, 13, 6, 7, Strategy::Fast)
+        );
+        assert_eq!(
+            get_cparams_internal(-1 << 20, 1 << 20).target_length,
+            1 << 17
+        );
     }
 
     /// No source the comparison makes gives a block of 0x7F00 sequences or more, whose number
@@ -1713,17 +2228,29 @@ mod tests {
         for i in 0..SEQUENCES {
             // One literal, then three more of it: a match at a distance of one.
             let byte = [(i % 251) as u8];
-            cctx.seq_store.store_seq(&byte, 0, 1, offset_to_offbase(1), 3);
+            cctx.seq_store
+                .store_seq(&byte, 0, 1, offset_to_offbase(1), 3);
             expected.extend_from_slice(&[byte[0]; 4]);
         }
         const { assert!(SEQUENCES >= LONGNBSEQ) };
         let mut frame = vec![0u8; compress_bound(expected.len())];
-        let header = cctx.write_frame_header(&mut frame, expected.len() as u64).unwrap();
+        let header = cctx
+            .write_frame_header(&mut frame, expected.len() as u64)
+            .unwrap();
         let whole = cctx.seq_store.whole();
-        let size = cctx.entropy_compress_seq_store(&mut frame[header + 3..], expected.len(), &whole).unwrap();
+        let size = cctx
+            .entropy_compress_seq_store(&mut frame[header + 3..], expected.len(), &whole)
+            .unwrap();
         assert!(size > 1);
-        write_le24(&mut frame, header, 1 + (BT_COMPRESSED << 1) + ((size as u32) << 3));
+        write_le24(
+            &mut frame,
+            header,
+            1 + (BT_COMPRESSED << 1) + ((size as u32) << 3),
+        );
         frame.truncate(header + 3 + size);
-        assert_eq!(decompress(&frame, expected.len()).as_deref(), Ok(&expected[..]));
+        assert_eq!(
+            decompress(&frame, expected.len()).as_deref(),
+            Ok(&expected[..])
+        );
     }
 }

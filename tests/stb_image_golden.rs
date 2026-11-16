@@ -25,7 +25,11 @@ fn reads_the_files_as_stb_image_does() {
 /// animations.
 #[test]
 fn reads_the_other_formats_as_stb_image_does() {
-    let printed = [made_up::stb_image_more(4, 600), made_up::stb_image_more(10, 600)].concat();
+    let printed = [
+        made_up::stb_image_more(4, 600),
+        made_up::stb_image_more(10, 600),
+    ]
+    .concat();
     let expected = include_str!("data/stb_image_more_expected.txt");
     for (line, (ours, theirs)) in printed.lines().zip(expected.lines()).enumerate() {
         assert_eq!(ours, theirs, "line {}", line + 1);
@@ -38,7 +42,10 @@ fn reads_the_other_formats_as_stb_image_does() {
 /// changed.)
 #[test]
 fn badly_damaged_files_are_read_or_refused() {
-    use rustbcx::stb_image::{info_from_memory, load_16_from_memory, load_from_memory, load_gif_from_memory, loadf_from_memory, LoadOptions};
+    use rustbcx::stb_image::{
+        info_from_memory, load_16_from_memory, load_from_memory, load_gif_from_memory,
+        loadf_from_memory, LoadOptions,
+    };
     const FILES: u32 = 1000;
     let mut r = made_up::Random { state: 77 };
     let (mut read, mut refused) = (0, 0);
@@ -64,33 +71,71 @@ fn badly_damaged_files_are_read_or_refused() {
                 file.truncate(16 + r.next() as usize % (file.len() - 16));
             }
             // (A size that would take more memory and time than the test has is left.)
-            if info_from_memory(&file).is_ok_and(|info| u64::from(info.x.unsigned_abs()) * u64::from(info.y.unsigned_abs()) > 1 << 20) {
+            if info_from_memory(&file).is_ok_and(|info| {
+                u64::from(info.x.unsigned_abs()) * u64::from(info.y.unsigned_abs()) > 1 << 20
+            }) {
                 continue;
             }
-            let options = LoadOptions { flip_vertically_on_load: !r.next().is_multiple_of(2), unpremultiply_on_load: true, convert_iphone_png_to_rgb: true, ..LoadOptions::default() };
+            let options = LoadOptions {
+                flip_vertically_on_load: !r.next().is_multiple_of(2),
+                unpremultiply_on_load: true,
+                convert_iphone_png_to_rgb: true,
+                ..LoadOptions::default()
+            };
             let wanted = (r.next() % 5) as i32;
             match load_from_memory(&file, wanted, &options) {
                 Ok(image) => {
-                    let channels = if wanted == 0 { image.channels_in_file } else { wanted };
-                    assert_eq!(image.data.len(), image.x as usize * image.y as usize * channels as usize);
+                    let channels = if wanted == 0 {
+                        image.channels_in_file
+                    } else {
+                        wanted
+                    };
+                    assert_eq!(
+                        image.data.len(),
+                        image.x as usize * image.y as usize * channels as usize
+                    );
                     read += 1;
                 }
                 Err(_) => refused += 1,
             }
             if let Ok(image) = load_16_from_memory(&file, wanted, &options) {
-                let channels = if wanted == 0 { image.channels_in_file } else { wanted };
-                assert_eq!(image.data.len(), image.x as usize * image.y as usize * channels as usize);
+                let channels = if wanted == 0 {
+                    image.channels_in_file
+                } else {
+                    wanted
+                };
+                assert_eq!(
+                    image.data.len(),
+                    image.x as usize * image.y as usize * channels as usize
+                );
             }
             if let Ok(image) = loadf_from_memory(&file, wanted, &options) {
-                let channels = if wanted == 0 { image.channels_in_file } else { wanted };
-                assert_eq!(image.data.len(), image.x as usize * image.y as usize * channels as usize);
+                let channels = if wanted == 0 {
+                    image.channels_in_file
+                } else {
+                    wanted
+                };
+                assert_eq!(
+                    image.data.len(),
+                    image.x as usize * image.y as usize * channels as usize
+                );
             }
             if let Ok(gif) = load_gif_from_memory(&file, wanted, &options) {
-                let channels = if wanted == 0 { gif.channels_in_file } else { wanted };
-                assert_eq!(gif.data.len(), gif.x as usize * gif.y as usize * gif.frames as usize * channels as usize);
+                let channels = if wanted == 0 {
+                    gif.channels_in_file
+                } else {
+                    wanted
+                };
+                assert_eq!(
+                    gif.data.len(),
+                    gif.x as usize * gif.y as usize * gif.frames as usize * channels as usize
+                );
                 assert_eq!(gif.delays.len(), gif.frames as usize);
             }
         }
     }
-    assert!(read > 100 && refused > 100, "{read} read, {refused} refused");
+    assert!(
+        read > 100 && refused > 100,
+        "{read} read, {refused} refused"
+    );
 }

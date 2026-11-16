@@ -31,21 +31,41 @@ const MAX_PRE_CODEWORD_LEN: u32 = 7;
 /// The highest level ported.
 pub const MAX_LEVEL: i32 = 9;
 
-const LENGTH_SLOT_BASE: [u32; 29] = [3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258];
-const EXTRA_LENGTH_BITS: [u32; 29] = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0];
-const OFFSET_SLOT_BASE: [u32; 30] = [1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577];
-const EXTRA_OFFSET_BITS: [u32; 30] = [0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13];
-const PRECODE_LENS_PERMUTATION: [usize; NUM_PRECODE_SYMS] = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15];
-const EXTRA_PRECODE_BITS: [u32; NUM_PRECODE_SYMS] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 3, 7];
+const LENGTH_SLOT_BASE: [u32; 29] = [
+    3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131,
+    163, 195, 227, 258,
+];
+const EXTRA_LENGTH_BITS: [u32; 29] = [
+    0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0,
+];
+const OFFSET_SLOT_BASE: [u32; 30] = [
+    1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513, 769, 1025, 1537,
+    2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577,
+];
+const EXTRA_OFFSET_BITS: [u32; 30] = [
+    0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13,
+    13,
+];
+const PRECODE_LENS_PERMUTATION: [usize; NUM_PRECODE_SYMS] = [
+    16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15,
+];
+const EXTRA_PRECODE_BITS: [u32; NUM_PRECODE_SYMS] =
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 3, 7];
 
 /// `deflate_length_slot`: the slot of each match length.
 fn length_slot(length: u32) -> usize {
-    LENGTH_SLOT_BASE.iter().rposition(|&base| base <= length).expect("a length of 3 or more")
+    LENGTH_SLOT_BASE
+        .iter()
+        .rposition(|&base| base <= length)
+        .expect("a length of 3 or more")
 }
 
 /// `deflate_get_offset_slot`.
 fn offset_slot(offset: u32) -> usize {
-    OFFSET_SLOT_BASE.iter().rposition(|&base| base <= offset).expect("an offset of 1 or more")
+    OFFSET_SLOT_BASE
+        .iter()
+        .rposition(|&base| base <= offset)
+        .expect("an offset of 1 or more")
 }
 
 // ---------------------------------------------------------------------------------------
@@ -119,7 +139,10 @@ fn sort_symbols(freqs: &[u32], lens: &mut [u8], symout: &mut [u32]) -> usize {
             lens[sym] = 0;
         }
     }
-    let (start, end) = (counters[num_counters - 2] as usize, counters[num_counters - 1] as usize);
+    let (start, end) = (
+        counters[num_counters - 2] as usize,
+        counters[num_counters - 1] as usize,
+    );
     heap_sort(&mut symout[start..end]);
     num_used_syms as usize
 }
@@ -157,7 +180,12 @@ fn build_tree(a: &mut [u32], sym_count: usize) {
 }
 
 /// `compute_length_counts`: how many codewords of each length, kept to `max_codeword_len`.
-fn compute_length_counts(a: &mut [u32], root_idx: usize, len_counts: &mut [u32; 16], max_codeword_len: u32) {
+fn compute_length_counts(
+    a: &mut [u32],
+    root_idx: usize,
+    len_counts: &mut [u32; 16],
+    max_codeword_len: u32,
+) {
     *len_counts = [0; 16];
     len_counts[1] = 2;
     a[root_idx] &= SYMBOL_MASK;
@@ -198,7 +226,11 @@ fn gen_codewords(a: &mut [u32], lens: &mut [u8], len_counts: &[u32; 16], max_cod
         let len = u32::from(lens[sym]);
         let codeword = next_codewords[len as usize];
         next_codewords[len as usize] += 1;
-        *slot = if len == 0 { 0 } else { codeword.reverse_bits() >> (32 - len) };
+        *slot = if len == 0 {
+            0
+        } else {
+            codeword.reverse_bits() >> (32 - len)
+        };
     }
 }
 
@@ -207,7 +239,11 @@ fn gen_codewords(a: &mut [u32], lens: &mut [u8], len_counts: &[u32; 16], max_cod
 fn make_huffman_code(max_codeword_len: u32, freqs: &[u32], lens: &mut [u8], codewords: &mut [u32]) {
     let num_used_syms = sort_symbols(freqs, lens, codewords);
     if num_used_syms < 2 {
-        let sym = if num_used_syms != 0 { (codewords[0] & SYMBOL_MASK) as usize } else { 0 };
+        let sym = if num_used_syms != 0 {
+            (codewords[0] & SYMBOL_MASK) as usize
+        } else {
+            0
+        };
         let nonzero_idx = if sym != 0 { sym } else { 1 };
         codewords[0] = 0;
         lens[0] = 1;
@@ -217,7 +253,12 @@ fn make_huffman_code(max_codeword_len: u32, freqs: &[u32], lens: &mut [u8], code
     }
     build_tree(codewords, num_used_syms);
     let mut len_counts = [0u32; 16];
-    compute_length_counts(codewords, num_used_syms - 2, &mut len_counts, max_codeword_len);
+    compute_length_counts(
+        codewords,
+        num_used_syms - 2,
+        &mut len_counts,
+        max_codeword_len,
+    );
     gen_codewords(codewords, lens, &len_counts, max_codeword_len);
 }
 
@@ -239,8 +280,18 @@ struct Freqs {
 /// `deflate_make_huffman_codes`.
 fn make_huffman_codes(freqs: &Freqs, codes: &mut Codes) {
     let (litlen_lens, offset_lens) = codes.lens.split_at_mut(NUM_LITLEN_SYMS);
-    make_huffman_code(MAX_LITLEN_CODEWORD_LEN, &freqs.litlen, litlen_lens, &mut codes.litlen_codewords);
-    make_huffman_code(MAX_OFFSET_CODEWORD_LEN, &freqs.offset, offset_lens, &mut codes.offset_codewords);
+    make_huffman_code(
+        MAX_LITLEN_CODEWORD_LEN,
+        &freqs.litlen,
+        litlen_lens,
+        &mut codes.litlen_codewords,
+    );
+    make_huffman_code(
+        MAX_OFFSET_CODEWORD_LEN,
+        &freqs.offset,
+        offset_lens,
+        &mut codes.offset_codewords,
+    );
 }
 
 // ---------------------------------------------------------------------------------------
@@ -306,7 +357,11 @@ fn rebase(table: &mut [i16]) {
 
 impl HcMatchfinder {
     fn new() -> Self {
-        HcMatchfinder { hash3_tab: vec![INITVAL; 1 << HASH3_ORDER], hash4_tab: vec![INITVAL; 1 << HASH4_ORDER], next_tab: vec![INITVAL; WINDOW_SIZE] }
+        HcMatchfinder {
+            hash3_tab: vec![INITVAL; 1 << HASH3_ORDER],
+            hash4_tab: vec![INITVAL; 1 << HASH4_ORDER],
+            next_tab: vec![INITVAL; WINDOW_SIZE],
+        }
     }
 
     fn slide_window(&mut self) {
@@ -318,7 +373,17 @@ impl HcMatchfinder {
     /// `hc_matchfinder_longest_match`: the longest match at `in_next` longer than
     /// `best_len`, as its length and offset (`best_len` and no offset where there is none).
     #[allow(clippy::too_many_arguments)]
-    fn longest_match(&mut self, input: &[u8], in_base: &mut usize, in_next: usize, mut best_len: u32, max_len: u32, nice_len: u32, max_search_depth: u32, next_hashes: &mut [u32; 2]) -> (u32, u32) {
+    fn longest_match(
+        &mut self,
+        input: &[u8],
+        in_base: &mut usize,
+        in_next: usize,
+        mut best_len: u32,
+        max_len: u32,
+        nice_len: u32,
+        max_search_depth: u32,
+        next_hashes: &mut [u32; 2],
+    ) -> (u32, u32) {
         let mut depth_remaining = max_search_depth;
         let mut best_match = in_next;
         let mut cur_pos = (in_next - *in_base) as u32;
@@ -401,7 +466,9 @@ impl HcMatchfinder {
                 loop {
                     match_at = at(cur_node4);
                     let b = best_len as usize;
-                    if load_u32(input, match_at + b - 3) == load_u32(input, in_next + b - 3) && load_u32(input, match_at) == load_u32(input, in_next) {
+                    if load_u32(input, match_at + b - 3) == load_u32(input, in_next + b - 3)
+                        && load_u32(input, match_at) == load_u32(input, in_next)
+                    {
                         break;
                     }
                     cur_node4 = next(&self.next_tab, cur_node4);
@@ -429,7 +496,14 @@ impl HcMatchfinder {
     }
 
     /// `hc_matchfinder_skip_bytes`: `count` positions from `in_next` put in the chains.
-    fn skip_bytes(&mut self, input: &[u8], in_base: &mut usize, mut in_next: usize, count: u32, next_hashes: &mut [u32; 2]) {
+    fn skip_bytes(
+        &mut self,
+        input: &[u8],
+        in_base: &mut usize,
+        mut in_next: usize,
+        count: u32,
+        next_hashes: &mut [u32; 2],
+    ) {
         if count as usize + 5 > input.len() - in_next {
             return;
         }
@@ -498,15 +572,23 @@ impl SplitStats {
             for i in 0..NUM_OBSERVATION_TYPES {
                 let expected = self.observations[i].wrapping_mul(self.num_new_observations);
                 let actual = self.new_observations[i].wrapping_mul(self.num_observations);
-                let delta = if actual > expected { actual - expected } else { expected - actual };
+                let delta = if actual > expected {
+                    actual - expected
+                } else {
+                    expected - actual
+                };
                 total_delta = total_delta.wrapping_add(delta);
             }
             let num_items = self.num_observations + self.num_new_observations;
-            let mut cutoff = (self.num_new_observations.wrapping_mul(200) / 512).wrapping_mul(self.num_observations);
+            let mut cutoff = (self.num_new_observations.wrapping_mul(200) / 512)
+                .wrapping_mul(self.num_observations);
             if block_length < 10000 && num_items < 8192 {
-                cutoff = cutoff.wrapping_add((u64::from(cutoff) * u64::from(8192 - num_items) / 8192) as u32);
+                cutoff = cutoff
+                    .wrapping_add((u64::from(cutoff) * u64::from(8192 - num_items) / 8192) as u32);
             }
-            if total_delta.wrapping_add((block_length / 4096).wrapping_mul(self.num_observations)) >= cutoff {
+            if total_delta.wrapping_add((block_length / 4096).wrapping_mul(self.num_observations))
+                >= cutoff
+            {
                 return true;
             }
         }
@@ -516,7 +598,10 @@ impl SplitStats {
 
     /// `should_end_block`.
     fn should_end_block(&mut self, in_block_begin: usize, in_next: usize, in_end: usize) -> bool {
-        if !(self.num_new_observations >= NUM_OBSERVATIONS_PER_BLOCK_CHECK && in_next - in_block_begin >= MIN_BLOCK_LENGTH && in_end - in_next >= MIN_BLOCK_LENGTH) {
+        if !(self.num_new_observations >= NUM_OBSERVATIONS_PER_BLOCK_CHECK
+            && in_next - in_block_begin >= MIN_BLOCK_LENGTH
+            && in_end - in_next >= MIN_BLOCK_LENGTH)
+        {
             return false;
         }
         self.do_end_block_check((in_next - in_block_begin) as u32)
@@ -526,8 +611,9 @@ impl SplitStats {
 /// `choose_min_match_len`.
 fn choose_min_match_len(num_used_literals: u32, max_search_depth: u32) -> u32 {
     const MIN_LENS: [u8; 80] = [
-        9, 9, 9, 9, 9, 9, 8, 8, 7, 7, 6, 6, 6, 6, 6, 6, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-        4, 4, 4, 4, 4, 4, 4, 4,
+        9, 9, 9, 9, 9, 9, 8, 8, 7, 7, 6, 6, 6, 6, 6, 6, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+        5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+        4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
     ];
     if num_used_literals as usize >= MIN_LENS.len() {
         return 3;
@@ -559,9 +645,14 @@ fn calculate_min_match_len(data: &[u8], max_search_depth: u32) -> u32 {
 
 /// `recalculate_min_match_len`.
 fn recalculate_min_match_len(freqs: &Freqs, max_search_depth: u32) -> u32 {
-    let literal_freq: u32 = freqs.litlen[..NUM_LITERALS].iter().fold(0u32, |sum, &f| sum.wrapping_add(f));
+    let literal_freq: u32 = freqs.litlen[..NUM_LITERALS]
+        .iter()
+        .fold(0u32, |sum, &f| sum.wrapping_add(f));
     let cutoff = literal_freq >> 10;
-    let num_used_literals = freqs.litlen[..NUM_LITERALS].iter().filter(|&&f| f > cutoff).count() as u32;
+    let num_used_literals = freqs.litlen[..NUM_LITERALS]
+        .iter()
+        .filter(|&&f| f > cutoff)
+        .count() as u32;
     choose_min_match_len(num_used_literals, max_search_depth)
 }
 
@@ -611,11 +702,18 @@ struct Compressor {
 
 impl Compressor {
     fn new(max_search_depth: u32, nice_match_length: u32) -> Self {
-        let empty = Codes { litlen_codewords: [0; NUM_LITLEN_SYMS], offset_codewords: [0; NUM_OFFSET_SYMS], lens: [0; NUM_LITLEN_SYMS + NUM_OFFSET_SYMS] };
+        let empty = Codes {
+            litlen_codewords: [0; NUM_LITLEN_SYMS],
+            offset_codewords: [0; NUM_OFFSET_SYMS],
+            lens: [0; NUM_LITLEN_SYMS + NUM_OFFSET_SYMS],
+        };
         let mut c = Compressor {
             max_search_depth,
             nice_match_length,
-            freqs: Freqs { litlen: [0; NUM_LITLEN_SYMS], offset: [0; NUM_OFFSET_SYMS] },
+            freqs: Freqs {
+                litlen: [0; NUM_LITLEN_SYMS],
+                offset: [0; NUM_OFFSET_SYMS],
+            },
             split_stats: SplitStats::default(),
             codes: empty.clone(),
             static_codes: empty,
@@ -710,40 +808,68 @@ impl Compressor {
             self.num_litlen_syms -= 1;
         }
         self.num_offset_syms = NUM_OFFSET_SYMS;
-        while self.num_offset_syms > 1 && self.codes.lens[NUM_LITLEN_SYMS + self.num_offset_syms - 1] == 0 {
+        while self.num_offset_syms > 1
+            && self.codes.lens[NUM_LITLEN_SYMS + self.num_offset_syms - 1] == 0
+        {
             self.num_offset_syms -= 1;
         }
         // (The offset lengths moved down to follow the litlen ones, and back after.)
         if self.num_litlen_syms != NUM_LITLEN_SYMS {
-            self.codes.lens.copy_within(NUM_LITLEN_SYMS..NUM_LITLEN_SYMS + self.num_offset_syms, self.num_litlen_syms);
+            self.codes.lens.copy_within(
+                NUM_LITLEN_SYMS..NUM_LITLEN_SYMS + self.num_offset_syms,
+                self.num_litlen_syms,
+            );
         }
         self.compute_precode_items(self.num_litlen_syms + self.num_offset_syms);
-        make_huffman_code(MAX_PRE_CODEWORD_LEN, &self.precode_freqs.clone(), &mut self.precode_lens, &mut self.precode_codewords);
+        make_huffman_code(
+            MAX_PRE_CODEWORD_LEN,
+            &self.precode_freqs.clone(),
+            &mut self.precode_lens,
+            &mut self.precode_codewords,
+        );
         self.num_explicit_lens = NUM_PRECODE_SYMS;
-        while self.num_explicit_lens > 4 && self.precode_lens[PRECODE_LENS_PERMUTATION[self.num_explicit_lens - 1]] == 0 {
+        while self.num_explicit_lens > 4
+            && self.precode_lens[PRECODE_LENS_PERMUTATION[self.num_explicit_lens - 1]] == 0
+        {
             self.num_explicit_lens -= 1;
         }
         if self.num_litlen_syms != NUM_LITLEN_SYMS {
-            self.codes.lens.copy_within(self.num_litlen_syms..self.num_litlen_syms + self.num_offset_syms, NUM_LITLEN_SYMS);
+            self.codes.lens.copy_within(
+                self.num_litlen_syms..self.num_litlen_syms + self.num_offset_syms,
+                NUM_LITLEN_SYMS,
+            );
         }
     }
 
     /// `deflate_compute_full_len_codewords`.
     fn compute_full_len_codewords(&mut self, use_static: bool) {
-        let codes = if use_static { &self.static_codes } else { &self.codes };
+        let codes = if use_static {
+            &self.static_codes
+        } else {
+            &self.codes
+        };
         for len in MIN_MATCH_LEN..=MAX_MATCH_LEN {
             let slot = length_slot(len);
             let litlen_sym = FIRST_LEN_SYM + slot;
             let extra_bits = len - LENGTH_SLOT_BASE[slot];
             let sym_len = u32::from(codes.lens[litlen_sym]);
-            self.length_codewords[len as usize] = codes.litlen_codewords[litlen_sym] | (extra_bits.wrapping_shl(sym_len));
+            self.length_codewords[len as usize] =
+                codes.litlen_codewords[litlen_sym] | (extra_bits.wrapping_shl(sym_len));
             self.length_lens[len as usize] = sym_len + EXTRA_LENGTH_BITS[slot];
         }
     }
 
     /// `deflate_flush_block`: the block of `input[block_begin..block_begin + block_length]`,
     /// of the given sequences, as the cheapest kind of block.
-    fn flush_block(&mut self, os: &mut Output, input: &[u8], block_begin: usize, block_length: usize, sequences_end: usize, is_final_block: bool) {
+    fn flush_block(
+        &mut self,
+        os: &mut Output,
+        input: &[u8],
+        block_begin: usize,
+        block_length: usize,
+        sequences_end: usize,
+        is_final_block: bool,
+    ) {
         let mut dynamic_cost = 3u32;
         let mut static_cost = 3u32;
         let mut uncompressed_cost = 3u32;
@@ -753,25 +879,39 @@ impl Compressor {
         dynamic_cost += 5 + 5 + 4 + (3 * self.num_explicit_lens as u32);
         for sym in 0..NUM_PRECODE_SYMS {
             let extra = EXTRA_PRECODE_BITS[sym];
-            dynamic_cost = dynamic_cost.wrapping_add(self.precode_freqs[sym].wrapping_mul(extra + u32::from(self.precode_lens[sym])));
+            dynamic_cost = dynamic_cost.wrapping_add(
+                self.precode_freqs[sym].wrapping_mul(extra + u32::from(self.precode_lens[sym])),
+            );
         }
         for sym in 0..256 {
-            dynamic_cost = dynamic_cost.wrapping_add(self.freqs.litlen[sym].wrapping_mul(u32::from(self.codes.lens[sym])));
-            static_cost = static_cost.wrapping_add(self.freqs.litlen[sym].wrapping_mul(if sym < 144 { 8 } else { 9 }));
+            dynamic_cost = dynamic_cost
+                .wrapping_add(self.freqs.litlen[sym].wrapping_mul(u32::from(self.codes.lens[sym])));
+            static_cost = static_cost
+                .wrapping_add(self.freqs.litlen[sym].wrapping_mul(if sym < 144 { 8 } else { 9 }));
         }
         dynamic_cost = dynamic_cost.wrapping_add(u32::from(self.codes.lens[END_OF_BLOCK]));
         static_cost += 7;
         for sym in FIRST_LEN_SYM..FIRST_LEN_SYM + EXTRA_LENGTH_BITS.len() {
             let extra = EXTRA_LENGTH_BITS[sym - FIRST_LEN_SYM];
-            dynamic_cost = dynamic_cost.wrapping_add(self.freqs.litlen[sym].wrapping_mul(extra + u32::from(self.codes.lens[sym])));
-            static_cost = static_cost.wrapping_add(self.freqs.litlen[sym].wrapping_mul(extra + u32::from(self.static_codes.lens[sym])));
+            dynamic_cost = dynamic_cost.wrapping_add(
+                self.freqs.litlen[sym].wrapping_mul(extra + u32::from(self.codes.lens[sym])),
+            );
+            static_cost = static_cost.wrapping_add(
+                self.freqs.litlen[sym].wrapping_mul(extra + u32::from(self.static_codes.lens[sym])),
+            );
         }
         for sym in 0..EXTRA_OFFSET_BITS.len() {
             let extra = EXTRA_OFFSET_BITS[sym];
-            dynamic_cost = dynamic_cost.wrapping_add(self.freqs.offset[sym].wrapping_mul(extra + u32::from(self.codes.lens[NUM_LITLEN_SYMS + sym])));
+            dynamic_cost = dynamic_cost.wrapping_add(
+                self.freqs.offset[sym]
+                    .wrapping_mul(extra + u32::from(self.codes.lens[NUM_LITLEN_SYMS + sym])),
+            );
             static_cost = static_cost.wrapping_add(self.freqs.offset[sym].wrapping_mul(extra + 5));
         }
-        uncompressed_cost += ((os.bitcount + 3).wrapping_neg() & 7) + 32 + (40 * (block_length.div_ceil(u16::MAX as usize) as u32 - 1)) + (8 * block_length as u32);
+        uncompressed_cost += ((os.bitcount + 3).wrapping_neg() & 7)
+            + 32
+            + (40 * (block_length.div_ceil(u16::MAX as usize) as u32 - 1))
+            + (8 * block_length as u32);
 
         let best_cost = dynamic_cost.min(static_cost.min(uncompressed_cost));
 
@@ -786,7 +926,8 @@ impl Compressor {
                     bfinal = u32::from(is_final_block);
                     len = in_end - in_next;
                 }
-                os.out.push(((bfinal << os.bitcount) | os.bitbuf as u32) as u8);
+                os.out
+                    .push(((bfinal << os.bitcount) | os.bitbuf as u32) as u8);
                 if os.bitcount > 5 {
                     os.out.push(0);
                 }
@@ -818,13 +959,20 @@ impl Compressor {
             }
             for &item in &self.precode_items {
                 let sym = (item & 0x1F) as usize;
-                os.add_bits(self.precode_codewords[sym], u32::from(self.precode_lens[sym]));
+                os.add_bits(
+                    self.precode_codewords[sym],
+                    u32::from(self.precode_lens[sym]),
+                );
                 os.add_bits(item >> 5, EXTRA_PRECODE_BITS[sym]);
             }
         }
 
         self.compute_full_len_codewords(use_static);
-        let codes = if use_static { &self.static_codes } else { &self.codes };
+        let codes = if use_static {
+            &self.static_codes
+        } else {
+            &self.codes
+        };
         let mut in_next = block_begin;
         for seq in &self.sequences[..=sequences_end] {
             for _ in 0..seq.litrunlen {
@@ -836,20 +984,47 @@ impl Compressor {
                 break;
             }
             // WRITE_MATCH
-            os.add_bits(self.length_codewords[seq.length as usize], self.length_lens[seq.length as usize]);
-            os.add_bits(codes.offset_codewords[seq.offset_slot], u32::from(codes.lens[NUM_LITLEN_SYMS + seq.offset_slot]));
-            os.add_bits(seq.offset - OFFSET_SLOT_BASE[seq.offset_slot], EXTRA_OFFSET_BITS[seq.offset_slot]);
+            os.add_bits(
+                self.length_codewords[seq.length as usize],
+                self.length_lens[seq.length as usize],
+            );
+            os.add_bits(
+                codes.offset_codewords[seq.offset_slot],
+                u32::from(codes.lens[NUM_LITLEN_SYMS + seq.offset_slot]),
+            );
+            os.add_bits(
+                seq.offset - OFFSET_SLOT_BASE[seq.offset_slot],
+                EXTRA_OFFSET_BITS[seq.offset_slot],
+            );
             in_next += seq.length as usize;
         }
-        os.add_bits(codes.litlen_codewords[END_OF_BLOCK], u32::from(codes.lens[END_OF_BLOCK]));
+        os.add_bits(
+            codes.litlen_codewords[END_OF_BLOCK],
+            u32::from(codes.lens[END_OF_BLOCK]),
+        );
     }
 
     /// `deflate_finish_block`.
-    fn finish_block(&mut self, os: &mut Output, input: &[u8], block_begin: usize, block_length: usize, sequences_end: usize, is_final_block: bool) {
+    fn finish_block(
+        &mut self,
+        os: &mut Output,
+        input: &[u8],
+        block_begin: usize,
+        block_length: usize,
+        sequences_end: usize,
+        is_final_block: bool,
+    ) {
         self.freqs.litlen[END_OF_BLOCK] += 1;
         let freqs = self.freqs.clone();
         make_huffman_codes(&freqs, &mut self.codes);
-        self.flush_block(os, input, block_begin, block_length, sequences_end, is_final_block);
+        self.flush_block(
+            os,
+            input,
+            block_begin,
+            block_length,
+            sequences_end,
+            is_final_block,
+        );
     }
 
     /// `deflate_choose_literal`.
@@ -888,25 +1063,53 @@ impl Compressor {
             self.split_stats = SplitStats::default();
             self.reset_symbol_frequencies();
             self.sequences[0] = Sequence::default();
-            let min_len = calculate_min_match_len(&input[in_next..in_max_block_end], self.max_search_depth);
+            let min_len =
+                calculate_min_match_len(&input[in_next..in_max_block_end], self.max_search_depth);
             loop {
                 adjust_max_and_nice_len(&mut max_len, &mut nice_len, in_end - in_next);
-                let (length, offset) = self.hc_mf.longest_match(input, &mut in_cur_base, in_next, min_len - 1, max_len, nice_len, self.max_search_depth, &mut next_hashes);
+                let (length, offset) = self.hc_mf.longest_match(
+                    input,
+                    &mut in_cur_base,
+                    in_next,
+                    min_len - 1,
+                    max_len,
+                    nice_len,
+                    self.max_search_depth,
+                    &mut next_hashes,
+                );
                 if length >= min_len && (length > MIN_MATCH_LEN || offset <= 4096) {
                     // Match found
                     self.choose_match(length, offset, &mut seq);
-                    self.hc_mf.skip_bytes(input, &mut in_cur_base, in_next + 1, length - 1, &mut next_hashes);
+                    self.hc_mf.skip_bytes(
+                        input,
+                        &mut in_cur_base,
+                        in_next + 1,
+                        length - 1,
+                        &mut next_hashes,
+                    );
                     in_next += length as usize;
                 } else {
                     // No match found
                     self.choose_literal(input[in_next], seq);
                     in_next += 1;
                 }
-                if !(in_next < in_max_block_end && seq < SEQ_STORE_LENGTH && !self.split_stats.should_end_block(in_block_begin, in_next, in_end)) {
+                if !(in_next < in_max_block_end
+                    && seq < SEQ_STORE_LENGTH
+                    && !self
+                        .split_stats
+                        .should_end_block(in_block_begin, in_next, in_end))
+                {
                     break;
                 }
             }
-            self.finish_block(os, input, in_block_begin, in_next - in_block_begin, seq, in_next == in_end);
+            self.finish_block(
+                os,
+                input,
+                in_block_begin,
+                in_next - in_block_begin,
+                seq,
+                in_next == in_end,
+            );
             if in_next == in_end {
                 break;
             }
@@ -930,14 +1133,25 @@ impl Compressor {
             self.split_stats = SplitStats::default();
             self.reset_symbol_frequencies();
             self.sequences[0] = Sequence::default();
-            let mut min_len = calculate_min_match_len(&input[in_next..in_max_block_end], self.max_search_depth);
+            let mut min_len =
+                calculate_min_match_len(&input[in_next..in_max_block_end], self.max_search_depth);
             loop {
                 if in_next >= next_recalc_min_len {
                     min_len = recalculate_min_match_len(&self.freqs, self.max_search_depth);
-                    next_recalc_min_len += (in_end - next_recalc_min_len).min(in_next - in_block_begin);
+                    next_recalc_min_len +=
+                        (in_end - next_recalc_min_len).min(in_next - in_block_begin);
                 }
                 adjust_max_and_nice_len(&mut max_len, &mut nice_len, in_end - in_next);
-                let (mut cur_len, mut cur_offset) = self.hc_mf.longest_match(input, &mut in_cur_base, in_next, min_len - 1, max_len, nice_len, self.max_search_depth, &mut next_hashes);
+                let (mut cur_len, mut cur_offset) = self.hc_mf.longest_match(
+                    input,
+                    &mut in_cur_base,
+                    in_next,
+                    min_len - 1,
+                    max_len,
+                    nice_len,
+                    self.max_search_depth,
+                    &mut next_hashes,
+                );
                 if cur_len < min_len || (cur_len == MIN_MATCH_LEN && cur_offset > 8192) {
                     // No match found.  Choose a literal.
                     self.choose_literal(input[in_next], seq);
@@ -948,14 +1162,33 @@ impl Compressor {
                     loop {
                         if cur_len >= nice_len {
                             self.choose_match(cur_len, cur_offset, &mut seq);
-                            self.hc_mf.skip_bytes(input, &mut in_cur_base, in_next, cur_len - 1, &mut next_hashes);
+                            self.hc_mf.skip_bytes(
+                                input,
+                                &mut in_cur_base,
+                                in_next,
+                                cur_len - 1,
+                                &mut next_hashes,
+                            );
                             in_next += cur_len as usize - 1;
                             break;
                         }
                         adjust_max_and_nice_len(&mut max_len, &mut nice_len, in_end - in_next);
-                        let (next_len, next_offset) = self.hc_mf.longest_match(input, &mut in_cur_base, in_next, cur_len - 1, max_len, nice_len, self.max_search_depth >> 1, &mut next_hashes);
+                        let (next_len, next_offset) = self.hc_mf.longest_match(
+                            input,
+                            &mut in_cur_base,
+                            in_next,
+                            cur_len - 1,
+                            max_len,
+                            nice_len,
+                            self.max_search_depth >> 1,
+                            &mut next_hashes,
+                        );
                         in_next += 1;
-                        if next_len >= cur_len && 4 * (next_len - cur_len) as i32 + (bsr(cur_offset) - bsr(next_offset)) > 2 {
+                        if next_len >= cur_len
+                            && 4 * (next_len - cur_len) as i32
+                                + (bsr(cur_offset) - bsr(next_offset))
+                                > 2
+                        {
                             self.choose_literal(input[in_next - 2], seq);
                             cur_len = next_len;
                             cur_offset = next_offset;
@@ -963,9 +1196,22 @@ impl Compressor {
                         }
                         if lazy2 {
                             adjust_max_and_nice_len(&mut max_len, &mut nice_len, in_end - in_next);
-                            let (next_len, next_offset) = self.hc_mf.longest_match(input, &mut in_cur_base, in_next, cur_len - 1, max_len, nice_len, self.max_search_depth >> 2, &mut next_hashes);
+                            let (next_len, next_offset) = self.hc_mf.longest_match(
+                                input,
+                                &mut in_cur_base,
+                                in_next,
+                                cur_len - 1,
+                                max_len,
+                                nice_len,
+                                self.max_search_depth >> 2,
+                                &mut next_hashes,
+                            );
                             in_next += 1;
-                            if next_len >= cur_len && 4 * (next_len - cur_len) as i32 + (bsr(cur_offset) - bsr(next_offset)) > 6 {
+                            if next_len >= cur_len
+                                && 4 * (next_len - cur_len) as i32
+                                    + (bsr(cur_offset) - bsr(next_offset))
+                                    > 6
+                            {
                                 self.choose_literal(input[in_next - 3], seq);
                                 self.choose_literal(input[in_next - 2], seq);
                                 cur_len = next_len;
@@ -974,22 +1220,46 @@ impl Compressor {
                             }
                             self.choose_match(cur_len, cur_offset, &mut seq);
                             if cur_len > 3 {
-                                self.hc_mf.skip_bytes(input, &mut in_cur_base, in_next, cur_len - 3, &mut next_hashes);
+                                self.hc_mf.skip_bytes(
+                                    input,
+                                    &mut in_cur_base,
+                                    in_next,
+                                    cur_len - 3,
+                                    &mut next_hashes,
+                                );
                                 in_next += cur_len as usize - 3;
                             }
                         } else {
                             self.choose_match(cur_len, cur_offset, &mut seq);
-                            self.hc_mf.skip_bytes(input, &mut in_cur_base, in_next, cur_len - 2, &mut next_hashes);
+                            self.hc_mf.skip_bytes(
+                                input,
+                                &mut in_cur_base,
+                                in_next,
+                                cur_len - 2,
+                                &mut next_hashes,
+                            );
                             in_next += cur_len as usize - 2;
                         }
                         break;
                     }
                 }
-                if !(in_next < in_max_block_end && seq < SEQ_STORE_LENGTH && !self.split_stats.should_end_block(in_block_begin, in_next, in_end)) {
+                if !(in_next < in_max_block_end
+                    && seq < SEQ_STORE_LENGTH
+                    && !self
+                        .split_stats
+                        .should_end_block(in_block_begin, in_next, in_end))
+                {
                     break;
                 }
             }
-            self.finish_block(os, input, in_block_begin, in_next - in_block_begin, seq, in_next == in_end);
+            self.finish_block(
+                os,
+                input,
+                in_block_begin,
+                in_next - in_block_begin,
+                seq,
+                in_next == in_end,
+            );
             if in_next == in_end {
                 break;
             }
@@ -1023,7 +1293,11 @@ fn compress_none(input: &[u8], out: &mut Vec<u8>) {
 
 /// `libdeflate_deflate_compress` at `level`.
 fn deflate_compress(level: i32, input: &[u8], out: &mut Vec<u8>) {
-    let max_passthrough_size = if level == 0 { usize::MAX } else { (55 - level * 4) as usize };
+    let max_passthrough_size = if level == 0 {
+        usize::MAX
+    } else {
+        (55 - level * 4) as usize
+    };
     if input.len() <= max_passthrough_size {
         compress_none(input, out);
         return;
@@ -1039,7 +1313,11 @@ fn deflate_compress(level: i32, input: &[u8], out: &mut Vec<u8>) {
         _ => (600, MAX_MATCH_LEN),
     };
     let mut c = Compressor::new(depth, nice);
-    let mut os = Output { out: std::mem::take(out), bitbuf: 0, bitcount: 0 };
+    let mut os = Output {
+        out: std::mem::take(out),
+        bitbuf: 0,
+        bitcount: 0,
+    };
     match level {
         2..=4 => c.compress_greedy(input, &mut os),
         5..=7 => c.compress_lazy(input, &mut os, false),
@@ -1056,8 +1334,15 @@ fn deflate_compress(level: i32, input: &[u8], out: &mut Vec<u8>) {
 pub fn compress_bound(in_bytes: usize) -> usize {
     // libdeflate_zlib_compress_bound
     let max_blocks = in_bytes.div_ceil(MIN_BLOCK_LENGTH).max(1);
-    let Some(mut r) = (5 * max_blocks).checked_add(in_bytes).and_then(|r| r.checked_add(6 + 9)) else { return usize::MAX };
-    let Some(extra) = r.checked_mul(130) else { return usize::MAX };
+    let Some(mut r) = (5 * max_blocks)
+        .checked_add(in_bytes)
+        .and_then(|r| r.checked_add(6 + 9))
+    else {
+        return usize::MAX;
+    };
+    let Some(extra) = r.checked_mul(130) else {
+        return usize::MAX;
+    };
     let extra = extra / 128;
     if extra > usize::MAX - 100 {
         return usize::MAX;
@@ -1067,7 +1352,9 @@ pub fn compress_bound(in_bytes: usize) -> usize {
     }
     // in case huf is larger than zlib (`internal_exr_huf_compress_spare_bytes` and
     // `internal_exr_huf_decompress_spare_bytes`)
-    r = r.max(in_bytes.saturating_add(1_835_036)).max(in_bytes.saturating_add(786_440));
+    r = r
+        .max(in_bytes.saturating_add(1_835_036))
+        .max(in_bytes.saturating_add(786_440));
     r.max(8192)
 }
 
@@ -1080,7 +1367,10 @@ pub fn compress_bound(in_bytes: usize) -> usize {
 /// For level 1 or a level above 9, which are not ported.
 pub fn compress_buffer(level: i32, input: &[u8]) -> Vec<u8> {
     let level = if level < 0 { 4 } else { level };
-    assert!(level == 0 || (2..=MAX_LEVEL).contains(&level), "libdeflate level {level} is not ported");
+    assert!(
+        level == 0 || (2..=MAX_LEVEL).contains(&level),
+        "libdeflate level {level} is not ported"
+    );
     let level_hint: u16 = if level < 2 {
         0
     } else if level < 6 {
@@ -1111,14 +1401,24 @@ mod tests {
         let mut data = Vec::new();
         let mut state = 7u64;
         for i in 0..200_000u32 {
-            state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-            data.push(if i % 1000 < 600 { (i / 7 % 13) as u8 } else { (state >> 56) as u8 });
+            state = state
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            data.push(if i % 1000 < 600 {
+                (i / 7 % 13) as u8
+            } else {
+                (state >> 56) as u8
+            });
         }
         for level in [0, 2, 3, 4, 5, 6, 7, 8, 9] {
             for len in [0usize, 1, 30, 100, 5000, 70000, 200_000] {
                 let stream = compress_buffer(level, &data[..len]);
                 let mut back = vec![0u8; len];
-                assert_eq!(super::super::uncompress_buffer(&stream, &mut back), Ok(len), "level {level}, {len} bytes");
+                assert_eq!(
+                    super::super::uncompress_buffer(&stream, &mut back),
+                    Ok(len),
+                    "level {level}, {len} bytes"
+                );
                 assert_eq!(back, &data[..len]);
             }
         }

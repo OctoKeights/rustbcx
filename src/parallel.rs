@@ -30,7 +30,10 @@ where
         for _ in 0..threads {
             scope.spawn(|| loop {
                 // (The lock is let go before the work is done.)
-                let next = queue.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).next();
+                let next = queue
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .next();
                 match next {
                     Some(item) => work(item),
                     None => break,
@@ -78,7 +81,10 @@ mod tests {
                 total.fetch_add(chunk.len() as u32, Ordering::Relaxed);
             });
             assert_eq!(total.load(Ordering::Relaxed), 1000);
-            assert!(data.iter().enumerate().all(|(i, &value)| value == 1 + (i / 7) as u32));
+            assert!(data
+                .iter()
+                .enumerate()
+                .all(|(i, &value)| value == 1 + (i / 7) as u32));
         }
         assert!(worker_count(0) >= 1);
         assert_eq!(worker_count(5), 5);

@@ -11,7 +11,11 @@ mod made_up;
 
 #[test]
 fn writes_the_files_stb_image_write_does() {
-    let printed = [made_up::stb_image_write(5, 400), made_up::stb_image_write(12, 400)].concat();
+    let printed = [
+        made_up::stb_image_write(5, 400),
+        made_up::stb_image_write(12, 400),
+    ]
+    .concat();
     let expected = include_str!("data/stb_image_write_expected.txt");
     for (line, (ours, theirs)) in printed.lines().zip(expected.lines()).enumerate() {
         assert_eq!(ours, theirs, "line {}", line + 1);

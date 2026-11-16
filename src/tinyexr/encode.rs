@@ -3,23 +3,34 @@
 //! `SaveEXRToMemory` of tinyexr v3.4.0 (`tinyexr.h`).
 
 use super::b44::compress_b44;
-use crate::dwa;
-use super::chunk::{level_index, num_scanline_blocks, precalculate_tile_info, tile_offsets_shape, OffsetData};
+use super::chunk::{
+    level_index, num_scanline_blocks, precalculate_tile_info, tile_offsets_shape, OffsetData,
+};
 use super::decode::ChannelData;
 use super::piz::compress_piz;
 use super::pxr24::compress_pxr24;
 use super::zfp::{compress_zfp, zfp_param_for_writing, zfp_stream_size, ZfpParam};
 use super::zip_rle::{compress_rle, compress_zip};
 use super::{
-    float_to_half_full, half_to_float, Attribute, ChannelInfo, ExrError, ExrHeader, ExrImage, ExrTile, COMPRESSIONTYPE_B44, COMPRESSIONTYPE_B44A, COMPRESSIONTYPE_NONE, COMPRESSIONTYPE_PIZ, COMPRESSIONTYPE_PXR24,
-    COMPRESSIONTYPE_DWAA, COMPRESSIONTYPE_DWAB, COMPRESSIONTYPE_RLE, COMPRESSIONTYPE_ZFP, COMPRESSIONTYPE_ZIP, COMPRESSIONTYPE_ZIPS, ERROR_DATA_TOO_LARGE, ERROR_INVALID_ARGUMENT, ERROR_INVALID_DATA, ERROR_SERIALIZATION_FAILED, PIXELTYPE_FLOAT,
+    float_to_half_full, half_to_float, Attribute, ChannelInfo, ExrError, ExrHeader, ExrImage,
+    ExrTile, COMPRESSIONTYPE_B44, COMPRESSIONTYPE_B44A, COMPRESSIONTYPE_DWAA, COMPRESSIONTYPE_DWAB,
+    COMPRESSIONTYPE_NONE, COMPRESSIONTYPE_PIZ, COMPRESSIONTYPE_PXR24, COMPRESSIONTYPE_RLE,
+    COMPRESSIONTYPE_ZFP, COMPRESSIONTYPE_ZIP, COMPRESSIONTYPE_ZIPS, ERROR_DATA_TOO_LARGE,
+    ERROR_INVALID_ARGUMENT, ERROR_INVALID_DATA, ERROR_SERIALIZATION_FAILED, PIXELTYPE_FLOAT,
     PIXELTYPE_HALF, PIXELTYPE_UINT, TILE_RIPMAP_LEVELS,
 };
+use crate::dwa;
 
 /// `WriteAttributeToMemory`.
 fn write_attribute_to_memory(out: &mut Vec<u8>, name: &str, type_name: &str, data: &[u8]) {
     // (The original's names are C strings: they end at a zero.)
-    let c_string = |text: &str| text.as_bytes().iter().copied().take_while(|&byte| byte != 0).collect::<Vec<u8>>();
+    let c_string = |text: &str| {
+        text.as_bytes()
+            .iter()
+            .copied()
+            .take_while(|&byte| byte != 0)
+            .collect::<Vec<u8>>()
+    };
     out.extend_from_slice(&c_string(name));
     out.push(0);
     out.extend_from_slice(&c_string(type_name));
@@ -44,7 +55,14 @@ fn write_attribute_bytes(out: &mut Vec<u8>, name: &[u8], type_name: &[u8], data:
 fn write_channel_info(channels: &[ChannelInfo], file_types: &[i32]) -> Vec<u8> {
     let mut data = Vec::new();
     for (channel, &file_type) in channels.iter().zip(file_types) {
-        data.extend(channel.name.as_bytes().iter().copied().take_while(|&byte| byte != 0));
+        data.extend(
+            channel
+                .name
+                .as_bytes()
+                .iter()
+                .copied()
+                .take_while(|&byte| byte != 0),
+        );
         data.push(0);
 
         data.extend_from_slice(&file_type.to_le_bytes());
@@ -83,7 +101,8 @@ fn encode_pixel_data(
 
     let start_y = line_no as usize;
     for (c, image) in images.iter().enumerate() {
-        let line_ptr = |y: usize| pixel_data_size * y * width_size + channel_offset_list[c] * width_size;
+        let line_ptr =
+            |y: usize| pixel_data_size * y * width_size + channel_offset_list[c] * width_size;
         let index = |y: usize, x: usize| (y + start_y) * x_stride as usize + x;
         match image {
             ChannelData::Half(values) => {
@@ -93,14 +112,16 @@ fn encode_pixel_data(
                         let line = line_ptr(y);
                         for x in 0..width_size {
                             let f = half_to_float(values[index(y, x)]);
-                            buf[line + 4 * x..line + 4 * x + 4].copy_from_slice(&f.to_bits().to_le_bytes());
+                            buf[line + 4 * x..line + 4 * x + 4]
+                                .copy_from_slice(&f.to_bits().to_le_bytes());
                         }
                     }
                 } else if file_types[c] == PIXELTYPE_HALF {
                     for y in 0..num_lines as usize {
                         let line = line_ptr(y);
                         for x in 0..width_size {
-                            buf[line + 2 * x..line + 2 * x + 2].copy_from_slice(&values[index(y, x)].to_le_bytes());
+                            buf[line + 2 * x..line + 2 * x + 2]
+                                .copy_from_slice(&values[index(y, x)].to_le_bytes());
                         }
                     }
                 } else {
@@ -121,7 +142,8 @@ fn encode_pixel_data(
                     for y in 0..num_lines as usize {
                         let line = line_ptr(y);
                         for x in 0..width_size {
-                            buf[line + 4 * x..line + 4 * x + 4].copy_from_slice(&values[index(y, x)].to_bits().to_le_bytes());
+                            buf[line + 4 * x..line + 4 * x + 4]
+                                .copy_from_slice(&values[index(y, x)].to_bits().to_le_bytes());
                         }
                     }
                 } else {
@@ -135,7 +157,8 @@ fn encode_pixel_data(
                 for y in 0..num_lines as usize {
                     let line = line_ptr(y);
                     for x in 0..width_size {
-                        buf[line + 4 * x..line + 4 * x + 4].copy_from_slice(&values[index(y, x)].to_le_bytes());
+                        buf[line + 4 * x..line + 4 * x + 4]
+                            .copy_from_slice(&values[index(y, x)].to_le_bytes());
                     }
                 }
             }
@@ -160,20 +183,29 @@ fn encode_pixel_data(
         };
         out_data.extend_from_slice(&block);
     } else if compression_type == COMPRESSIONTYPE_PIZ {
-        let channel_sizes: Vec<usize> = file_types.iter().map(|&file_type| if file_type == PIXELTYPE_HALF { 1 } else { 2 }).collect();
+        let channel_sizes: Vec<usize> = file_types
+            .iter()
+            .map(|&file_type| if file_type == PIXELTYPE_HALF { 1 } else { 2 })
+            .collect();
         out_data.extend_from_slice(&compress_piz(&buf, &channel_sizes, width, num_lines));
     } else if compression_type == COMPRESSIONTYPE_ZFP {
         // 4 byte: scan line
         // 4 byte: data size
         // ~     : pixel data(compressed)
         // (`check` has refused what the original would not compress.)
-        let Ok(block) = compress_zfp(&buf, width, num_lines, file_types.len(), zfp) else { return false };
+        let Ok(block) = compress_zfp(&buf, width, num_lines, file_types.len(), zfp) else {
+            return false;
+        };
         out_data.extend_from_slice(&block);
     } else if compression_type == COMPRESSIONTYPE_PXR24 {
         let block = compress_pxr24(&buf, width, num_lines, file_types);
         // (The format's rule, which the original has for its other compressions and not for
         // this one: a block that does not come out smaller is stored as it is.)
-        out_data.extend_from_slice(if !as_tinyexr && block.len() >= buf.len() { &buf } else { &block });
+        out_data.extend_from_slice(if !as_tinyexr && block.len() >= buf.len() {
+            &buf
+        } else {
+            &block
+        });
     } else if compression_type == COMPRESSIONTYPE_B44 || compression_type == COMPRESSIONTYPE_B44A {
         let is_b44a = compression_type == COMPRESSIONTYPE_B44A;
         // B44 expects channel-sequential layout. Rearrange from line-interleaved to
@@ -192,11 +224,33 @@ fn encode_pixel_data(
         let block = compress_b44(&seq_buf, width, num_lines, file_types, is_b44a);
         // (The format's rule again; for B44 this is every block of an image without a
         // channel of halves.)
-        out_data.extend_from_slice(if !as_tinyexr && block.len() >= buf.len() { &buf } else { &block });
-    } else if !as_tinyexr && (compression_type == COMPRESSIONTYPE_DWAA || compression_type == COMPRESSIONTYPE_DWAB) {
+        out_data.extend_from_slice(if !as_tinyexr && block.len() >= buf.len() {
+            &buf
+        } else {
+            &block
+        });
+    } else if !as_tinyexr
+        && (compression_type == COMPRESSIONTYPE_DWAA || compression_type == COMPRESSIONTYPE_DWAB)
+    {
         // (Not in the original. A block that does not come out smaller is stored as it is.)
-        let channels: Vec<dwa::Channel> = dwa.names.iter().zip(file_types).map(|(name, &pixel_type)| dwa::Channel { name, pixel_type, p_linear: false }).collect();
-        out_data.extend_from_slice(&dwa::compress(&buf, &channels, width_size, num_lines as usize, dwa.level, dwa.deflate_ac));
+        let channels: Vec<dwa::Channel> = dwa
+            .names
+            .iter()
+            .zip(file_types)
+            .map(|(name, &pixel_type)| dwa::Channel {
+                name,
+                pixel_type,
+                p_linear: false,
+            })
+            .collect();
+        out_data.extend_from_slice(&dwa::compress(
+            &buf,
+            &channels,
+            width_size,
+            num_lines as usize,
+            dwa.level,
+            dwa.deflate_ac,
+        ));
     } else {
         return false;
     }
@@ -215,8 +269,16 @@ pub(super) struct DwaParam {
 
 impl DwaParam {
     fn new(exr_header: &ExrHeader, tiled: bool) -> DwaParam {
-        let names = exr_header.channels.iter().map(|channel| channel.name.split('\0').next().unwrap_or("").to_string()).collect();
-        DwaParam { names, level: dwa_level(&exr_header.custom_attributes), deflate_ac: tiled && exr_header.compression_type == COMPRESSIONTYPE_DWAA }
+        let names = exr_header
+            .channels
+            .iter()
+            .map(|channel| channel.name.split('\0').next().unwrap_or("").to_string())
+            .collect();
+        DwaParam {
+            names,
+            level: dwa_level(&exr_header.custom_attributes),
+            deflate_ac: tiled && exr_header.compression_type == COMPRESSIONTYPE_DWAA,
+        }
     }
 }
 
@@ -224,8 +286,19 @@ impl DwaParam {
 fn dwa_level(attributes: &[Attribute]) -> f32 {
     attributes
         .iter()
-        .find(|attribute| attribute.name == "dwaCompressionLevel" && attribute.type_name == "float" && attribute.value.len() == 4)
-        .map_or(45.0, |attribute| f32::from_le_bytes([attribute.value[0], attribute.value[1], attribute.value[2], attribute.value[3]]))
+        .find(|attribute| {
+            attribute.name == "dwaCompressionLevel"
+                && attribute.type_name == "float"
+                && attribute.value.len() == 4
+        })
+        .map_or(45.0, |attribute| {
+            f32::from_le_bytes([
+                attribute.value[0],
+                attribute.value[1],
+                attribute.value[2],
+                attribute.value[3],
+            ])
+        })
 }
 
 /// The attribute that sets the level of DWAA and DWAB compression (`dwaCompressionLevel`),
@@ -233,7 +306,11 @@ fn dwa_level(attributes: &[Attribute]) -> f32 {
 /// 6550400000. With 0 nothing is lost to the quantization (but some to the rest); OpenEXR's
 /// default is 45.
 pub fn dwa_compression_level_attribute(level: f32) -> Attribute {
-    Attribute { name: "dwaCompressionLevel".to_string(), type_name: "float".to_string(), value: level.to_le_bytes().to_vec() }
+    Attribute {
+        name: "dwaCompressionLevel".to_string(),
+        type_name: "float".to_string(),
+        value: level.to_le_bytes().to_vec(),
+    }
 }
 
 /// What the port refuses to write with DWAA or DWAB compression, as OpenEXR refuses it.
@@ -262,7 +339,10 @@ fn encode_tiled_level(
         return ERROR_INVALID_ARGUMENT;
     }
 
-    if (exr_header.tile_size_x > level_image.width || exr_header.tile_size_y > level_image.height) && level_image.level_x == 0 && level_image.level_y == 0 {
+    if (exr_header.tile_size_x > level_image.width || exr_header.tile_size_y > level_image.height)
+        && level_image.level_x == 0
+        && level_image.level_y == 0
+    {
         err.push_str("Failed to encode tile data.\n");
         return ERROR_INVALID_DATA;
     }
@@ -375,14 +455,25 @@ fn encode_chunk(
     if !exr_image.tiles.is_empty() {
         let mut level_image = Some(exr_image);
         let mut block_idx = 0usize;
-        let num_levels = if exr_header.tile_level_mode != TILE_RIPMAP_LEVELS { offset_data.num_x_levels } else { offset_data.num_x_levels.wrapping_mul(offset_data.num_y_levels) };
+        let num_levels = if exr_header.tile_level_mode != TILE_RIPMAP_LEVELS {
+            offset_data.num_x_levels
+        } else {
+            offset_data
+                .num_x_levels
+                .wrapping_mul(offset_data.num_y_levels)
+        };
         for level in 0..num_levels {
             let Some(image) = level_image else {
                 err.push_str("Invalid number of tiled levels for EncodeChunk\n");
                 return ERROR_INVALID_DATA;
             };
 
-            let level_index_from_image = level_index(image.level_x, image.level_y, exr_header.tile_level_mode, offset_data.num_x_levels);
+            let level_index_from_image = level_index(
+                image.level_x,
+                image.level_y,
+                exr_header.tile_level_mode,
+                offset_data.num_x_levels,
+            );
             if level_index_from_image < 0 {
                 err.push_str("Invalid tile level mode\n");
                 return ERROR_INVALID_DATA;
@@ -405,7 +496,20 @@ fn encode_chunk(
             }
 
             let mut e = String::new();
-            let ret = encode_tiled_level(image, exr_header, data_list, block_idx, num_x_tiles, num_y_tiles, &channel_offset_list, pixel_data_size, &zfp, &dwa, &mut e, as_tinyexr);
+            let ret = encode_tiled_level(
+                image,
+                exr_header,
+                data_list,
+                block_idx,
+                num_x_tiles,
+                num_y_tiles,
+                &channel_offset_list,
+                pixel_data_size,
+                &zfp,
+                &dwa,
+                &mut e,
+                as_tinyexr,
+            );
             if ret != 0 {
                 if !e.is_empty() {
                     err.push_str(&e);
@@ -489,9 +593,17 @@ fn encode_chunk(
 /// What the original would read past its memory for, or throw on, in what it is handed.
 /// (It is handed pointers and trusts the header for what is behind them.)
 fn check(exr_image: &ExrImage, exr_header: &ExrHeader, as_tinyexr: bool) -> Result<(), ExrError> {
-    let refuse = |message: &str| Err(ExrError { code: ERROR_INVALID_ARGUMENT, message: message.to_string() });
+    let refuse = |message: &str| {
+        Err(ExrError {
+            code: ERROR_INVALID_ARGUMENT,
+            message: message.to_string(),
+        })
+    };
     // (OpenEXR's bounds for the level of DWAA and DWAB.)
-    if !as_tinyexr && (exr_header.compression_type == COMPRESSIONTYPE_DWAA || exr_header.compression_type == COMPRESSIONTYPE_DWAB) {
+    if !as_tinyexr
+        && (exr_header.compression_type == COMPRESSIONTYPE_DWAA
+            || exr_header.compression_type == COMPRESSIONTYPE_DWAB)
+    {
         let level = dwa_level(&exr_header.custom_attributes);
         if !(0.0..=65504.0 * 100000.0).contains(&level) {
             return refuse(DWA_INVALID_LEVEL);
@@ -501,7 +613,9 @@ fn check(exr_image: &ExrImage, exr_header: &ExrHeader, as_tinyexr: bool) -> Resu
     if num_channels == 0 {
         return refuse("An image needs a channel.");
     }
-    if exr_header.pixel_types.len() != num_channels || exr_header.requested_pixel_types.len() != num_channels {
+    if exr_header.pixel_types.len() != num_channels
+        || exr_header.requested_pixel_types.len() != num_channels
+    {
         return refuse("pixel_types and requested_pixel_types need a type for each channel.");
     }
     // The values of every channel are there, of the type the header says, with a type to
@@ -519,7 +633,8 @@ fn check(exr_image: &ExrImage, exr_header: &ExrHeader, as_tinyexr: bool) -> Resu
             if exr_header.pixel_types[c] != pixel_type {
                 return refuse("pixel_types does not say what a channel's values are.");
             }
-            if pixel_type == PIXELTYPE_UINT && exr_header.requested_pixel_types[c] == PIXELTYPE_HALF {
+            if pixel_type == PIXELTYPE_UINT && exr_header.requested_pixel_types[c] == PIXELTYPE_HALF
+            {
                 return refuse("A channel of integers cannot be stored as halves.");
             }
             if len < needed {
@@ -531,13 +646,20 @@ fn check(exr_image: &ExrImage, exr_header: &ExrHeader, as_tinyexr: bool) -> Resu
     // ZFP: blocks and tiles of whole blocks of four by four, and settings that do not ask for
     // more than there may be. (The original looks at neither; it writes a length it never set
     // for the first, and asks for the memory for the second.)
-    let zfp = (exr_header.compression_type == COMPRESSIONTYPE_ZFP).then(|| zfp_param_for_writing(&exr_header.custom_attributes));
+    let zfp = (exr_header.compression_type == COMPRESSIONTYPE_ZFP)
+        .then(|| zfp_param_for_writing(&exr_header.custom_attributes));
     let check_zfp = |sizes: &[(i32, i32)]| {
         let Some(zfp) = &zfp else { return Ok(()) };
-        if sizes.iter().any(|&(width, lines)| width % 4 != 0 || lines % 4 != 0) {
+        if sizes
+            .iter()
+            .any(|&(width, lines)| width % 4 != 0 || lines % 4 != 0)
+        {
             return refuse(ZFP_NOT_MULTIPLE_OF_FOUR);
         }
-        if sizes.iter().any(|&(width, lines)| zfp_stream_size(zfp, width, lines, num_channels).is_none()) {
+        if sizes
+            .iter()
+            .any(|&(width, lines)| zfp_stream_size(zfp, width, lines, num_channels).is_none())
+        {
             return refuse(ZFP_TOO_LARGE);
         }
         Ok(())
@@ -546,9 +668,15 @@ fn check(exr_image: &ExrImage, exr_header: &ExrHeader, as_tinyexr: bool) -> Resu
         if exr_image.width < 1 || exr_image.height < 1 {
             return refuse("An image needs a width and a height.");
         }
-        check_images(&exr_image.images, exr_image.width as usize * exr_image.height as usize)?;
+        check_images(
+            &exr_image.images,
+            exr_image.width as usize * exr_image.height as usize,
+        )?;
         let lines = num_scanline_blocks(exr_header.compression_type, as_tinyexr);
-        let sizes: Vec<(i32, i32)> = (0..exr_image.height).step_by(lines as usize).map(|start| (exr_image.width, lines.min(exr_image.height - start))).collect();
+        let sizes: Vec<(i32, i32)> = (0..exr_image.height)
+            .step_by(lines as usize)
+            .map(|start| (exr_image.width, lines.min(exr_image.height - start)))
+            .collect();
         return check_zfp(&sizes);
     }
     if exr_header.tile_size_x < 1 || exr_header.tile_size_y < 1 {
@@ -561,7 +689,10 @@ fn check(exr_image: &ExrImage, exr_header: &ExrHeader, as_tinyexr: bool) -> Resu
             if width < 1 || height < 1 {
                 return refuse("A tile needs a width and a height.");
             }
-            check_images(&tile.images, (height as usize - 1) * exr_header.tile_size_x as usize + width as usize)?;
+            check_images(
+                &tile.images,
+                (height as usize - 1) * exr_header.tile_size_x as usize + width as usize,
+            )?;
         }
         level = image.next_level.as_deref();
     }
@@ -575,8 +706,10 @@ fn check(exr_image: &ExrImage, exr_header: &ExrHeader, as_tinyexr: bool) -> Resu
 }
 
 /// What the port refuses to write with ZFP compression.
-pub const ZFP_NOT_MULTIPLE_OF_FOUR: &str = "ZFP compression needs blocks and tiles whose width and height are multiples of four.";
-pub const ZFP_TOO_LARGE: &str = "ZFP compression with these settings needs more than a gigabyte for a block.";
+pub const ZFP_NOT_MULTIPLE_OF_FOUR: &str =
+    "ZFP compression needs blocks and tiles whose width and height are multiples of four.";
+pub const ZFP_TOO_LARGE: &str =
+    "ZFP compression with these settings needs more than a gigabyte for a block.";
 
 /// `SaveEXRImageToMemory`: an image as the bytes of a `.exr` file of one part.
 ///
@@ -606,7 +739,10 @@ pub const ZFP_TOO_LARGE: &str = "ZFP compression with these settings needs more 
 /// [`save_exr_image_to_memory_as_tinyexr`] writes them as tinyexr does.
 ///
 /// [`tile_levels`]: super::tile_levels
-pub fn save_exr_image_to_memory(exr_image: &ExrImage, exr_header: &ExrHeader) -> Result<Vec<u8>, ExrError> {
+pub fn save_exr_image_to_memory(
+    exr_image: &ExrImage,
+    exr_header: &ExrHeader,
+) -> Result<Vec<u8>, ExrError> {
     save_image(exr_image, exr_header, false)
 }
 
@@ -618,11 +754,18 @@ pub fn save_exr_image_to_memory(exr_image: &ExrImage, exr_header: &ExrHeader) ->
 /// tinyexr does.)
 ///
 /// [`load_exr_image_from_memory_as_tinyexr`]: super::load_exr_image_from_memory_as_tinyexr
-pub fn save_exr_image_to_memory_as_tinyexr(exr_image: &ExrImage, exr_header: &ExrHeader) -> Result<Vec<u8>, ExrError> {
+pub fn save_exr_image_to_memory_as_tinyexr(
+    exr_image: &ExrImage,
+    exr_header: &ExrHeader,
+) -> Result<Vec<u8>, ExrError> {
     save_image(exr_image, exr_header, true)
 }
 
-fn save_image(exr_image: &ExrImage, exr_header: &ExrHeader, as_tinyexr: bool) -> Result<Vec<u8>, ExrError> {
+fn save_image(
+    exr_image: &ExrImage,
+    exr_header: &ExrHeader,
+    as_tinyexr: bool,
+) -> Result<Vec<u8>, ExrError> {
     save_parts(&[(exr_image, exr_header)], as_tinyexr)
 }
 
@@ -630,38 +773,64 @@ fn save_image(exr_image: &ExrImage, exr_header: &ExrHeader, as_tinyexr: bool) ->
 /// header, as [`save_exr_image_to_memory`] writes one. Each part needs a `name`, and no two
 /// the same; the size of the first part is every part's display window. With one part the
 /// file is the one [`save_exr_image_to_memory`] writes.
-pub fn save_exr_multipart_image_to_memory(parts: &[(&ExrImage, &ExrHeader)]) -> Result<Vec<u8>, ExrError> {
+pub fn save_exr_multipart_image_to_memory(
+    parts: &[(&ExrImage, &ExrHeader)],
+) -> Result<Vec<u8>, ExrError> {
     save_multipart(parts, false)
 }
 
 /// `SaveEXRMultipartImageToMemory` exactly as tinyexr has it
 /// ([`save_exr_image_to_memory_as_tinyexr`] says where that differs).
-pub fn save_exr_multipart_image_to_memory_as_tinyexr(parts: &[(&ExrImage, &ExrHeader)]) -> Result<Vec<u8>, ExrError> {
+pub fn save_exr_multipart_image_to_memory_as_tinyexr(
+    parts: &[(&ExrImage, &ExrHeader)],
+) -> Result<Vec<u8>, ExrError> {
     save_multipart(parts, true)
 }
 
-fn save_multipart(parts: &[(&ExrImage, &ExrHeader)], as_tinyexr: bool) -> Result<Vec<u8>, ExrError> {
+fn save_multipart(
+    parts: &[(&ExrImage, &ExrHeader)],
+    as_tinyexr: bool,
+) -> Result<Vec<u8>, ExrError> {
     if parts.is_empty() {
-        return Err(ExrError { code: ERROR_SERIALIZATION_FAILED, message: "Invalid argument for SaveEXRNPartImageToMemory".to_string() });
+        return Err(ExrError {
+            code: ERROR_SERIALIZATION_FAILED,
+            message: "Invalid argument for SaveEXRNPartImageToMemory".to_string(),
+        });
     }
     save_parts(parts, as_tinyexr)
 }
 
 /// `SaveEXRNPartImageToMemory`.
 fn save_parts(parts: &[(&ExrImage, &ExrHeader)], as_tinyexr: bool) -> Result<Vec<u8>, ExrError> {
-    let fail = |code: i32, message: &str| Err(ExrError { code, message: message.to_string() });
+    let fail = |code: i32, message: &str| {
+        Err(ExrError {
+            code,
+            message: message.to_string(),
+        })
+    };
     let num_parts = parts.len();
 
     for &(_, exr_header) in parts {
         if exr_header.compression_type < 0 {
-            return fail(ERROR_SERIALIZATION_FAILED, "Invalid argument for SaveEXRNPartImageToMemory");
+            return fail(
+                ERROR_SERIALIZATION_FAILED,
+                "Invalid argument for SaveEXRNPartImageToMemory",
+            );
         }
         if exr_header.compression_type == COMPRESSIONTYPE_ZFP {
             // All channels must be fp32.
             // No fp16 support in ZFP atm(as of 2023 June)
             // (`check` refuses a header without a type for each channel.)
-            if exr_header.requested_pixel_types.iter().take(exr_header.channels.len()).any(|&file_type| file_type != PIXELTYPE_FLOAT) {
-                return fail(ERROR_SERIALIZATION_FAILED, "Pixel type must be FLOAT for ZFP compression");
+            if exr_header
+                .requested_pixel_types
+                .iter()
+                .take(exr_header.channels.len())
+                .any(|&file_type| file_type != PIXELTYPE_FLOAT)
+            {
+                return fail(
+                    ERROR_SERIALIZATION_FAILED,
+                    "Pixel type must be FLOAT for ZFP compression",
+                );
             }
         }
     }
@@ -710,13 +879,17 @@ fn save_parts(parts: &[(&ExrImage, &ExrHeader)], as_tinyexr: bool) -> Result<Vec
             let Some((num_x_tiles, num_y_tiles)) = precalculate_tile_info(exr_header) else {
                 return fail(ERROR_INVALID_DATA, "Failed to precalculate Tile info");
             };
-            let (shape, ntiles) = tile_offsets_shape(&mut offset_data[i], exr_header, &num_x_tiles, &num_y_tiles);
+            let (shape, ntiles) =
+                tile_offsets_shape(&mut offset_data[i], exr_header, &num_x_tiles, &num_y_tiles);
             if ntiles > 0 {
                 chunk_count[i] = ntiles;
             } else {
                 return fail(ERROR_INVALID_DATA, "Failed to compute Tile offsets");
             }
-            offset_data[i].offsets = shape.iter().map(|&(rows, columns)| vec![vec![0u64; columns]; rows]).collect();
+            offset_data[i].offsets = shape
+                .iter()
+                .map(|&(rows, columns)| vec![vec![0u64; columns]; rows])
+                .collect();
         }
         total_chunk_count = total_chunk_count.wrapping_add(chunk_count[i]);
     }
@@ -730,18 +903,33 @@ fn save_parts(parts: &[(&ExrImage, &ExrHeader)], as_tinyexr: bool) -> Result<Vec
             write_attribute_to_memory(&mut memory, "channels", "chlist", &data);
         }
 
-        write_attribute_to_memory(&mut memory, "compression", "compression", &[exr_header.compression_type as u8]);
+        write_attribute_to_memory(
+            &mut memory,
+            "compression",
+            "compression",
+            &[exr_header.compression_type as u8],
+        );
 
         {
             let mut data = Vec::with_capacity(16);
-            for value in [0, 0, exr_image.width.wrapping_sub(1), exr_image.height.wrapping_sub(1)] {
+            for value in [
+                0,
+                0,
+                exr_image.width.wrapping_sub(1),
+                exr_image.height.wrapping_sub(1),
+            ] {
                 data.extend_from_slice(&value.to_le_bytes());
             }
             write_attribute_to_memory(&mut memory, "dataWindow", "box2i", &data);
 
             let first = parts[0].0;
             let mut data0 = Vec::with_capacity(16);
-            for value in [0, 0, first.width.wrapping_sub(1), first.height.wrapping_sub(1)] {
+            for value in [
+                0,
+                0,
+                first.width.wrapping_sub(1),
+                first.height.wrapping_sub(1),
+            ] {
                 data0.extend_from_slice(&value.to_le_bytes());
             }
             // Note: must be the same across parts (currently, using value from the first header)
@@ -752,11 +940,21 @@ fn save_parts(parts: &[(&ExrImage, &ExrHeader)], as_tinyexr: bool) -> Result<Vec
         write_attribute_to_memory(&mut memory, "lineOrder", "lineOrder", &[0]);
 
         // Note: must be the same across parts
-        write_attribute_to_memory(&mut memory, "pixelAspectRatio", "float", &1.0f32.to_le_bytes());
+        write_attribute_to_memory(
+            &mut memory,
+            "pixelAspectRatio",
+            "float",
+            &1.0f32.to_le_bytes(),
+        );
 
         write_attribute_to_memory(&mut memory, "screenWindowCenter", "v2f", &[0; 8]);
 
-        write_attribute_to_memory(&mut memory, "screenWindowWidth", "float", &1.0f32.to_le_bytes());
+        write_attribute_to_memory(
+            &mut memory,
+            "screenWindowWidth",
+            "float",
+            &1.0f32.to_le_bytes(),
+        );
 
         if !exr_image.tiles.is_empty() {
             let mut tile_mode = (exr_header.tile_level_mode & 0x3) as u8;
@@ -775,31 +973,55 @@ fn save_parts(parts: &[(&ExrImage, &ExrHeader)], as_tinyexr: bool) -> Result<Vec
             // name (the original's is a C string of at most 255 bytes)
             {
                 let name = exr_header.name.as_bytes();
-                let name = &name[..name.iter().position(|&byte| byte == 0).unwrap_or(name.len()).min(255)];
+                let name = &name[..name
+                    .iter()
+                    .position(|&byte| byte == 0)
+                    .unwrap_or(name.len())
+                    .min(255)];
                 if !name.is_empty() {
                     if !partnames.iter().any(|seen| seen == name) {
                         partnames.push(name.to_vec());
                     }
                     if partnames.len() != i + 1 {
-                        return fail(ERROR_SERIALIZATION_FAILED, "'name' attributes must be unique for a multi-part file");
+                        return fail(
+                            ERROR_SERIALIZATION_FAILED,
+                            "'name' attributes must be unique for a multi-part file",
+                        );
                     }
                     write_attribute_bytes(&mut memory, b"name", b"string", name);
                 } else {
-                    return fail(ERROR_SERIALIZATION_FAILED, "Invalid 'name' attribute for a multi-part file");
+                    return fail(
+                        ERROR_SERIALIZATION_FAILED,
+                        "Invalid 'name' attribute for a multi-part file",
+                    );
                 }
             }
             // type
             {
-                let type_name = if !exr_image.tiles.is_empty() { "tiledimage" } else { "scanlineimage" };
+                let type_name = if !exr_image.tiles.is_empty() {
+                    "tiledimage"
+                } else {
+                    "scanlineimage"
+                };
                 write_attribute_to_memory(&mut memory, "type", "string", type_name.as_bytes());
             }
             // chunkCount
-            write_attribute_to_memory(&mut memory, "chunkCount", "int", &chunk_count[i].to_le_bytes());
+            write_attribute_to_memory(
+                &mut memory,
+                "chunkCount",
+                "int",
+                &chunk_count[i].to_le_bytes(),
+            );
         }
 
         // Custom attributes
         for attribute in &exr_header.custom_attributes {
-            write_attribute_to_memory(&mut memory, &attribute.name, &attribute.type_name, &attribute.value);
+            write_attribute_to_memory(
+                &mut memory,
+                &attribute.name,
+                &attribute.type_name,
+                &attribute.value,
+            );
         }
 
         // end of header
@@ -816,9 +1038,23 @@ fn save_parts(parts: &[(&ExrImage, &ExrHeader)], as_tinyexr: bool) -> Result<Vec
     let mut data_lists: Vec<Vec<Vec<u8>>> = vec![Vec::new(); num_parts];
     for (i, &(exr_image, exr_header)) in parts.iter().enumerate() {
         let mut e = String::new();
-        let ret = encode_chunk(exr_image, exr_header, chunk_count[i], chunk_offset, num_parts > 1, &mut offset_data[i], &mut data_lists[i], &mut total_size, &mut e, as_tinyexr);
+        let ret = encode_chunk(
+            exr_image,
+            exr_header,
+            chunk_count[i],
+            chunk_offset,
+            num_parts > 1,
+            &mut offset_data[i],
+            &mut data_lists[i],
+            &mut total_size,
+            &mut e,
+            as_tinyexr,
+        );
         if ret != 0 {
-            return Err(ExrError { code: ERROR_SERIALIZATION_FAILED, message: e });
+            return Err(ExrError {
+                code: ERROR_SERIALIZATION_FAILED,
+                message: e,
+            });
         }
         chunk_offset = total_size;
     }
@@ -856,21 +1092,46 @@ fn save_parts(parts: &[(&ExrImage, &ExrHeader)], as_tinyexr: bool) -> Result<Vec
 /// as the original names it), three (red, green and blue) or four (and alpha). They are
 /// stored as halves if `save_as_fp16`, as floats if not; compressed with ZIP, or not at all
 /// when the image is less than sixteen pixels each way.
-pub fn save_exr_to_memory(data: &[f32], width: i32, height: i32, components: i32, save_as_fp16: bool) -> Result<Vec<u8>, ExrError> {
+pub fn save_exr_to_memory(
+    data: &[f32],
+    width: i32,
+    height: i32,
+    components: i32,
+    save_as_fp16: bool,
+) -> Result<Vec<u8>, ExrError> {
     if !(components == 1 || components == 3 || components == 4) {
-        return Err(ExrError { code: ERROR_INVALID_ARGUMENT, message: format!("Unsupported component value : {components}\n") });
+        return Err(ExrError {
+            code: ERROR_INVALID_ARGUMENT,
+            message: format!("Unsupported component value : {components}\n"),
+        });
     }
     // (The original trusts these, and reads past `data` or stops when they are wrong.)
-    if width < 1 || height < 1 || (data.len() as u64) < width as u64 * height as u64 * components as u64 {
-        return Err(ExrError { code: ERROR_INVALID_ARGUMENT, message: "The image has fewer floats than its width, height and components say.".to_string() });
+    if width < 1
+        || height < 1
+        || (data.len() as u64) < width as u64 * height as u64 * components as u64
+    {
+        return Err(ExrError {
+            code: ERROR_INVALID_ARGUMENT,
+            message: "The image has fewer floats than its width, height and components say."
+                .to_string(),
+        });
     }
 
-    let mut header = ExrHeader { compression_type: if width < 16 && height < 16 { COMPRESSIONTYPE_NONE } else { COMPRESSIONTYPE_ZIP }, ..ExrHeader::default() };
+    let mut header = ExrHeader {
+        compression_type: if width < 16 && height < 16 {
+            COMPRESSIONTYPE_NONE
+        } else {
+            COMPRESSIONTYPE_ZIP
+        },
+        ..ExrHeader::default()
+    };
 
     let pixels = width as usize * height as usize;
     let components_size = components as usize;
     // The channels one by one, in the order of the pixel's floats.
-    let split: Vec<Vec<f32>> = (0..components_size).map(|k| (0..pixels).map(|i| data[components_size * i + k]).collect()).collect();
+    let split: Vec<Vec<f32>> = (0..components_size)
+        .map(|k| (0..pixels).map(|i| data[components_size * i + k]).collect())
+        .collect();
 
     // Must be (A)BGR order, since most of EXR viewers expect this channel order.
     let names: &[&str] = match components {
@@ -878,17 +1139,42 @@ pub fn save_exr_to_memory(data: &[f32], width: i32, height: i32, components: i32
         3 => &["B", "G", "R"],
         _ => &["A"],
     };
-    let image = ExrImage { images: split.into_iter().rev().map(ChannelData::Float).collect(), width, height, num_channels: components, ..ExrImage::default() };
+    let image = ExrImage {
+        images: split.into_iter().rev().map(ChannelData::Float).collect(),
+        width,
+        height,
+        num_channels: components,
+        ..ExrImage::default()
+    };
 
-    header.channels = names.iter().map(|name| ChannelInfo { name: name.to_string(), pixel_type: PIXELTYPE_FLOAT, x_sampling: 1, y_sampling: 1, p_linear: 0 }).collect();
+    header.channels = names
+        .iter()
+        .map(|name| ChannelInfo {
+            name: name.to_string(),
+            pixel_type: PIXELTYPE_FLOAT,
+            x_sampling: 1,
+            y_sampling: 1,
+            p_linear: 0,
+        })
+        .collect();
     // pixel type of input image
     header.pixel_types = vec![PIXELTYPE_FLOAT; components_size];
     // pixel type of output image to be stored in .EXR
-    header.requested_pixel_types = vec![if save_as_fp16 { PIXELTYPE_HALF } else { PIXELTYPE_FLOAT }; components_size];
+    header.requested_pixel_types = vec![
+        if save_as_fp16 {
+            PIXELTYPE_HALF
+        } else {
+            PIXELTYPE_FLOAT
+        };
+        components_size
+    ];
 
     let memory = save_exr_image_to_memory(&image, &header)?;
     if memory.len() > i32::MAX as usize {
-        return Err(ExrError { code: ERROR_DATA_TOO_LARGE, message: String::new() });
+        return Err(ExrError {
+            code: ERROR_DATA_TOO_LARGE,
+            message: String::new(),
+        });
     }
     Ok(memory)
 }

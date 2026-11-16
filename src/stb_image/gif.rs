@@ -1,7 +1,10 @@
 //! The GIF reader: `stbi__gif_*`, public domain by Jean-Marc Lienher, simplified and shrunk by
 //! stb. Every frame of an animation, or the first.
 
-use super::{addints_valid, convert_format, mad3sizes_valid, vertical_flip, Context, ImageType, Info, STBI_MAX_DIMENSIONS};
+use super::{
+    addints_valid, convert_format, mad3sizes_valid, vertical_flip, Context, ImageType, Info,
+    STBI_MAX_DIMENSIONS,
+};
 
 /// Every frame of a GIF file: [`super::load_gif_from_memory`].
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -335,7 +338,11 @@ fn process_gif_raster(s: &mut Context, g: &mut Gif) -> bool {
             oldcode = code;
 
             // turn decoded bytes into pixels
-            let table = if g.color_table == Table::Local { &g.lpal } else { &g.pal };
+            let table = if g.color_table == Table::Local {
+                &g.lpal
+            } else {
+                &g.pal
+            };
             while revind < 4096 && g.cur_y < g.max_y {
                 let col = revbuf[revind];
                 if i32::from(col) != g.transparent {
@@ -481,7 +488,11 @@ fn gif_load_next(s: &mut Context, g: &mut Gif, saved: Option<&[u8]>) -> Next {
                     }
                 }
 
-                return if process_gif_raster(s, g) { Next::Frame } else { Next::Failed };
+                return if process_gif_raster(s, g) {
+                    Next::Frame
+                } else {
+                    Next::Failed
+                };
             }
 
             0x21 => {
@@ -591,7 +602,14 @@ pub(crate) fn load_gif_main(s: &mut Context, req_comp: i32) -> Option<LoadedGif>
     }
 
     let channels_in_file = if g.w != 0 { 4 } else { 0 };
-    Some(LoadedGif { x, y, frames: layers, channels_in_file, delays, data: out })
+    Some(LoadedGif {
+        x,
+        y,
+        frames: layers,
+        channels_in_file,
+        delays,
+        data: out,
+    })
 }
 
 /// `stbi__gif_load`: the first frame; the size goes into the context.
@@ -615,7 +633,15 @@ pub(crate) fn gif_load(s: &mut Context, req_comp: i32) -> Option<(Vec<u8>, i32)>
 /// `stbi__gif_info`
 pub(crate) fn gif_info(s: &mut Context) -> Option<Info> {
     let (x, y) = gif_info_raw(s)?;
-    Some(Info { kind: ImageType::Gif, x, y, comp: 4, is_16_bit: false, is_hdr: false, is_iphone_png: false })
+    Some(Info {
+        kind: ImageType::Gif,
+        x,
+        y,
+        comp: 4,
+        is_16_bit: false,
+        is_hdr: false,
+        is_iphone_png: false,
+    })
 }
 
 #[cfg(test)]
@@ -667,7 +693,10 @@ mod tests {
         assert_eq!((image.x, image.y, image.channels_in_file), (2, 1, 4));
         assert_eq!(image.data, [10, 20, 30, 255, 40, 50, 60, 255]);
         let all = load_gif_from_memory(&file, 3, &LoadOptions::default()).unwrap();
-        assert_eq!((all.x, all.y, all.frames, all.delays.clone()), (2, 1, 2, vec![50, 70]));
+        assert_eq!(
+            (all.x, all.y, all.frames, all.delays.clone()),
+            (2, 1, 2, vec![50, 70])
+        );
         assert_eq!(all.data, [10, 20, 30, 40, 50, 60, 40, 50, 60, 40, 50, 60]);
     }
 }

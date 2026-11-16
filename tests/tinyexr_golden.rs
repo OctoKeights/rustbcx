@@ -36,7 +36,11 @@ fn writes_as_tinyexr_does() {
 
 #[test]
 fn reads_as_tinyexr_does() {
-    let printed = made_up::tinyexr_read("tinyexr_read_small", 100, include_bytes!("data/exr_files.bin"));
+    let printed = made_up::tinyexr_read(
+        "tinyexr_read_small",
+        100,
+        include_bytes!("data/exr_files.bin"),
+    );
     let expected = include_str!("data/tinyexr_read_expected.txt");
     for (line, (ours, theirs)) in printed.lines().zip(expected.lines()).enumerate() {
         assert_eq!(ours, theirs, "line {}", line + 1);
@@ -48,13 +52,15 @@ fn reads_as_tinyexr_does() {
 fn zfp_is_written_and_read_as_tinyexr_does() {
     let printed = made_up::tinyexr_write("tinyexr_zfp_write", 5, 300);
     assert_eq!(printed, include_str!("data/tinyexr_zfp_write_expected.txt"));
-    let printed = made_up::tinyexr_read("tinyexr_zfp_read", 100, include_bytes!("data/exr_zfp.bin"));
+    let printed =
+        made_up::tinyexr_read("tinyexr_zfp_read", 100, include_bytes!("data/exr_zfp.bin"));
     assert_eq!(printed, include_str!("data/tinyexr_zfp_read_expected.txt"));
 }
 
 #[test]
 fn files_of_many_parts_are_written_and_read_as_tinyexr_does() {
-    let printed = made_up::tinyexr_parts("tinyexr_parts", 7, 60, include_bytes!("data/exr_parts.bin"));
+    let printed =
+        made_up::tinyexr_parts("tinyexr_parts", 7, 60, include_bytes!("data/exr_parts.bin"));
     assert_eq!(printed, include_str!("data/tinyexr_parts_expected.txt"));
 }
 
@@ -71,7 +77,10 @@ fn badly_damaged_parts_and_deep_files_are_read_or_refused() {
     use rustbcx::tinyexr;
     let mut r = made_up::Random { state: 5 };
     let (mut read, mut refused) = (0, 0);
-    for (file, with_wish) in [(&include_bytes!("data/exr_parts.bin")[..], true), (&include_bytes!("data/exr_deep.bin")[..], false)] {
+    for (file, with_wish) in [
+        (&include_bytes!("data/exr_parts.bin")[..], true),
+        (&include_bytes!("data/exr_deep.bin")[..], false),
+    ] {
         for _ in 0..6 {
             let mut at = 0;
             while at < file.len() {
@@ -90,9 +99,17 @@ fn badly_damaged_parts_and_deep_files_are_read_or_refused() {
                     continue;
                 }
                 for _ in 0..1 + r.next() % 4 {
-                    let within = if r.next().is_multiple_of(2) { bytes.len().min(500) } else { bytes.len() };
+                    let within = if r.next().is_multiple_of(2) {
+                        bytes.len().min(500)
+                    } else {
+                        bytes.len()
+                    };
                     let place = r.next() as usize % within;
-                    bytes[place] = if r.next().is_multiple_of(4) { 0 } else { r.next() as u8 };
+                    bytes[place] = if r.next().is_multiple_of(4) {
+                        0
+                    } else {
+                        r.next() as u8
+                    };
                 }
                 if r.next().is_multiple_of(8) {
                     bytes.truncate(r.next() as usize % bytes.len());
@@ -108,7 +125,9 @@ fn badly_damaged_parts_and_deep_files_are_read_or_refused() {
                     refused += 1;
                     continue;
                 };
-                let Ok(mut headers) = tinyexr::parse_exr_multipart_header_from_memory(&version, &bytes) else {
+                let Ok(mut headers) =
+                    tinyexr::parse_exr_multipart_header_from_memory(&version, &bytes)
+                else {
                     refused += 1;
                     continue;
                 };
@@ -153,9 +172,17 @@ fn badly_damaged_files_are_read_or_refused() {
             // A few bytes made up, more often near the start, where the header and the table
             // of offsets are; now and then the end cut off.
             for _ in 0..1 + r.next() % 4 {
-                let within = if r.next().is_multiple_of(2) { bytes.len().min(500) } else { bytes.len() };
+                let within = if r.next().is_multiple_of(2) {
+                    bytes.len().min(500)
+                } else {
+                    bytes.len()
+                };
                 let place = r.next() as usize % within;
-                bytes[place] = if r.next().is_multiple_of(4) { 0 } else { r.next() as u8 };
+                bytes[place] = if r.next().is_multiple_of(4) {
+                    0
+                } else {
+                    r.next() as u8
+                };
             }
             if r.next().is_multiple_of(8) {
                 bytes.truncate(r.next() as usize % bytes.len());
@@ -174,7 +201,11 @@ fn badly_damaged_files_are_read_or_refused() {
                 continue;
             }
             // (Tinyexr's way and the format's, by turns.)
-            let loaded = if r.next().is_multiple_of(2) { tinyexr::load_exr_image_from_memory(&mut header, &bytes) } else { tinyexr::load_exr_image_from_memory_as_tinyexr(&mut header, &bytes) };
+            let loaded = if r.next().is_multiple_of(2) {
+                tinyexr::load_exr_image_from_memory(&mut header, &bytes)
+            } else {
+                tinyexr::load_exr_image_from_memory_as_tinyexr(&mut header, &bytes)
+            };
             match loaded {
                 Ok(_) => read += 1,
                 Err(_) => refused += 1,

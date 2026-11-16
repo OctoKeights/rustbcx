@@ -56,7 +56,11 @@ pub fn mz_crc32(crc: u32, ptr: &[u8]) -> u32 {
 /// at any cost in time. Below 0 is miniz's default, which is not quite level 6: it searches
 /// as level 6 does and parses as the low levels do.
 pub fn compress(source: &[u8], level: i32) -> Vec<u8> {
-    tdef::tdefl_compress_mem_to_heap(source, tdef::TDEFL_COMPUTE_ADLER32 | tdef::tdefl_create_comp_flags_from_zip_params(level, 15, tdef::MZ_DEFAULT_STRATEGY))
+    tdef::tdefl_compress_mem_to_heap(
+        source,
+        tdef::TDEFL_COMPUTE_ADLER32
+            | tdef::tdefl_create_comp_flags_from_zip_params(level, 15, tdef::MZ_DEFAULT_STRATEGY),
+    )
 }
 
 /// Decompresses a zlib stream that holds no more than `max_len` bytes. None when the stream is
@@ -76,10 +80,15 @@ mod tests {
         assert_eq!(mz_crc32(MZ_CRC32_INIT, b""), 0);
         assert_eq!(mz_crc32(MZ_CRC32_INIT, b"123456789"), 0xCBF4_3926);
         // In pieces as in one go, across the place the Adler sums are brought down.
-        let data: Vec<u8> = (0..20_000u32).map(|i| (i * 7 + i / 255) as u8 | 0x80).collect();
+        let data: Vec<u8> = (0..20_000u32)
+            .map(|i| (i * 7 + i / 255) as u8 | 0x80)
+            .collect();
         let whole = (mz_adler32(1, &data), mz_crc32(0, &data));
         let (a, b) = data.split_at(5553);
-        assert_eq!((mz_adler32(mz_adler32(1, a), b), mz_crc32(mz_crc32(0, a), b)), whole);
+        assert_eq!(
+            (mz_adler32(mz_adler32(1, a), b), mz_crc32(mz_crc32(0, a), b)),
+            whole
+        );
     }
 
     #[test]
@@ -99,7 +108,11 @@ mod tests {
         let mut sizes = Vec::new();
         for level in -1..=10 {
             let packed = compress(&data, level);
-            assert_eq!(uncompress(&packed, data.len()).as_deref(), Some(&data[..]), "level {level}");
+            assert_eq!(
+                uncompress(&packed, data.len()).as_deref(),
+                Some(&data[..]),
+                "level {level}"
+            );
             sizes.push(packed.len());
         }
         // Level 0 stores, and the best level is the smallest.
@@ -123,10 +136,17 @@ mod tests {
         // overflows and no more than the room given comes out.
         let mut state = 0x9E37_79B9_7F4A_7C15u64;
         let mut next = move || {
-            state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            state = state
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             (state >> 33) as u32
         };
-        let good = tdef::tdefl_compress_mem_to_heap(&(0..3000u32).map(|i| (i % 251) as u8 ^ (i / 97) as u8).collect::<Vec<u8>>(), 128);
+        let good = tdef::tdefl_compress_mem_to_heap(
+            &(0..3000u32)
+                .map(|i| (i % 251) as u8 ^ (i / 97) as u8)
+                .collect::<Vec<u8>>(),
+            128,
+        );
         for i in 0..6000 {
             let stream: Vec<u8> = if i % 2 == 0 {
                 (0..1 + next() % 80).map(|_| next() as u8).collect()
@@ -148,23 +168,37 @@ mod tests {
 
     #[test]
     fn input_in_pieces_gives_the_same_stream() {
-        let data: Vec<u8> = (0..100_000u32).map(|i| (i.wrapping_mul(i) >> 7) as u8 ^ (i / 1000) as u8).collect();
+        let data: Vec<u8> = (0..100_000u32)
+            .map(|i| (i.wrapping_mul(i) >> 7) as u8 ^ (i / 1000) as u8)
+            .collect();
         let flags = tdef::tdefl_create_comp_flags_from_zip_params(6, 15, tdef::MZ_DEFAULT_STRATEGY);
         let whole = tdef::tdefl_compress_mem_to_heap(&data, flags);
         let mut comp = tdef::TdeflCompressor::new(flags);
         for piece in data.chunks(777) {
-            assert_eq!(comp.compress_buffer(piece, tdef::TdeflFlush::NoFlush), tdef::TdeflStatus::Okay);
+            assert_eq!(
+                comp.compress_buffer(piece, tdef::TdeflFlush::NoFlush),
+                tdef::TdeflStatus::Okay
+            );
         }
-        assert_eq!(comp.compress_buffer(&[], tdef::TdeflFlush::Finish), tdef::TdeflStatus::Done);
+        assert_eq!(
+            comp.compress_buffer(&[], tdef::TdeflFlush::Finish),
+            tdef::TdeflStatus::Done
+        );
         assert_eq!(comp.take_output(), whole);
         // Once finished, it takes no more.
-        assert_eq!(comp.compress_buffer(b"more", tdef::TdeflFlush::Finish), tdef::TdeflStatus::BadParam);
+        assert_eq!(
+            comp.compress_buffer(b"more", tdef::TdeflFlush::Finish),
+            tdef::TdeflStatus::BadParam
+        );
         assert_eq!(comp.prev_return_status(), tdef::TdeflStatus::BadParam);
         assert!(comp.take_output().is_empty());
         // A sync flush in the middle leaves a stream that still holds everything.
         let mut comp = tdef::TdeflCompressor::new(flags);
         comp.compress_buffer(&data[..40_000], tdef::TdeflFlush::SyncFlush);
         comp.compress_buffer(&data[40_000..], tdef::TdeflFlush::Finish);
-        assert_eq!(uncompress(&comp.take_output(), data.len()).as_deref(), Some(&data[..]));
+        assert_eq!(
+            uncompress(&comp.take_output(), data.len()).as_deref(),
+            Some(&data[..])
+        );
     }
 }
