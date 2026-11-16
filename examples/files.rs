@@ -161,12 +161,14 @@ fn exr(out: &str) {
                 if file_type == tinyexr::PIXELTYPE_FLOAT
                     && compression_type != tinyexr::COMPRESSIONTYPE_PXR24
                 {
-                    for (pixel, read) in rgba.chunks_exact(4).enumerate() {
+                    for (pixel, read) in rgba.as_chunks::<4>().0.iter().enumerate() {
                         assert_eq!(read[..3], values[pixel * 3..pixel * 3 + 3], "{name}");
                     }
                 }
                 let plane = |k: usize| {
-                    rgba.chunks_exact(4)
+                    rgba.as_chunks::<4>()
+                        .0
+                        .iter()
                         .flat_map(move |pixel| pixel[k].to_le_bytes())
                 };
                 let planes: Vec<u8> = plane(1).chain(plane(2)).chain(plane(0)).collect();
@@ -196,7 +198,9 @@ fn main() {
                 }
             };
         let plane = |k: usize| {
-            rgba.chunks_exact(4)
+            rgba.as_chunks::<4>()
+                .0
+                .iter()
                 .flat_map(move |pixel| pixel[k].to_le_bytes())
         };
         let read: Vec<u8> = plane(1).chain(plane(2)).chain(plane(0)).collect();
@@ -287,7 +291,7 @@ fn main() {
                         // BC7 and BC6H blocks have to be of a mode: mode 6 for BC7 and mode 11 for
                         // BC6H.
                         if format == TextureFormat::Bc7 {
-                            for block in bytes.chunks_exact_mut(16) {
+                            for block in bytes.as_chunks_mut::<16>().0.iter_mut() {
                                 block[0] = (block[0] & 0x80) | 0x40;
                             }
                         }
@@ -295,7 +299,7 @@ fn main() {
                             format,
                             TextureFormat::Bc6hUnsigned | TextureFormat::Bc6hSigned
                         ) {
-                            for block in bytes.chunks_exact_mut(16) {
+                            for block in bytes.as_chunks_mut::<16>().0.iter_mut() {
                                 block[0] = (block[0] & 0xe0) | 0x03;
                             }
                         }

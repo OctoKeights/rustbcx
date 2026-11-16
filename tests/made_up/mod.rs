@@ -245,15 +245,8 @@ pub fn ert(seed: u64, blocks: u32) -> String {
         };
         let ok = match format {
             0 => {
-                for (block, pixels) in packed.chunks_exact_mut(8).zip(&px) {
-                    rgbcx_encoder.encode_bc1(
-                        level,
-                        block.try_into().unwrap(),
-                        pixels,
-                        false,
-                        false,
-                        None,
-                    );
+                for (block, pixels) in packed.as_chunks_mut::<8>().0.iter_mut().zip(&px) {
+                    rgbcx_encoder.encode_bc1(level, block, pixels, false, false, None);
                 }
                 set_weights(&mut p, 3);
                 ert::reduce_entropy(
@@ -272,8 +265,8 @@ pub fn ert(seed: u64, blocks: u32) -> String {
                 )
             }
             1 => {
-                for (block, pixels) in packed.chunks_exact_mut(8).zip(&px) {
-                    rgbcx::encode_bc4(block.try_into().unwrap(), pixels.as_flattened(), 4);
+                for (block, pixels) in packed.as_chunks_mut::<8>().0.iter_mut().zip(&px) {
+                    rgbcx::encode_bc4(block, pixels.as_flattened(), 4);
                 }
                 set_weights(&mut p, 1);
                 ert::reduce_entropy(
@@ -292,8 +285,8 @@ pub fn ert(seed: u64, blocks: u32) -> String {
                 )
             }
             2 => {
-                for (block, pixels) in packed.chunks_exact_mut(16).zip(&px) {
-                    bc7_encoder.compress_block(block.try_into().unwrap(), pixels, &bc7_params);
+                for (block, pixels) in packed.as_chunks_mut::<16>().0.iter_mut().zip(&px) {
+                    bc7_encoder.compress_block(block, pixels, &bc7_params);
                 }
                 set_weights(&mut p, 4);
                 ert::reduce_entropy(
@@ -314,8 +307,8 @@ pub fn ert(seed: u64, blocks: u32) -> String {
                 )
             }
             3 => {
-                for (block, pixels) in packed.chunks_exact_mut(16).zip(&px) {
-                    rgbcx_encoder.encode_bc3(level, block.try_into().unwrap(), pixels);
+                for (block, pixels) in packed.as_chunks_mut::<16>().0.iter_mut().zip(&px) {
+                    rgbcx_encoder.encode_bc3(level, block, pixels);
                 }
                 // The alpha half, against the alpha of the pixels put in the first channel.
                 let alpha: Vec<[u8; 4]> = pixels.iter().map(|pixel| [pixel[3], 0, 0, 0]).collect();
@@ -352,8 +345,8 @@ pub fn ert(seed: u64, blocks: u32) -> String {
                 ) && alpha_ok
             }
             _ => {
-                for (block, pixels) in packed.chunks_exact_mut(16).zip(&px) {
-                    rgbcx::encode_bc5(block.try_into().unwrap(), pixels.as_flattened(), 0, 1, 4);
+                for (block, pixels) in packed.as_chunks_mut::<16>().0.iter_mut().zip(&px) {
+                    rgbcx::encode_bc5(block, pixels.as_flattened(), 0, 1, 4);
                 }
                 set_weights(&mut p, 2);
                 ert::reduce_entropy(
@@ -2161,9 +2154,8 @@ pub fn make_tga(r: &mut Random, f: &mut Vec<u8>) {
     }
     let id_length = r.next() % 3;
     f.push(id_length as u8);
-    let bytes_per_pixel;
     let mut pal_len = 0;
-    if indexed {
+    let bytes_per_pixel = if indexed {
         let pal_bits = PALETTE_BITS[(r.next() % 5) as usize];
         let index_bits = if r.next() % 4 == 0 { 16 } else { 8 };
         let pal_start = if r.next() % 4 == 0 { r.next() % 3 } else { 0 };
@@ -2183,7 +2175,7 @@ pub fn make_tga(r: &mut Random, f: &mut Vec<u8>) {
         for _ in 0..id_length + pal_start + pal_len * entry {
             f.push((r.next() >> 7) as u8);
         }
-        bytes_per_pixel = index_bits / 8;
+        index_bits / 8
     } else {
         let grey = r.next() % 3 == 0;
         let bits = if grey {
@@ -2209,8 +2201,8 @@ pub fn make_tga(r: &mut Random, f: &mut Vec<u8>) {
         for _ in 0..id_length {
             f.push((r.next() >> 7) as u8);
         }
-        bytes_per_pixel = (bits + 7) / 8;
-    }
+        (bits + 7) / 8
+    };
     let mut done = 0;
     while done < w * h {
         if !rle {
