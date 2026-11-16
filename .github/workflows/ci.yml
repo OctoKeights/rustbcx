@@ -1,7 +1,7 @@
-# Checks every push and pull request: the formatting (the Rust style guide's, by rustfmt), clippy,
-# the documentation and the tests, the golden tests against the C originals among them. The
-# comparison with the originals themselves (compare/compare.sh) needs their checkouts and is not
-# run here.
+# Checks every push and pull request, with the Rust of rust-toolchain.toml: the formatting (the
+# Rust style guide's, by rustfmt), clippy, the documentation and the tests, the golden tests
+# against the C originals among them. The comparison with the originals themselves
+# (compare/compare.sh) needs their checkouts and is not run here.
 name: CI
 
 on:
@@ -16,8 +16,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
+      # The version in rust-toolchain.toml.
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: "1.100"
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
       - name: Formatting
@@ -41,4 +43,5 @@ jobs:
       - uses: dtolnay/rust-toolchain@nightly
       - uses: Swatinem/rust-cache@v2
       - name: Build and test with nightly-simd
-        run: cargo test --release --features nightly-simd --lib bc7e
+        # (+nightly over rust-toolchain.toml's version.)
+        run: cargo +nightly test --release --features nightly-simd --lib bc7e

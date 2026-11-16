@@ -1,0 +1,5 @@
+# The Rust this repository is developed and checked with. (Only here: crates that depend on
+# rustbcx build it with their own.)
+[toolchain]
+channel = "1.100"
+components = ["rustfmt", "clippy"]
