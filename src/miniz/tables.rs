@@ -77,7 +77,8 @@ pub(crate) const S_TDEFL_SMALL_DIST_EXTRA: [u8; 512] = [
     7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
 ];
 
-/// The symbol of a match distance (less 1) of 512 and above, by its high bits: `s_tdefl_large_dist_sym`.
+/// The symbol of a match distance (less 1) of 512 and
+/// above, by its high bits: `s_tdefl_large_dist_sym`.
 #[rustfmt::skip]
 pub(crate) const S_TDEFL_LARGE_DIST_SYM: [u8; 128] = [
     0, 0, 18, 19, 20, 20, 21, 21, 22, 22, 22, 22, 23, 23, 23, 23, 24, 24, 24, 24, 24, 24, 24, 24, 25, 25, 25, 25, 25, 25, 25, 25,

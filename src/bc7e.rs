@@ -696,7 +696,8 @@ fn compute_least_squares_endpoints_rgba(
     xh: &mut Vec4F,
     colors: &[ColorQuadI],
 ) {
-    // Least squares using normal equations: http://www.cs.cornell.edu/~bindel/class/cs3220-s12/notes/lec10.pdf
+    // Least squares using normal equations:
+    // http://www.cs.cornell.edu/~bindel/class/cs3220-s12/notes/lec10.pdf
     // I did this in matrix form first, expanded out all the ops, then optimized it a bit.
     let (mut z00, mut z10, mut z11) = (0.0f32, 0.0f32, 0.0f32);
     let (mut q00_r, mut t_r) = (0.0f32, 0.0f32);
@@ -804,7 +805,8 @@ fn compute_least_squares_endpoints_a(
     selector_weights: &[f32],
     colors: &[ColorQuadI],
 ) -> (f32, f32) {
-    // Least squares using normal equations: http://www.cs.cornell.edu/~bindel/class/cs3220-s12/notes/lec10.pdf
+    // Least squares using normal equations:
+    // http://www.cs.cornell.edu/~bindel/class/cs3220-s12/notes/lec10.pdf
     // I did this in matrix form first, expanded out all the ops, then optimized it a bit.
     let (mut z00, mut z10, mut z11) = (0.0f32, 0.0f32, 0.0f32);
     let (mut q00_a, mut t_a) = (0.0f32, 0.0f32);
@@ -1880,7 +1882,8 @@ fn fix_degenerate_endpoints(
 ) {
     if mode == 1 || mode == 4 {
         // also mode 2
-        // fix degenerate case where the input collapses to a single colorspace voxel, and we loose all freedom (test with grayscale ramps)
+        // fix degenerate case where the input collapses to a single colorspace
+        // voxel, and we loose all freedom (test with grayscale ramps)
         let iscale = iscale as i32;
         for i in 0..3 {
             if trial_min_color[i] == trial_max_color[i] {
@@ -1955,7 +1958,8 @@ fn find_optimal_solution(
     if params.has_pbits {
         // Notes: The pbit controls which quantization intervals are selected.
         // total_levels=2^(comp_bits+1), where comp_bits=4 for mode 0, etc.
-        // pbit 0: v=(b*2)/(total_levels-1), pbit 1: v=(b*2+1)/(total_levels-1) where b is the component bin from [0,total_levels/2-1] and v is the [0,1] component value
+        // pbit 0: v=(b*2)/(total_levels-1), pbit 1: v=(b*2+1)/(total_levels-1) where b is
+        // the component bin from [0,total_levels/2-1] and v is the [0,1] component value
         // rearranging you get for pbit 0: b=floor(v*(total_levels-1)/2+.5)
         // rearranging you get for pbit 1: b=floor((v*(total_levels-1)-1)/2+.5)
         let iscalep = (1i32 << (params.comp_bits + 1)) - 1;
@@ -2602,7 +2606,8 @@ fn color_cell_compression_est(
 
     let mut total_errf = 0.0f32;
 
-    // We don't handle perceptual very well here, but the difference is very slight (<.05 dB avg Luma PSNR across a large corpus) and the perf lost was high (2x slower).
+    // We don't handle perceptual very well here, but the difference is very slight (<.05
+    // dB avg Luma PSNR across a large corpus) and the perf lost was high (2x slower).
     if params.weights[0] != 1 || params.weights[1] != 1 || params.weights[2] != 1 {
         let wr = params.weights[0] as f32;
         let wg = params.weights[1] as f32;
@@ -2695,7 +2700,8 @@ fn color_cell_compression_est_mode7(
 
     let mut total_errf = 0.0f32;
 
-    // We don't handle perceptual very well here, but the difference is very slight (<.05 dB avg Luma PSNR across a large corpus) and the perf lost was high (2x slower).
+    // We don't handle perceptual very well here, but the difference is very slight (<.05
+    // dB avg Luma PSNR across a large corpus) and the perf lost was high (2x slower).
     if !params.perceptual
         && (params.weights[0] != 1
             || params.weights[1] != 1

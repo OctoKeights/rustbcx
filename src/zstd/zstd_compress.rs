@@ -158,7 +158,8 @@ fn adjust_cparams_internal(
     }
 
     if c_par.window_log < ZSTD_WINDOWLOG_ABSOLUTEMIN {
-        c_par.window_log = ZSTD_WINDOWLOG_ABSOLUTEMIN; // minimum wlog required for valid frame header
+        // minimum wlog required for valid frame header
+        c_par.window_log = ZSTD_WINDOWLOG_ABSOLUTEMIN;
     }
 
     // (The original then keeps the hash log of the strategies that search by rows under a
@@ -1951,7 +1952,8 @@ impl CCtx {
                     }
                 };
 
-                // note: do not merge block reductions (for example the size of the header) into `savings`
+                // note: do not merge block reductions (for
+                // example the size of the header) into `savings`
                 savings += block_size as i64 - c_size as i64;
 
                 ip += block_size;
@@ -1982,7 +1984,8 @@ impl CCtx {
         let mut pos = 0usize;
 
         if dst.len() < ZSTD_FRAMEHEADERSIZE_MAX {
-            return Err(CError::DstSizeTooSmall); // dst buf is too small to fit worst-case frame header size
+            // dst buf is too small to fit worst-case frame header size
+            return Err(CError::DstSizeTooSmall);
         }
         write_le32(dst, 0, ZSTD_MAGICNUMBER);
         pos += 4;

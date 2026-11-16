@@ -424,7 +424,8 @@ fn decode_frame(out: &mut OStream, input: &mut IStream, dict: &Dictionary) -> R<
 
 /// `decode_data_frame`: decode a frame that contains compressed data. Not all frames do as
 /// there are skippable frames.
-/// See https://github.com/facebook/zstd/blob/dev/doc/zstd_compression_format.md#general-structure-of-zstandard-frame-format
+/// See "General Structure of Zstandard Frame format" in
+/// <https://github.com/facebook/zstd/blob/dev/doc/zstd_compression_format.md>.
 fn decode_data_frame(out: &mut OStream, input: &mut IStream, dict: &Dictionary) -> R<()> {
     // Initialize the context that needs to be carried from block to block
     let mut ctx = init_frame_context(input, dict)?;
@@ -500,8 +501,8 @@ fn parse_frame_header(input: &mut IStream) -> R<FrameHeader> {
         let exponent = window_descriptor >> 3;
         let mantissa = window_descriptor & 7;
 
-        // Use the algorithm from the specification to compute window size
-        // https://github.com/facebook/zstd/blob/dev/doc/zstd_compression_format.md#window_descriptor
+        // Use the algorithm from the specification to compute window size ("Window_Descriptor" in
+        // https://github.com/facebook/zstd/blob/dev/doc/zstd_compression_format.md)
         let window_base = 1u64 << (10 + exponent);
         let window_add = (window_base / 8) * u64::from(mantissa);
         header.window_size = window_base + window_add;
@@ -876,8 +877,9 @@ static SEQ_MATCH_LENGTH_DEFAULT_DIST: [i16; 53] = [
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, -1, -1, -1, -1, -1, -1, -1,
 ];
 
-// The sequence decoding baseline and number of additional bits to read/add
-// https://github.com/facebook/zstd/blob/dev/doc/zstd_compression_format.md#the-codes-for-literals-lengths-match-lengths-and-offsets
+// The sequence decoding baseline and number of additional bits to read/add ("The codes for
+// literals lengths, match lengths, and offsets" in
+// https://github.com/facebook/zstd/blob/dev/doc/zstd_compression_format.md)
 static SEQ_LITERAL_LENGTH_BASELINES: [u32; 36] = [
     0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 20, 22, 24, 28, 32, 40, 48, 64,
     128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536,

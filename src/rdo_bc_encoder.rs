@@ -2,7 +2,8 @@
 //! `rdo_bc_encoder.h` (Richard Geldreich, Jr.), bc7enc_rdo's own encoder of images.
 //!
 //! [`RdoBcEncoder`] takes an [`Image`], pads it to whole blocks, packs every block as BC1, BC3,
-//! BC4, BC5 or BC7 (and BC2, which the C++ does not have: see [`BlockFormat::Bc2`]) and, when [`RdoBcParams::rdo_lambda`] is above 0, puts the packed blocks
+//! BC4, BC5 or BC7 (and BC2, which the C++ does not have: see [`BlockFormat::Bc2`])
+//! and, when [`RdoBcParams::rdo_lambda`] is above 0, puts the packed blocks
 //! through the entropy reduction transform ([`crate::ert`]).
 //!
 //! The C++ shares the work out with OpenMP; this does with the standard library's threads, on
@@ -166,7 +167,8 @@ impl RdoBcParams {
             bc45_channel1: 1,
             bc1_mode: Bc1ApproxMode::Ideal,
             use_bc1_3color_mode: true,
-            // We're just turning this on by default now, like NVDXT.EXE used to do back in the old original Xbox days.
+            // We're just turning this on by default now, like
+            // NVDXT.EXE used to do back in the old original Xbox days.
             use_bc1_3color_mode_for_black: true,
             bc1_quality_level: rgbcx::MAX_LEVEL,
             format: BlockFormat::Bc7,
@@ -190,7 +192,8 @@ impl RdoBcParams {
             bc7enc_mode6_only: false,
             rdo_multithreading: true,
             bc7enc_reduce_entropy: false,
-            // By default, if they've compiled in BC7E.ispc, then use that. In a rate distortion sense it's better overall.
+            // By default, if they've compiled in BC7E.ispc, then use
+            // that. In a rate distortion sense it's better overall.
             // https://richg42.blogspot.com/2021/02/average-rate-distortion-curves-for.html
             use_bc7e: true,
             rdo_max_threads: 128,
@@ -762,7 +765,8 @@ impl RdoBcEncoder {
 
         if self.params.format == BlockFormat::Bc7 && self.params.bc7enc_reduce_entropy {
             // Configure the BC7 encoder with some decent parameters for later RDO post-processing.
-            // Textures with alpha are harder for BC7 to handle, so we use more conservative defaults.
+            // Textures with alpha are harder for BC7 to
+            // handle, so we use more conservative defaults.
 
             self.bc7enc_pack_params
                 .mode17_partition_estimation_filterbank = false;
@@ -783,7 +787,8 @@ impl RdoBcEncoder {
             }
 
             if self.params.bc7enc_rdo_bc7_quant_mode6_endpoints {
-                // As a good default, don't quantize mode 6 endpoints if the texture has alpha. This isn't required, but helps mask textures.
+                // As a good default, don't quantize mode 6 endpoints if the
+                // texture has alpha. This isn't required, but helps mask textures.
                 self.bc7enc_pack_params.quant_mode6_endpoints = true;
             }
 
@@ -1066,7 +1071,8 @@ impl RdoBcEncoder {
                 // BC7 RDO
                 if !params.custom_rdo_smooth_block_error_scale {
                     // Attempt to compute a decent conservative smooth block MSE max scaling factor.
-                    // No single smooth block scale setting can work for all textures (unless it's ridiuclously large, killing efficiency).
+                    // No single smooth block scale setting can work for all textures
+                    // (unless it's ridiuclously large, killing efficiency).
                     ert_p.smooth_block_max_mse_scale =
                         lerp(15.0, 50.0, min_f(1.0, ert_p.lambda / 4.0));
                 }

@@ -329,7 +329,8 @@ fn extend_receive(j: &mut Entropy, s: &mut Context, n: i32) -> i32 {
         return 0; // ran out of bits from stream, return 0s intead of continuing
     }
 
-    let sgn = (j.code_buffer >> 31) as i32; // sign bit always in MSB; 0 if MSB clear (positive), 1 if MSB set (negative)
+    // sign bit always in MSB; 0 if MSB clear (positive), 1 if MSB set (negative)
+    let sgn = (j.code_buffer >> 31) as i32;
     let mut k = j.code_buffer.rotate_left(n as u32);
     j.code_buffer = k & !STBI_BMASK[n as usize];
     k &= STBI_BMASK[n as usize];
@@ -595,7 +596,8 @@ fn jpeg_decode_block_prog_ac(
         } else {
             let mut k = j.spec_start;
             loop {
-                let rs = jpeg_huff_decode(j, s, hac); // @OPTIMIZE see if we can use the fast path here, advance-by-r is so slow, eh
+                // @OPTIMIZE see if we can use the fast path here, advance-by-r is so slow, eh
+                let rs = jpeg_huff_decode(j, s, hac);
                 if rs < 0 {
                     return s.err("bad huffman code");
                 }
@@ -1130,7 +1132,8 @@ fn process_marker(z: &mut Jpeg, s: &mut Context, m: u8) -> bool {
                     n += *size;
                 }
                 if n > 256 {
-                    return s.err("bad DHT header"); // Loop over i < n would write past end of values!
+                    // Loop over i < n would write past end of values!
+                    return s.err("bad DHT header");
                 }
                 l -= 17;
                 let table = if tc == 0 {
@@ -1346,7 +1349,8 @@ fn process_frame_header(z: &mut Jpeg, s: &mut Context, scan: Scan) -> bool {
         }
     }
 
-    // check that plane subsampling factors are integer ratios; our resamplers can't deal with fractional ratios
+    // check that plane subsampling factors are integer ratios;
+    // our resamplers can't deal with fractional ratios
     // and I've never seen a non-corrupted JPEG file actually use them
     for i in 0..s.img_n as usize {
         if h_max % z.img_comp[i].h != 0 {
@@ -1500,7 +1504,8 @@ fn decode_jpeg_image(j: &mut Jpeg, s: &mut Context) -> bool {
             }
             if j.e.marker == STBI_MARKER_NONE {
                 j.e.marker = skip_jpeg_junk_at_end(s);
-                // if we reach eof without hitting a marker, stbi__get_marker() below will fail and we'll eventually return 0
+                // if we reach eof without hitting a marker, stbi__get_marker()
+                // below will fail and we'll eventually return 0
             }
             m = get_marker(&mut j.e, s);
             if is_restart(m) {

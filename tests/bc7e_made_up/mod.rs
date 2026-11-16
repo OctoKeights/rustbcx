@@ -2,7 +2,8 @@
 //! comparison with bc7e.ispc (`examples/dump.rs`) and the recorded results (`tests/bc7e_golden.rs`)
 //! pack.
 
-// (The arithmetic is written as dump_bc7e.cpp has it; not every user of this module uses all of it.)
+// (The arithmetic is written as dump_bc7e.cpp has
+// it; not every user of this module uses all of it.)
 #![allow(clippy::manual_is_multiple_of, clippy::needless_range_loop, dead_code)]
 
 use rustbcx::bc7e::CompressBlockParams;

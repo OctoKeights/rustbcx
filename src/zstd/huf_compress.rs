@@ -205,13 +205,15 @@ fn write_ctable(
 
     // Write the raw values as 4-bit fields (max: 15).
     if max_symbol_value > (256 - 128) {
-        return Err(CError::Generic); // should not happen: likely means the source cannot be compressed
+        // should not happen: likely means the source cannot be compressed
+        return Err(CError::Generic);
     }
     if ((max_symbol_value + 1) / 2) + 1 > max_dst_size {
         return Err(CError::DstSizeTooSmall); // not enough space within the dst buffer
     }
     dst[0] = (128 /* special case */ + (max_symbol_value - 1)) as u8;
-    huff_weight[max_symbol_value] = 0; // to be sure it doesn't cause an msan issue in the final combination
+    // to be sure it doesn't cause an msan issue in the final combination
+    huff_weight[max_symbol_value] = 0;
     let mut n = 0;
     while n < max_symbol_value {
         dst[(n / 2) + 1] = (huff_weight[n] << 4).wrapping_add(huff_weight[n + 1]);
@@ -254,7 +256,8 @@ fn set_max_height(huff_node: &mut Nodes, last_non_null: u32, target_nb_bits: u32
             huff_node.at(n).nb_bits = target_nb_bits as u8;
             n -= 1;
         }
-        // n stops at huffNode[n].nbBits <= targetNbBits. Find n so that huffNode[n].nbBits < targetNbBits.
+        // n stops at huffNode[n].nbBits <= targetNbBits.
+        // Find n so that huffNode[n].nbBits < targetNbBits.
         while huff_node.at(n).nb_bits as u32 == target_nb_bits {
             n -= 1;
         }
@@ -341,7 +344,8 @@ fn set_max_height(huff_node: &mut Nodes, last_non_null: u32, target_nb_bits: u32
                         .nb_bits as u32
                         != target_nb_bits - n_bits_to_decrease
                     {
-                        rank_last[n_bits_to_decrease as usize] = NO_SYMBOL; // this rank is now empty
+                        // this rank is now empty
+                        rank_last[n_bits_to_decrease as usize] = NO_SYMBOL;
                     }
                 }
             }
@@ -573,7 +577,8 @@ fn build_ctable_from_tree(
     }
     for n in 0..alphabet_size {
         let node = *huff_node.at(n);
-        ctable[1 + node.byte as usize] = node.nb_bits as u64; // push nbBits per symbol, symbol order
+        // push nbBits per symbol, symbol order
+        ctable[1 + node.byte as usize] = node.nb_bits as u64;
     }
     for n in 0..alphabet_size as usize {
         // Assign value within rank, symbol order.

@@ -122,7 +122,8 @@ fn rescale_freqs(opt: &mut OptState, block: &[u8], opt_level: i32) {
         {
             // base initial cost of literals on direct frequency within src
             let mut lit = 255u32;
-            hist::count_simple(&mut opt.lit_freq, &mut lit, block); // use raw first block to init statistics
+            // use raw first block to init statistics
+            hist::count_simple(&mut opt.lit_freq, &mut lit, block);
             opt.lit_sum = downscale_stats(&mut opt.lit_freq, 255, 8, false);
         }
 
@@ -228,7 +229,8 @@ fn get_match_price(off_base: u32, match_length: u32, opt: &OptState, opt_level: 
             .wrapping_sub(weight(opt.off_code_freq[off_code as usize], opt_level)),
     );
     if opt_level < 2 && off_code >= 20 {
-        price = price.wrapping_add((off_code - 19) * 2 * BITCOST_MULTIPLIER); // handicap for long distance offsets, favor decompression speed
+        // handicap for long distance offsets, favor decompression speed
+        price = price.wrapping_add((off_code - 19) * 2 * BITCOST_MULTIPLIER);
     }
 
     // match Length
@@ -242,7 +244,9 @@ fn get_match_price(off_base: u32, match_length: u32, opt: &OptState, opt_level: 
         );
     }
 
-    price.wrapping_add(BITCOST_MULTIPLIER / 5) // heuristic : make matches a bit more costly to favor less sequences -> faster decompression speed
+    // heuristic : make matches a bit more costly to
+    // favor less sequences -> faster decompression speed
+    price.wrapping_add(BITCOST_MULTIPLIER / 5)
 }
 
 /// `ZSTD_updateStats`.
@@ -354,7 +358,8 @@ fn insert_bt1(
 
     while nb_compares != 0 && match_index >= window_low {
         let next_ptr = 2 * (match_index & bt_mask) as usize;
-        let mut match_length = common_length_smaller.min(common_length_larger); // guaranteed minimum nb of common bytes
+        // guaranteed minimum nb of common bytes
+        let mut match_length = common_length_smaller.min(common_length_larger);
         let m = match_index as usize - base;
         match_length += count(src, ip + match_length, m + match_length, iend);
 
@@ -367,20 +372,26 @@ fn insert_bt1(
 
         if ip + match_length == iend {
             // equal : no way to know if inf or sup
-            break; // drop, to guarantee consistency; miss a bit of compression, but other solutions can corrupt tree
+            // drop, to guarantee consistency; miss a bit of
+            // compression, but other solutions can corrupt tree
+            break;
         }
 
         if src[m + match_length] < src[ip + match_length] {
             // necessarily within buffer
             // match is smaller than current
-            bt[smaller_ptr] = match_index; // update smaller idx
-            common_length_smaller = match_length; // all smaller will now have at least this guaranteed common length
+            // update smaller idx
+            bt[smaller_ptr] = match_index;
+            // all smaller will now have at least this guaranteed common length
+            common_length_smaller = match_length;
             if match_index <= bt_low {
                 smaller_ptr = NOWHERE;
                 break; // beyond tree size, stop searching
             }
-            smaller_ptr = next_ptr + 1; // new "candidate" => larger than match, which was smaller than target
-            match_index = bt[next_ptr + 1]; // new matchIndex, larger than previous and closer to current
+            // new "candidate" => larger than match, which was smaller than target
+            smaller_ptr = next_ptr + 1;
+            // new matchIndex, larger than previous and closer to current
+            match_index = bt[next_ptr + 1];
         } else {
             // match is larger than current
             bt[larger_ptr] = match_index;
@@ -454,7 +465,8 @@ fn insert_bt_and_get_all_matches(
     let match_low = if window_low != 0 { window_low } else { 1 };
     let mut smaller_ptr = 2 * (curr & bt_mask) as usize;
     let mut larger_ptr = smaller_ptr + 1;
-    let mut match_end_idx = curr + 8 + 1; // farthest referenced position of any match => detects repetitive patterns
+    // farthest referenced position of any match => detects repetitive patterns
+    let mut match_end_idx = curr + 8 + 1;
     let mut mnum = 0u32;
     let mut nb_compares = 1u32 << ms.cparams.search_log;
     let mut best_length = (length_to_beat - 1) as usize;
@@ -535,7 +547,8 @@ fn insert_bt_and_get_all_matches(
 
     while nb_compares != 0 && match_index >= match_low {
         let next_ptr = 2 * (match_index & bt_mask) as usize;
-        let mut match_length = common_length_smaller.min(common_length_larger); // guaranteed minimum nb of common bytes
+        // guaranteed minimum nb of common bytes
+        let mut match_length = common_length_smaller.min(common_length_larger);
         let m = match_index as usize - base;
         match_length += count(src, ip + match_length, m + match_length, i_limit);
 
@@ -557,14 +570,18 @@ fn insert_bt_and_get_all_matches(
 
         if src[m + match_length] < src[ip + match_length] {
             // match smaller than current
-            bt[smaller_ptr] = match_index; // update smaller idx
-            common_length_smaller = match_length; // all smaller will now have at least this guaranteed common length
+            // update smaller idx
+            bt[smaller_ptr] = match_index;
+            // all smaller will now have at least this guaranteed common length
+            common_length_smaller = match_length;
             if match_index <= bt_low {
                 smaller_ptr = NOWHERE;
                 break; // beyond tree size, stop the search
             }
-            smaller_ptr = next_ptr + 1; // new candidate => larger than match, which was smaller than current
-            match_index = bt[next_ptr + 1]; // new matchIndex, larger than previous, closer to current
+            // new candidate => larger than match, which was smaller than current
+            smaller_ptr = next_ptr + 1;
+            // new matchIndex, larger than previous, closer to current
+            match_index = bt[next_ptr + 1];
         } else {
             bt[larger_ptr] = match_index;
             common_length_larger = match_length;
@@ -721,7 +738,8 @@ impl OptLdm<'_> {
         min_match: u32,
     ) {
         let pos_diff = curr_pos_in_block.wrapping_sub(self.start_pos_in_block);
-        // Note: ZSTD_match_t actually contains offBase and matchLength (before subtracting MINMATCH).
+        // Note: ZSTD_match_t actually contains offBase
+        // and matchLength (before subtracting MINMATCH).
         let candidate_match_length = self
             .end_pos_in_block
             .wrapping_sub(self.start_pos_in_block)
@@ -1067,7 +1085,8 @@ pub(crate) fn compress_block_opt(
                                     // fill empty positions, for future comparisons
                                     last_pos += 1;
                                     opt[last_pos as usize].price = ZSTD_MAX_PRICE;
-                                    opt[last_pos as usize].litlen = 1; // just needs to be != 0, to mean "not an end of match"
+                                    // just needs to be != 0, to mean "not an end of match"
+                                    opt[last_pos as usize].litlen = 1;
                                 }
                                 let o = &mut opt[pos as usize];
                                 o.mlen = mlen;
@@ -1075,7 +1094,8 @@ pub(crate) fn compress_block_opt(
                                 o.litlen = 0;
                                 o.price = price;
                             } else if opt_level == 0 {
-                                break; // early update abort; gets ~+10% speed for about -0.01 ratio loss
+                                // early update abort; gets ~+10% speed for about -0.01 ratio loss
+                                break;
                             }
                             mlen -= 1;
                         }
@@ -1151,7 +1171,8 @@ pub(crate) fn compress_block_opt(
                 if mlen == 0 {
                     // only literals => must be last "sequence", actually starting a new
                     // stream of sequences
-                    ip = anchor + llen; // last "sequence" is a bunch of literals => don't progress anchor
+                    // last "sequence" is a bunch of literals => don't progress anchor
+                    ip = anchor + llen;
                     continue; // will finish
                 }
 
@@ -1187,7 +1208,8 @@ fn init_stats_ultra(
 ) {
     let mut tmp_rep = *rep; // updated rep codes will sink here
 
-    compress_block_opt(ms, seq_store, &mut tmp_rep, src, istart, src_size, 2, ldm); // generate stats into ms->opt
+    // generate stats into ms->opt
+    compress_block_opt(ms, seq_store, &mut tmp_rep, src, istart, src_size, 2, ldm);
 
     // invalidate first scan from history, only keep entropy stats
     seq_store.reset();

@@ -655,7 +655,8 @@ where
                         .wrapping_sub(prev_block_index as u32)
                         .wrapping_mul(total_block_stride_in_bytes);
 
-                    // Assume the block has 1 match and block_size_to_optimize_in_bytes-match_len literals.
+                    // Assume the block has 1 match and
+                    // block_size_to_optimize_in_bytes-match_len literals.
                     let trial_match_bits = compute_match_cost_estimate(match_dist, len) as f32;
                     let trial_total_bits = (block_size_to_optimize_in_bytes - len) as f32
                         * LITERAL_BITS
@@ -860,7 +861,8 @@ where
                 || best_match_dst_window_ofs > best_second_match_dst_window_ofs
             {
                 if block_size_to_optimize_in_bytes == total_block_stride_in_bytes {
-                    // If the match goes all the way to the end of a block, we can try to continue it on the next encoded block.
+                    // If the match goes all the way to the end of a block,
+                    // we can try to continue it on the next encoded block.
                     if best_match_dst_block_ofs + best_match_len == total_block_stride_in_bytes {
                         prev_match_window_ofs_to_favor_cont =
                             best_match_src_window_ofs.wrapping_add(best_match_len) as i32;
@@ -869,7 +871,8 @@ where
                     }
                 }
             } else if block_size_to_optimize_in_bytes == total_block_stride_in_bytes {
-                // If the match goes all the way to the end of a block, we can try to continue it on the next encoded block.
+                // If the match goes all the way to the end of a block,
+                // we can try to continue it on the next encoded block.
                 if best_second_match_dst_block_ofs + best_second_match_len
                     == total_block_stride_in_bytes
                 {

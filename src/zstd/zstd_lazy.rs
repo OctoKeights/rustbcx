@@ -102,25 +102,32 @@ fn insert_dubt1(
 
     while nb_compares != 0 && match_index > window_low {
         let next_ptr = 2 * (match_index & bt_mask) as usize;
-        let mut match_length = common_length_smaller.min(common_length_larger); // guaranteed minimum nb of common bytes
+        // guaranteed minimum nb of common bytes
+        let mut match_length = common_length_smaller.min(common_length_larger);
         let m = match_index as usize - base;
         match_length += count(src, ip + match_length, m + match_length, iend);
 
         if ip + match_length == iend {
             // equal : no way to know if inf or sup
-            break; // drop, to guarantee consistency; miss a bit of compression, but other solutions can corrupt tree
+            // drop, to guarantee consistency; miss a bit of
+            // compression, but other solutions can corrupt tree
+            break;
         }
 
         if src[m + match_length] < src[ip + match_length] {
             // match is smaller than current
-            bt[smaller_ptr] = match_index; // update smaller idx
-            common_length_smaller = match_length; // all smaller will now have at least this guaranteed common length
+            // update smaller idx
+            bt[smaller_ptr] = match_index;
+            // all smaller will now have at least this guaranteed common length
+            common_length_smaller = match_length;
             if match_index <= bt_low {
                 smaller_ptr = NOWHERE;
                 break; // beyond tree size, stop searching
             }
-            smaller_ptr = next_ptr + 1; // new "candidate" => larger than match, which was smaller than target
-            match_index = bt[next_ptr + 1]; // new matchIndex, larger than previous and closer to current
+            // new "candidate" => larger than match, which was smaller than target
+            smaller_ptr = next_ptr + 1;
+            // new matchIndex, larger than previous and closer to current
+            match_index = bt[next_ptr + 1];
         } else {
             // match is larger than current
             bt[larger_ptr] = match_index;
@@ -177,7 +184,8 @@ fn dubt_find_best_match(
         && ms.chain_table[unsorted_mark] == ZSTD_DUBT_UNSORTED_MARK
         && nb_candidates > 1
     {
-        ms.chain_table[unsorted_mark] = previous_candidate; // the unsortedMark becomes a reversed chain, to move up back to original position
+        // the unsortedMark becomes a reversed chain, to move up back to original position
+        ms.chain_table[unsorted_mark] = previous_candidate;
         previous_candidate = match_index;
         match_index = ms.chain_table[next_candidate];
         next_candidate = 2 * (match_index & bt_mask) as usize;
@@ -216,7 +224,8 @@ fn dubt_find_best_match(
 
     while nb_compares != 0 && match_index > window_low {
         let next_ptr = 2 * (match_index & bt_mask) as usize;
-        let mut match_length = common_length_smaller.min(common_length_larger); // guaranteed minimum nb of common bytes
+        // guaranteed minimum nb of common bytes
+        let mut match_length = common_length_smaller.min(common_length_larger);
         let m = match_index as usize - base;
         match_length += count(src, ip + match_length, m + match_length, iend);
 
@@ -238,14 +247,18 @@ fn dubt_find_best_match(
 
         if src[m + match_length] < src[ip + match_length] {
             // match is smaller than current
-            bt[smaller_ptr] = match_index; // update smaller idx
-            common_length_smaller = match_length; // all smaller will now have at least this guaranteed common length
+            // update smaller idx
+            bt[smaller_ptr] = match_index;
+            // all smaller will now have at least this guaranteed common length
+            common_length_smaller = match_length;
             if match_index <= bt_low {
                 smaller_ptr = NOWHERE;
                 break; // beyond tree size, stop the search
             }
-            smaller_ptr = next_ptr + 1; // new "smaller" => larger of match
-            match_index = bt[next_ptr + 1]; // new matchIndex larger than previous (closer to current)
+            // new "smaller" => larger of match
+            smaller_ptr = next_ptr + 1;
+            // new matchIndex larger than previous (closer to current)
+            match_index = bt[next_ptr + 1];
         } else {
             // match is larger than current
             bt[larger_ptr] = match_index;
@@ -543,7 +556,8 @@ fn row_find_best_match(
     };
     let row_entries = 1usize << row_log;
     let row_mask = row_entries as u32 - 1;
-    let capped_search_log = ms.cparams.search_log.min(row_log); // nb of searches is capped at nb entries per row
+    // nb of searches is capped at nb entries per row
+    let capped_search_log = ms.cparams.search_log.min(row_log);
     let mut nb_attempts = 1u32 << capped_search_log;
     let mut ml = 4 - 1;
 
@@ -743,7 +757,8 @@ pub(crate) fn compress_block_lazy(
             }
 
             if match_length < 4 {
-                let step = ((ip - anchor) >> K_SEARCH_STRENGTH) + 1; // jump faster over incompressible sections
+                // jump faster over incompressible sections
+                let step = ((ip - anchor) >> K_SEARCH_STRENGTH) + 1;
                 ip += step;
                 // Enter the lazy skipping mode once we are skipping more than 8 bytes at a
                 // time. In this mode we stop inserting every position into our tables, and

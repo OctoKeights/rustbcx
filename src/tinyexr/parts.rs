@@ -372,7 +372,8 @@ fn load_parts_with_zeros(
     for (i, offset_data) in chunk_offset_table_list.iter().enumerate() {
         // First check 'part number' is identical to 'i'
         for &offset in offset_data.offsets.iter().flatten().flatten() {
-            let (part_no, beyond) = read_le::<4>(memory, offset as usize - 4); // -4 to move to 'part number' field.
+            // -4 to move to 'part number' field.
+            let (part_no, beyond) = read_le::<4>(memory, offset as usize - 4);
             if part_no != i as u64 {
                 return fail("Invalid `part number' in EXR header chunks.");
             }

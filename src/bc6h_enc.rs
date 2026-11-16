@@ -492,7 +492,8 @@ fn encode(block: &mut [u8; 16], signed: bool, pixels: &[HdrColorA; 16]) {
     while ep.mode < MS_A_INFO.len() && ep.best_err > 0.0 {
         let shapes: usize = if ep.info().partitions != 0 { 32 } else { 1 };
         // Number of rough cases to look at. reasonable values of this are 1, uShapes/4, and uShapes
-        // uShapes/4 gets nearly all the cases; you can increase that a bit (say by 3 or 4) if you really want to squeeze the last bit out
+        // uShapes/4 gets nearly all the cases; you can increase that a bit
+        // (say by 3 or 4) if you really want to squeeze the last bit out
         let items = 1.max(shapes >> 2);
         let mut rough_mse_of = [0.0f32; BC6H_MAX_SHAPES];
         let mut shape_of = [0usize; BC6H_MAX_SHAPES];
@@ -685,7 +686,8 @@ fn generate_palette_quantized(
     }
 }
 
-// given a collection of colors and quantized endpoints, generate a palette, choose best entries, and return a single toterr
+// given a collection of colors and quantized endpoints, generate
+// a palette, choose best entries, and return a single toterr
 /// `D3DX_BC6H::MapColorsQuantized`
 fn map_colors_quantized(ep: &EncodeParams, colors: &[IntColor], end_pts: &IntEndPntPair) -> f32 {
     let num_indices = 1usize << ep.info().index_prec;

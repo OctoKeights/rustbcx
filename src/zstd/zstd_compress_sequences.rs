@@ -149,8 +149,9 @@ pub(crate) fn fse_bit_cost(ctable: &FseCTable, count: &[u32], max: u32) -> usize
             let table_size = 1u32 << table_log;
             let delta_from_threshold =
                 threshold.wrapping_sub(delta_nb_bits.wrapping_add(table_size));
+            // linear interpolation (very approximate)
             let normalized_delta_from_threshold =
-                (delta_from_threshold << K_ACCURACY_LOG) >> table_log; // linear interpolation (very approximate)
+                (delta_from_threshold << K_ACCURACY_LOG) >> table_log;
             let bit_multiplier = 1u32 << K_ACCURACY_LOG;
             ((min_nb_bits + 1) * bit_multiplier).wrapping_sub(normalized_delta_from_threshold)
         };
@@ -213,7 +214,8 @@ pub(crate) fn select_encoding_type(
             let static_fse_nb_seq_max = 1000usize;
             let mult = 10 - strategy as usize;
             let base_log = 3usize;
-            let dynamic_fse_nb_seq_min = ((1usize << default_norm_log) * mult) >> base_log; // 28-36 for offset, 56-72 for lengths
+            // 28-36 for offset, 56-72 for lengths
+            let dynamic_fse_nb_seq_min = ((1usize << default_norm_log) * mult) >> base_log;
             if *repeat_mode == FseRepeat::Valid && nb_seq < static_fse_nb_seq_max {
                 return SET_REPEAT;
             }
@@ -283,7 +285,8 @@ pub(crate) fn build_ctable(
             Ok(0)
         }
         SET_BASIC => {
-            fse_compress::build_ctable(next_ctable, default_norm, default_max, default_norm_log); // note: could be pre-calculated
+            // note: could be pre-calculated
+            fse_compress::build_ctable(next_ctable, default_norm, default_max, default_norm_log);
             Ok(0)
         }
         _ => {
@@ -303,7 +306,8 @@ pub(crate) fn build_ctable(
                 use_low_prob_count(nb_seq_1),
             )?;
             {
-                let n_count_size = fse_compress::write_ncount(dst, &norm, max, table_log)?; // overflow protected
+                // overflow protected
+                let n_count_size = fse_compress::write_ncount(dst, &norm, max, table_log)?;
                 fse_compress::build_ctable(next_ctable, &norm, max, table_log);
                 Ok(n_count_size)
             }

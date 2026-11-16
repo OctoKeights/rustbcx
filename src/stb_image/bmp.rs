@@ -275,10 +275,14 @@ pub(crate) fn bmp_load(s: &mut Context, req_comp: i32) -> Option<(Vec<u8>, i32)>
         psize = (info.offset - bytes_read_so_far) >> 2;
     }
     if psize == 0 {
-        // accept some number of extra bytes after the header, but if the offset points either to before
-        // the header ends or implies a large amount of extra data, reject the file as malformed
-        let header_limit = 1024; // max we actually read is below 256 bytes currently.
-        let extra_data_limit = 256 * 4; // what ordinarily goes here is a palette; 256 entries*4 bytes is its max size.
+        // accept some number of extra bytes after the header, but if the offset points either
+        // to before the header ends or implies a large amount of extra data, reject the file as
+        // malformed
+
+        // max we actually read is below 256 bytes currently.
+        let header_limit = 1024;
+        // what ordinarily goes here is a palette; 256 entries*4 bytes is its max size.
+        let extra_data_limit = 256 * 4;
         if bytes_read_so_far <= 0 || bytes_read_so_far > header_limit {
             return s.errp("bad header");
         }

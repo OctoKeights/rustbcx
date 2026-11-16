@@ -19,7 +19,8 @@ use super::tables::{
     S_TDEFL_SMALL_DIST_EXTRA, S_TDEFL_SMALL_DIST_SYM,
 };
 
-// tdefl_init() compression flags logically OR'd together (low 12 bits contain the max. number of probes per dictionary search):
+// tdefl_init() compression flags logically OR'd together (low 12
+// bits contain the max. number of probes per dictionary search):
 /// The compressor does no dictionary searches: Huffman coding only.
 pub const TDEFL_HUFFMAN_ONLY: u32 = 0;
 /// The compressor defaults to 128 dictionary probes per dictionary search. 0=Huffman only,
@@ -52,7 +53,8 @@ const TDEFL_LZ_DICT_SIZE_MASK: u32 = TDEFL_LZ_DICT_SIZE as u32 - 1;
 const TDEFL_MIN_MATCH_LEN: u32 = 3;
 const TDEFL_MAX_MATCH_LEN: u32 = 258;
 
-// TDEFL_OUT_BUF_SIZE MUST be large enough to hold a single entire compressed output block (using static/fixed Huffman codes).
+// TDEFL_OUT_BUF_SIZE MUST be large enough to hold a single entire
+// compressed output block (using static/fixed Huffman codes).
 const TDEFL_LZ_CODE_BUF_SIZE: usize = 64 * 1024;
 const TDEFL_OUT_BUF_SIZE: usize = (TDEFL_LZ_CODE_BUF_SIZE * 13) / 10;
 const TDEFL_MAX_HUFF_SYMBOLS: usize = 288;
@@ -181,7 +183,8 @@ fn tdefl_radix_sort_syms(
     in_second
 }
 
-/// tdefl_calculate_minimum_redundancy() originally written by: Alistair Moffat, alistair@cs.mu.oz.au, Jyrki Katajainen, jyrki@diku.dk, November 1996.
+/// tdefl_calculate_minimum_redundancy() originally written by: Alistair Moffat,
+/// alistair@cs.mu.oz.au, Jyrki Katajainen, jyrki@diku.dk, November 1996.
 fn tdefl_calculate_minimum_redundancy(a: &mut [TdeflSymFreq], n: usize) {
     if n == 0 {
         return;
@@ -751,7 +754,8 @@ impl TdeflCompressor {
             let cmf = 0x78u32;
             let mut flevel = 3u32;
 
-            // Determine compression level by reversing the process in tdefl_create_comp_flags_from_zip_params()
+            // Determine compression level by reversing the process
+            // in tdefl_create_comp_flags_from_zip_params()
             let mut i = 0;
             while i < S_TDEFL_NUM_PROBES.len() {
                 if S_TDEFL_NUM_PROBES[i] == (self.m_flags & 0xFFF) {
@@ -788,7 +792,8 @@ impl TdeflCompressor {
             );
         }
 
-        // If the block gets expanded, forget the current contents of the output buffer and send a raw block instead.
+        // If the block gets expanded, forget the current contents
+        // of the output buffer and send a raw block instead.
         if (use_raw_block
             || (self.m_total_lz_bytes != 0
                 && (self.m_p_output_buf - p_saved_output_buf + 1) as u32 >= self.m_total_lz_bytes))
@@ -814,7 +819,8 @@ impl TdeflCompressor {
                 self.put_bits(u32::from(byte), 8);
             }
         }
-        // Check for the extremely unlikely (if not impossible) case of the compressed block not fitting into the output buffer when using dynamic codes.
+        // Check for the extremely unlikely (if not impossible) case of the compressed
+        // block not fitting into the output buffer when using dynamic codes.
         else if !comp_block_succeeded {
             self.m_p_output_buf = p_saved_output_buf;
             self.m_bit_buffer = saved_bit_buf;
@@ -998,7 +1004,8 @@ impl TdeflCompressor {
         let flush = self.m_flush;
 
         while src_buf_left != 0 || (flush != TdeflFlush::NoFlush && self.m_lookahead_size != 0) {
-            // Update dictionary and hash chains. Keeps the lookahead size equal to TDEFL_MAX_MATCH_LEN.
+            // Update dictionary and hash chains. Keeps the
+            // lookahead size equal to TDEFL_MAX_MATCH_LEN.
             if self.m_lookahead_size + self.m_dict_size >= TDEFL_MIN_MATCH_LEN - 1 {
                 let mut dst_pos = (self.m_lookahead_pos.wrapping_add(self.m_lookahead_size)
                     & TDEFL_LZ_DICT_SIZE_MASK) as usize;
@@ -1223,9 +1230,9 @@ pub fn tdefl_compress_mem_to_heap(src_buf: &[u8], flags: u32) -> Vec<u8> {
 ///
 /// `level` may range from 0 to 10 (where 10 is absolute max compression, but may be much slower
 /// on some files). Below 0 it takes the probes of the default level, 6, with the greedy
-/// parsing of levels 0 to 3: that is the original's arithmetic, kept. `window_bits` may be -15 (raw deflate) or 15
-/// (zlib). `strategy` may be either `MZ_DEFAULT_STRATEGY`, `MZ_FILTERED`, `MZ_HUFFMAN_ONLY`,
-/// `MZ_RLE`, or `MZ_FIXED`.
+/// parsing of levels 0 to 3: that is the original's arithmetic, kept. `window_bits` may be -15
+/// (raw deflate) or 15 (zlib). `strategy` may be either `MZ_DEFAULT_STRATEGY`, `MZ_FILTERED`,
+/// `MZ_HUFFMAN_ONLY`, `MZ_RLE`, or `MZ_FIXED`.
 pub fn tdefl_create_comp_flags_from_zip_params(level: i32, window_bits: i32, strategy: i32) -> u32 {
     let mut comp_flags = S_TDEFL_NUM_PROBES[if level >= 0 {
         level.min(10)

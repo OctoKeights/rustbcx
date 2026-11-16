@@ -433,7 +433,8 @@ pub fn zlib_compress(data: &[u8], quality: i32) -> Vec<u8> {
         hash_table[h].push(i);
 
         if bestloc.is_some() {
-            // "lazy matching" - check match at *next* byte, and if it's better, do cur byte as literal
+            // "lazy matching" - check match at *next* byte,
+            // and if it's better, do cur byte as literal
             h = stbiw_zhash(&data[i as usize + 1..]) as usize & (STBIW_ZHASH - 1);
             for &place in &hash_table[h] {
                 if place > i - 32767 {

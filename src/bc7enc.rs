@@ -440,7 +440,8 @@ fn compute_least_squares_endpoints_rgba(
     xh: &mut Vec4F,
     colors: &[ColorRgba],
 ) {
-    // Least squares using normal equations: http://www.cs.cornell.edu/~bindel/class/cs3220-s12/notes/lec10.pdf
+    // Least squares using normal equations:
+    // http://www.cs.cornell.edu/~bindel/class/cs3220-s12/notes/lec10.pdf
     // I did this in matrix form first, expanded out all the ops, then optimized it a bit.
     let (mut z00, mut z10, mut z11) = (0.0f32, 0.0f32, 0.0f32);
     let (mut q00_r, mut t_r) = (0.0f32, 0.0f32);
@@ -575,7 +576,8 @@ fn compute_least_squares_endpoints_a(
     selector_weights: &[f32],
     colors: &[ColorRgba],
 ) -> (f32, f32) {
-    // Least squares using normal equations: http://www.cs.cornell.edu/~bindel/class/cs3220-s12/notes/lec10.pdf
+    // Least squares using normal equations:
+    // http://www.cs.cornell.edu/~bindel/class/cs3220-s12/notes/lec10.pdf
     // I did this in matrix form first, expanded out all the ops, then optimized it a bit.
     let (mut z00, mut z10, mut z11) = (0.0f32, 0.0f32, 0.0f32);
     let (mut q00_a, mut t_a) = (0.0f32, 0.0f32);
@@ -1321,7 +1323,9 @@ impl Bc7Enc {
 
                         // Notes: The pbit controls which quantization intervals are selected.
                         // total_levels=2^(comp_bits+1), where comp_bits=4 for mode 0, etc.
-                        // pbit 0: v=(b*2)/(total_levels-1), pbit 1: v=(b*2+1)/(total_levels-1) where b is the component bin from [0,total_levels/2-1] and v is the [0,1] component value
+                        // pbit 0: v=(b*2)/(total_levels-1), pbit 1:
+                        // v=(b*2+1)/(total_levels-1) where b is the component bin from
+                        // [0,total_levels/2-1] and v is the [0,1] component value
                         // rearranging you get for pbit 0: b=floor(v*(total_levels-1)/2+.5)
                         // rearranging you get for pbit 1: b=floor((v*(total_levels-1)-1)/2+.5)
                         if params.comp_bits == 5 {
@@ -1578,7 +1582,8 @@ impl Bc7Enc {
 
         results.best_overall_err = u64::MAX;
 
-        // If the partition's colors are all the same in mode 1, then just pack them as a single color.
+        // If the partition's colors are all the same in
+        // mode 1, then just pack them as a single color.
         if mode == 1 {
             let (cr, cg, cb) = (pixels[0][0], pixels[0][1], pixels[0][2]);
 
@@ -1701,7 +1706,8 @@ impl Bc7Enc {
             }
         }
 
-        // TODO: Try picking the 2 colors with the largest projection onto the axis, instead of computing new colors along the axis.
+        // TODO: Try picking the 2 colors with the largest projection
+        // onto the axis, instead of computing new colors along the axis.
 
         if vec4f_dot(&axis, &axis) < 0.5 {
             if params.perceptual {
@@ -1786,7 +1792,8 @@ impl Bc7Enc {
         };
 
         if comp_params.try_least_squares {
-            // Now try to refine the solution using least squares by computing the optimal endpoints from the current selectors.
+            // Now try to refine the solution using least squares by
+            // computing the optimal endpoints from the current selectors.
             let (xl, xh) = least_squares(&results.selectors);
             if self.find_optimal_solution(mode, xl, xh, params, pixels, results, comp_params) == 0 {
                 return 0;
@@ -1794,7 +1801,8 @@ impl Bc7Enc {
         }
 
         if comp_params.uber_level > 0 {
-            // In uber level 1, try varying the selectors a little, somewhat like cluster fit would. First try incrementing the minimum selectors,
+            // In uber level 1, try varying the selectors a little, somewhat like
+            // cluster fit would. First try incrementing the minimum selectors,
             // then try decrementing the selectrors, then try both.
             let mut selectors_temp = [0u8; 16];
             let mut selectors_temp1 = [0u8; 16];
@@ -1851,7 +1859,8 @@ impl Bc7Enc {
                 return 0;
             }
 
-            // In uber levels 2+, try taking more advantage of endpoint extrapolation by scaling the selectors in one direction or another.
+            // In uber levels 2+, try taking more advantage of endpoint
+            // extrapolation by scaling the selectors in one direction or another.
             let uber_err_thresh = (num_pixels as u32 * 56) >> 4;
             if comp_params.uber_level >= 2 && results.best_overall_err > uber_err_thresh as u64 {
                 let q = if comp_params.uber_level >= 4 {
@@ -1896,7 +1905,8 @@ impl Bc7Enc {
         }
 
         if mode == 1 {
-            // Try encoding the partition as a single color by using the optimal singe colors tables to encode the block to its mean.
+            // Try encoding the partition as a single color by using the
+            // optimal singe colors tables to encode the block to its mean.
             let r = f2i(0.5 + mean_color[0] * 255.0) as u32;
             let g = f2i(0.5 + mean_color[1] * 255.0) as u32;
             let b = f2i(0.5 + mean_color[2] * 255.0) as u32;
@@ -1910,7 +1920,8 @@ impl Bc7Enc {
                 results.best_overall_err = avg.total_err;
             }
         } else if mode == 7 {
-            // Try encoding the partition as a single color by using the optimal singe colors tables to encode the block to its mean.
+            // Try encoding the partition as a single color by using the
+            // optimal singe colors tables to encode the block to its mean.
             let r = f2i(0.5 + mean_color[0] * 255.0) as u32;
             let g = f2i(0.5 + mean_color[1] * 255.0) as u32;
             let b = f2i(0.5 + mean_color[2] * 255.0) as u32;
@@ -2260,9 +2271,12 @@ fn color_cell_compression_est_mode7(
     total_err
 }
 
-// This table contains bitmasks indicating which "key" partitions must be best ranked before this partition is worth evaluating.
-// We first rank the best/most used 14 partitions (sorted by usefulness), record the best one found as the key partition, then use
-// that to control the other partitions to evaluate. The quality loss is ~.08 dB RGB PSNR, the perf gain is up to ~11% (at uber level 0).
+// This table contains bitmasks indicating which "key" partitions
+// must be best ranked before this partition is worth evaluating.
+// We first rank the best/most used 14 partitions (sorted by
+// usefulness), record the best one found as the key partition, then use
+// that to control the other partitions to evaluate. The quality loss
+// is ~.08 dB RGB PSNR, the perf gain is up to ~11% (at uber level 0).
 const PARTITION_PREDICTORS: [u32; 35] = [
     u32::MAX,
     u32::MAX,
@@ -2301,8 +2315,10 @@ const PARTITION_PREDICTORS: [u32; 35] = [
     (1 << 14) | (1 << 15) | (1 << 16) | (1 << 11) | (1 << 17) | (1 << 27),
 ];
 
-// Partition order sorted by usage frequency across a large test corpus. Pattern 34 (checkerboard) must appear in slot 34.
-// Using a sorted order allows the user to decrease the # of partitions to scan with minimal loss in quality.
+// Partition order sorted by usage frequency across a large test
+// corpus. Pattern 34 (checkerboard) must appear in slot 34.
+// Using a sorted order allows the user to decrease the
+// # of partitions to scan with minimal loss in quality.
 #[rustfmt::skip]
 #[allow(clippy::eq_op)]
 const SORTED_PARTITION_ORDER: [u8; 64] = [
@@ -2346,7 +2362,8 @@ impl Subsets {
     }
 }
 
-// Estimate the partition used by modes 1/7. This scans through each partition and computes an approximate error for each.
+// Estimate the partition used by modes 1/7. This scans through
+// each partition and computes an approximate error for each.
 fn estimate_partition(
     pixels: &[ColorRgba; 16],
     comp_params: &CompressBlockParams,
@@ -2369,7 +2386,8 @@ fn estimate_partition(
     while partition_iter < total_partitions && best_err > 0 {
         let partition = SORTED_PARTITION_ORDER[partition_iter as usize] as u32;
 
-        // Check to see if we should bother evaluating this partition at all, depending on the best partition found from the first 14.
+        // Check to see if we should bother evaluating this partition at
+        // all, depending on the best partition found from the first 14.
         if comp_params.mode17_partition_estimation_filterbank && (14..=34).contains(&partition_iter)
         {
             let best_key_partition_bitmask = 1u32 << (best_key_partition + 1);
@@ -2418,7 +2436,9 @@ fn estimate_partition(
             best_partition = partition;
         }
 
-        // If the checkerboard pattern doesn't get the highest ranking vs. the previous (lower frequency) patterns, then just stop now because statistically the subsequent patterns won't do well either.
+        // If the checkerboard pattern doesn't get the highest ranking vs. the
+        // previous (lower frequency) patterns, then just stop now because
+        // statistically the subsequent patterns won't do well either.
         if partition == 34 && best_partition != 34 {
             break;
         }

@@ -88,7 +88,8 @@ fn pnm_info_internal(s: &mut Context) -> (i32, PnmHeader) {
         return (0, header);
     }
 
-    header.comp = if t == b'3' || t == b'6' { 3 } else { 1 }; // '2'/'5' is 1-component .pgm; '3'/'6' is 3-component .ppm
+    // '2'/'5' is 1-component .pgm; '3'/'6' is 3-component .ppm
+    header.comp = if t == b'3' || t == b'6' { 3 } else { 1 };
     header.isascii = t == b'2' || t == b'3';
 
     let mut c = s.get8();

@@ -562,8 +562,11 @@ impl Decompressor<'_> {
             }
         }
 
-        // Ensure byte alignment and put back any bytes from the bitbuf if we've looked ahead too far on gzip, or other Deflate streams followed by arbitrary data.
-        // I'm being super conservative here. A number of simplifications can be made to the byte alignment part, and the Adler32 check shouldn't ever need to worry about reading from the bitbuf now.
+        // Ensure byte alignment and put back any bytes from the bitbuf if we've looked
+        // ahead too far on gzip, or other Deflate streams followed by arbitrary data.
+        // I'm being super conservative here. A number of simplifications
+        // can be made to the byte alignment part, and the Adler32 check
+        // shouldn't ever need to worry about reading from the bitbuf now.
         self.skip_bits(self.num_bits & 7)?;
         while self.in_cur > 0 && self.num_bits >= 8 {
             self.in_cur -= 1;

@@ -167,14 +167,16 @@ impl Zbuf<'_> {
                     if self.hit_zeof_once && self.num_bits < 16 {
                         // The first time we hit zeof, we inserted 16 extra zero bits into our bit
                         // buffer so the decoder can just do its speculative decoding. But if we
-                        // actually consumed any of those bits (which is the case when num_bits < 16),
+                        // actually consumed any of those bits
+                        // (which is the case when num_bits < 16),
                         // the stream actually read past the end so it is malformed.
                         return self.err("unexpected end");
                     }
                     return true;
                 }
                 if z >= 286 {
-                    return self.err("bad huffman code"); // per DEFLATE, length codes 286 and 287 must not appear in compressed data
+                    // per DEFLATE, length codes 286 and 287 must not appear in compressed data
+                    return self.err("bad huffman code");
                 }
                 z -= 257;
                 let mut len = STBI_ZLENGTH_BASE[z as usize];
@@ -183,7 +185,8 @@ impl Zbuf<'_> {
                 }
                 z = zhuffman_decode(self, true);
                 if !(0..30).contains(&z) {
-                    return self.err("bad huffman code"); // per DEFLATE, distance codes 30 and 31 must not appear in compressed data
+                    // per DEFLATE, distance codes 30 and 31 must not appear in compressed data
+                    return self.err("bad huffman code");
                 }
                 let mut dist = STBI_ZDIST_BASE[z as usize];
                 if STBI_ZDIST_EXTRA[z as usize] != 0 {

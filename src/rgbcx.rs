@@ -275,7 +275,8 @@ fn prepare_bc1_single_color_table(
                     e += ((iabs(hi_e - lo_e) * 3) / 100) as i32;
                 }
 
-                // Favor equal endpoints, for lower error on actual GPU's which approximate the interpolation.
+                // Favor equal endpoints, for lower error on actual
+                // GPU's which approximate the interpolation.
                 if e < lowest_e || (e == lowest_e && lo == hi) {
                     entry.hi = hi as u8;
                     entry.lo = lo as u8;
@@ -495,7 +496,8 @@ impl Rgbcx {
 
             if min16 == max16 {
                 // Always forbid 3 color blocks
-                // This is to guarantee that BC3 blocks never use punchthrough alpha (3 color) mode, which isn't supported on some (all?) GPU's.
+                // This is to guarantee that BC3 blocks never use punchthrough alpha
+                // (3 color) mode, which isn't supported on some (all?) GPU's.
                 mask = 0;
 
                 // Make l > h
@@ -1812,11 +1814,13 @@ impl Rgbcx {
                 flags = ENCODE_BC1_BOUNDING_BOX_INT;
             }
             1 => {
-                // Faster/higher quality than stb_dxt default. A bit higher average quality vs. mode 0.
+                // Faster/higher quality than stb_dxt default.
+                // A bit higher average quality vs. mode 0.
                 flags = ENCODE_BC1_USE_2D_LS;
             }
             2 => {
-                // On average mode 2 is a little weaker than modes 0/1, but it's stronger on outliers (very tough textures).
+                // On average mode 2 is a little weaker than modes 0/1,
+                // but it's stronger on outliers (very tough textures).
                 // Slightly stronger than stb_dxt.
                 flags = 0;
             }
@@ -1908,7 +1912,8 @@ impl Rgbcx {
                 total_orderings3 = 32;
             }
             19 => {
-                // This hidden mode is *extremely* slow and abuses the encoder. It's just for testing/training.
+                // This hidden mode is *extremely* slow and abuses
+                // the encoder. It's just for testing/training.
                 flags = THOROUGH
                     | ENCODE_BC1_EXHAUSTIVE
                     | ENCODE_BC1_ITERATIVE
@@ -1918,7 +1923,8 @@ impl Rgbcx {
                 total_orderings3 = 32;
             }
             _ => {
-                // 5 (and any level it doesn't know): stb_dxt HIGHQUAL + permit 3 color (if it's enabled).
+                // 5 (and any level it doesn't know): stb_dxt
+                // HIGHQUAL + permit 3 color (if it's enabled).
                 flags = ENCODE_BC1_TWO_LEAST_SQUARES_PASSES
                     | ENCODE_BC1_USE_FASTER_MSE_EVAL
                     | three_color;
@@ -1965,7 +1971,8 @@ impl Rgbcx {
                 [low5, low6, low5, high5, high6, high5]
             }
         } else if flags & ENCODE_BC1_USE_2D_LS != 0 {
-            //  2D Least Squares approach from Humus's example, with added inset and optimal rounding.
+            // 2D Least Squares approach from Humus's example,
+            // with added inset and optimal rounding.
             let (mut big_chan, mut min_chan_val, mut max_chan_val) = (0usize, min[0], max[0]);
             if max[1] - min[1] > max_chan_val - min_chan_val {
                 big_chan = 1;
@@ -2445,8 +2452,10 @@ impl Rgbcx {
                         &mut xh,
                         total,
                     ) {
-                        // All selectors equal - treat it as a solid block which should always be equal or better.
-                        // In high/higher quality mode, let it try again in case the optimal tables have caused the sels to diverge.
+                        // All selectors equal - treat it as a solid
+                        // block which should always be equal or better.
+                        // In high/higher quality mode, let it try again in case
+                        // the optimal tables have caused the sels to diverge.
                         self.match_endpoints(false, avg)
                     } else {
                         // (As the C++ calls it: what comes of xl goes to the high endpoint.)
@@ -2537,7 +2546,8 @@ impl Rgbcx {
                             &mut xh,
                             total,
                         ) {
-                            // All selectors equal - treat it as a solid block which should always be equal or better.
+                            // All selectors equal - treat it as a solid
+                            // block which should always be equal or better.
                             self.match_endpoints(false, avg)
                         } else {
                             let [trial_hr, trial_hg, trial_hb, trial_lr, trial_lg, trial_lb] =
@@ -2844,7 +2854,8 @@ pub fn encode_bc4(dst: &mut [u8; 8], pixels: &[u8], stride: usize) {
 
     let delta = max_v - min_v;
 
-    // min_v is now 0. Compute thresholds between values by scaling max_v. It's x14 because we're adding two x7 scale factors.
+    // min_v is now 0. Compute thresholds between values by scaling
+    // max_v. It's x14 because we're adding two x7 scale factors.
     let thresholds = [
         delta * 13,
         delta * 11,
@@ -2857,7 +2868,8 @@ pub fn encode_bc4(dst: &mut [u8; 8], pixels: &[u8], stride: usize) {
     .map(|t| t as i32);
 
     // BC4 floors in its divisions, which we compensate for with the 4 bias.
-    // This function is optimal for all possible inputs (i.e. it outputs the same results as checking all 8 values and choosing the closest one).
+    // This function is optimal for all possible inputs (i.e. it outputs the
+    // same results as checking all 8 values and choosing the closest one).
     let bias = 4i32.wrapping_sub((min_v * 14) as i32);
 
     const TRAN: [u64; 8] = [1, 7, 6, 5, 4, 3, 2, 0];

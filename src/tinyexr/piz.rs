@@ -1018,7 +1018,8 @@ fn bitmap_from_data(
         bitmap[(value >> 3) as usize] |= 1 << (value & 7);
     }
 
-    bitmap[0] &= !1; // zero is not explicitly stored in the bitmap; we assume that the data always contain zeroes
+    // zero is not explicitly stored in the bitmap; we assume that the data always contain zeroes
+    bitmap[0] &= !1;
     *min_non_zero = (BITMAP_SIZE - 1) as u16;
     *max_non_zero = 0;
 

@@ -308,7 +308,8 @@ fn process_gif_raster(s: &mut Context, g: &mut Gif) -> bool {
                 cur = oldcode;
             }
             // walk linked list of prefixes to emit bytes in reverse order to revbuf
-            // safe: longest chain possible can't contain more than 4096 - (clear + 2) <= 4094 bytes,
+            // safe: longest chain possible can't contain
+            // more than 4096 - (clear + 2) <= 4094 bytes,
             // since every code below clear+2 terminates the chain and any code above has a
             // "prefix" link to a lower-numbered code
             while cur >= clear {
@@ -320,7 +321,8 @@ fn process_gif_raster(s: &mut Context, g: &mut Gif) -> bool {
                 cur = i32::from(g.prefix(cur as usize));
             }
 
-            // one final slot in revbuf: still guaranteed to be <=4096 bytes, so revind >= 0 at the end
+            // one final slot in revbuf: still guaranteed to
+            // be <=4096 bytes, so revind >= 0 at the end
             revind -= 1;
             revbuf[revind] = cur as u8;
             if oldcode >= 0 {
@@ -397,7 +399,8 @@ fn gif_load_next(s: &mut Context, g: &mut Gif, saved: Option<&[u8]>) -> Next {
         // second frame - how do we dispose of the previous one?
         let mut dispose = (g.eflags & 0x1C) >> 2;
         if dispose == 3 && saved.is_none() {
-            dispose = 2; // if I don't have an image to revert back to, default to the old background
+            // if I don't have an image to revert back to, default to the old background
+            dispose = 2;
         }
 
         if dispose == 3 {
@@ -478,7 +481,8 @@ fn gif_load_next(s: &mut Context, g: &mut Gif, saved: Option<&[u8]>) -> Next {
                     return Next::Failed;
                 }
 
-                // if we have a background color set and no transparent color, first frame should clear to background
+                // if we have a background color set and no transparent
+                // color, first frame should clear to background
                 // first frame needs to initialize the image
                 if first_frame && g.bgindex >= 0 && g.transparent < 0 {
                     let mut bg = [0u8, 0, 0, 255];
@@ -503,7 +507,8 @@ fn gif_load_next(s: &mut Context, g: &mut Gif, saved: Option<&[u8]>) -> Next {
                     let len = i32::from(s.get8());
                     if len == 4 {
                         g.eflags = i32::from(s.get8());
-                        g.delay = 10 * s.get16le(); // delay - 1/100th of a second, saving as 1/1000ths.
+                        // delay - 1/100th of a second, saving as 1/1000ths.
+                        g.delay = 10 * s.get16le();
 
                         g.transparent = i32::from(s.get8());
                         if g.eflags & 0x01 == 0 {
