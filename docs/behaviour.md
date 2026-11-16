@@ -73,7 +73,7 @@
 - **`.jpg` is written as stb_image_write writes it**: baseline, with chroma at half
   resolution in each dimension up to quality 90 and at full resolution above it.
 
-- **`.exr` is read and written as tinyexr does, with two exceptions.**
+- **`.exr` is read and written as tinyexr does, with three exceptions.**
   1. *Uncompressible blocks.* The format specifies that a block which compression fails to
      shrink is stored as raw pixels. tinyexr observes this for RLE, ZIP and PIZ but not for
      PXR24 and B44. Other readers consequently misread some of its files (every B44 file
@@ -85,6 +85,21 @@
      reads beyond the end of the file: a tile size of 0; a chunk count far exceeding what
      the file can hold; a compressed tile positioned beyond the image's edge; and a final
      uncompressed block shorter than its scanlines.
+  3. *DWAA and DWAB.* tinyexr has neither, and refuses a file that uses them. rustbcx reads
+     and writes them as OpenEXR does (see the next note); the functions suffixed
+     `_as_tinyexr`, `parse_exr_header_from_memory_as_tinyexr` among them, refuse them as
+     tinyexr does.
+
+- **DWAA and DWAB give OpenEXR's blocks and pixels for an x86-64 processor with AVX.**
+  OpenEXR chooses its DWA code by the processor it runs on (AVX, SSE2, NEON or plain C),
+  and the choices round differently, so its output differs between machines. rustbcx
+  reproduces OpenEXR 3.5's choice on any x86-64 processor made since about 2011 (AVX and
+  F16C), on every processor, byte for byte; the lookup tables OpenEXR computes with the C
+  library's `powf` and `logf` are embedded as glibc computes them. The level of loss is the
+  header's `dwaCompressionLevel` attribute (`tinyexr::dwa_compression_level_attribute`), 45
+  by default. A block of AC coefficients is compressed with Huffman coding, or with ZIP for
+  the tiles of DWAA, as OpenEXR does; its ZIP is libdeflate's, ported as `libdeflate`. The
+  blocks themselves are available as `dwa::compress` and `dwa::uncompress`.
 
 - **Damaged multi-part and deep files get tinyexr's answer only where it is defined.**
   tinyexr's readers for these read past the end of a damaged file without checking. rustbcx
@@ -121,10 +136,9 @@
 - **No BasisLZ.** The third `.ktx2` supercompression scheme cannot carry these formats at
   all; it is specific to Basis Universal's ETC1S format.
 
-- **No DWAA or DWAB `.exr` compression.** Files using them are neither read nor written.
-  ZFP, tinyexr's own extension, is read and written, for blocks and tiles of whole four by
-  four blocks. Multi-part files are read and written, and deep images read (tinyexr does not
-  write them).
+- **`.exr` channels are taken as sampled at every pixel**, as tinyexr takes them; deep
+  images are read but not written (tinyexr does not write them); and ZFP, tinyexr's own
+  extension, is written only in blocks and tiles of whole four by four blocks.
 
 - **x86 float-to-integer semantics are built in.** Where an original converts a float that
   does not fit into an integer, the ports return what x86 returns, on every processor, so

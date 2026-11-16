@@ -21,7 +21,8 @@ both implementations, and confirms that the results are identical byte for byte:
 ```text
 ISPC=<the ispc compiler> BCDEC=<checkout of bcdec> ISPCTC=<checkout of ISPCTextureCompressor> \
     BC6HENC=<checkout of bc6h_enc> MINIZ=<checkout of miniz> STB=<checkout of stb> \
-    ZSTD=<checkout of zstd> TINYEXR=<checkout of tinyexr> \
+    ZSTD=<checkout of zstd> TINYEXR=<checkout of tinyexr> ZFP=<checkout of zfp 1.0.1> \
+    OPENEXR=<checkout of OpenEXR 3.5> OPENEXR_BUILD=<its CMake build folder> \
     compare/compare.sh <checkout of bc7enc_rdo> [blocks] [seeds] [dumps]
 ```
 
@@ -68,6 +69,9 @@ reported as not compared, and the run fails.
 | `tinyexr_deep` | tinyexr, `tinyexr.h`, built without threads | Synthetic deep files (tinyexr writes none) of scanlines and of single-level tiles, with one to three channels of every type, every compression method and up to forty samples a pixel. One third are corrupted. Each is read by tinyexr in a separate process twice, with zeros and with ones beyond its end and inaccessible memory before it and further on; the result, error message, sample counts and samples are compared as for `tinyexr_parts` |
 | `tinyexr_zfp_write` | tinyexr, `tinyexr.h`, built with `TINYEXR_USE_ZFP` against zfp 1.0.1 | Synthetic images for ZFP compression, saved: float, half and integer channels stored as floats (occasionally as halves, which tinyexr refuses), most of them of whole four by four blocks, scanlines and tiles (occasionally with mip and rip levels); the settings at a fixed rate, a precision or a tolerance, among them zero, negative, infinite and not-a-number values, and occasionally missing or malformed. The bytes or the message are compared |
 | `tinyexr_zfp_read` | the same | The files tinyexr saved of such images, one third corrupted as for `tinyexr_read` and some with their ZFP settings altered, read and compared as for `tinyexr_read` |
+| `libdeflate` | libdeflate 1.26, as OpenEXR 3.5 bundles it | Synthetic data of eight kinds and many sizes, occasionally several pieces together, compressed into zlib streams at levels 0 and 2 to 9 as OpenEXR asks for them. Each stream is decompressed whole, into insufficient and into excess space, corrupted, truncated and with trailing bytes; and made-up bytes after a zlib header |
+| `dwa_write` | OpenEXRCore of OpenEXR 3.5, on x86-64 with AVX and F16C | Synthetic blocks of one to six channels (halves, floats and integers; named as DWA's rules expect and otherwise; occasionally linear), up to 400 pixels wide and up to 32 or 256 lines, of eight kinds of values, among them every bit pattern; each written by OpenEXRCore as the only block of a file of scanlines or of one tile, compressed with DWAA or DWAB at a synthetic level, and decompressed. The bytes of each block and the decompressed lines are compared |
+| `dwa_read` | the same | The same blocks, corrupted in one of eleven ways (bytes flipped, truncated, a counter or the compression of the AC coefficients altered, the channel rules altered or replaced by synthetic ones, an older version, trailing bytes, synthetic counters and data) and decompressed; the result code and the lines are compared |
 
 The tinyexr dumps exercise the functions that reproduce tinyexr exactly. Those without
 the `_as_tinyexr` suffix differ in one respect, which `compare/files.sh` verifies with an
@@ -76,8 +80,8 @@ and [Behaviour](behaviour.md#image-files)).
 
 ## Results
 
-The comparisons were run on Linux (x86-64), with the C++ built by gcc and the ISPC by ISPC
-1.32.0. All results were identical.
+The comparisons were run on Linux (x86-64, with AVX and F16C), with the C++ built by gcc and
+the ISPC by ISPC 1.32.0. All results were identical.
 
 | Comparison | Volume |
 |---|---|
@@ -104,6 +108,9 @@ The comparisons were run on Linux (x86-64), with the C++ built by gcc and the IS
 | `tinyexr_deep` | 90,000 deep files (264 megabytes), read identically; 252 readings depended on memory outside the file and 754 crashed tinyexr or exhausted its memory, and the port rejected each of them; the C++ built by gcc and clang; repeated with Rust's overflow checks enabled |
 | `tinyexr_zfp_write` | 160,000 images: 114,800 saved as byte-identical files (595 megabytes) and 45,200 refused with the same message, among them every block or tile not of whole four by four blocks and every setting asking for more than a gigabyte, which the port refuses itself |
 | `tinyexr_zfp_read` | 160,000 files (505 megabytes), of which 107,000 had a header tinyexr accepts; 78,600 images read and 28,300 rejected, each with the same code and message |
+| `libdeflate` | 40,000 sources (1.2 gigabytes), every stream identical, and every decompression of it, whole and damaged, with the same bytes or the same refusal |
+| `dwa_write` | 400,000 blocks (7.7 gigabytes of lines) compressed to identical blocks (4.2 gigabytes): 262,000 by DWAA or DWAB and 138,000 stored as they are, not coming out smaller; every compressed block decompressed to the same lines |
+| `dwa_read` | 400,000 damaged blocks (4.3 gigabytes): 69,000 decompressed to the same lines and 331,000 refused with the same code; OpenEXRCore built by gcc at `-O3`, as its CMake build has it. In addition, files written by the port are read by OpenEXRCore, and files written by OpenEXRCore by the port, to the same values |
 
 ## The ISPC originals
 
@@ -125,9 +132,9 @@ C implementation, which gives one result on every processor.
 
 ## Golden tests
 
-`cargo test` requires neither a C++ compiler nor ISPC. Fifteen of its tests run synthetic
+`cargo test` requires neither a C++ compiler nor ISPC. Eighteen of its tests run synthetic
 blocks, images and files through the ports and compare the resulting hashes with values
-recorded from the originals: fourteen in `tests/*_golden.rs` and one in `src/bc7enc.rs`.
+recorded from the originals: seventeen in `tests/*_golden.rs` and one in `src/bc7enc.rs`.
 
 ## Container and file interoperability
 

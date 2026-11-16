@@ -122,5 +122,17 @@ again:
     "${TMPDIR:-/tmp}/rustbcx-compare/dump-tinyexr" tinyexr_zfp_write 5 300 > tests/data/tinyexr_zfp_write_expected.txt
     "${TMPDIR:-/tmp}/rustbcx-compare/dump-tinyexr" tinyexr_zfp_read 11 100 tests/data/exr_zfp.bin > tests/data/tinyexr_zfp_read_expected.txt
 
+`libdeflate_expected.txt` is what libdeflate makes of made-up data, as
+`compare/dump_libdeflate.c` prints it; `dwa_write_expected.txt` is what OpenEXRCore makes of
+made-up blocks of an image with DWAA and DWAB and back, as `compare/dump_dwa.c` prints it, and
+`dwa_read_expected.txt` what it makes of them damaged. `tests/dwa_golden.rs` checks that the
+port prints the same. To make them again (on x86-64 with AVX and F16C):
+
+    OPENEXR=<checkout of OpenEXR 3.5> OPENEXR_BUILD=<its CMake build folder> compare/compare.sh <checkout of bc7enc_rdo> 3000 1 "libdeflate dwa_write"
+    ref="${TMPDIR:-/tmp}/rustbcx-compare"
+    { "$ref/dump-libdeflate" libdeflate 3 200; "$ref/dump-libdeflate" libdeflate 8 200; } > tests/data/libdeflate_expected.txt
+    { "$ref/dump-dwa" dwa_write 3 400; "$ref/dump-dwa" dwa_write 8 400; } > tests/data/dwa_write_expected.txt
+    { "$ref/dump-dwa" dwa_read 3 600; "$ref/dump-dwa" dwa_read 8 600; } > tests/data/dwa_read_expected.txt
+
 No texture or picture from anywhere is in this repository: every block the tests and the
 comparison pack, and every file they read, is made up from a seed.

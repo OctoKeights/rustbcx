@@ -87,7 +87,7 @@ See [Examples](docs/examples.md) for image files, HDR, cube maps and block-level
 | BC6H | `bc6h`, `bc6h_enc` | bcdec, Intel's ISPC Texture Compressor, bc6h_enc (DirectXTex) |
 | Rate-distortion optimisation | `ert`, `rdo_bc_encoder` | bc7enc_rdo |
 | Images, textures and containers | `image`, `texture`, `dds`, `ktx` | rustbcx |
-| Image codecs | `stb_image`, `stb_image_write`, `tinyexr` | stb, tinyexr |
+| Image codecs | `stb_image`, `stb_image_write`, `tinyexr`, `dwa`, `libdeflate` | stb, tinyexr, zfp, OpenEXR, libdeflate |
 | Supercompression | `miniz`, `zstd` | miniz, zstd |
 
 Full details are in the [module reference](docs/guide.md#module-reference).

@@ -18,6 +18,21 @@
   against tinyexr on 120,000 files, damaged and not (the `tinyexr_parts` and `tinyexr_deep`
   dumps).
 
+- **DWAA and DWAB `.exr` compression.** `tinyexr` now reads and writes OpenEXR's lossy
+  compressions (`COMPRESSIONTYPE_DWAA`, `COMPRESSIONTYPE_DWAB`), which tinyexr itself does
+  not have, at the level of loss a header's `dwaCompressionLevel` attribute sets
+  (`dwa_compression_level_attribute`; 45 by default). The new `dwa` module is a port of
+  OpenEXR 3.5's OpenEXRCore code for them, a block at a time, and gives the blocks and pixels
+  OpenEXR gives on an x86-64 machine with AVX and F16C, on every machine. Checked against
+  OpenEXRCore on 400,000 made-up blocks compressed and decompressed, and 400,000 damaged
+  (the `dwa_write` and `dwa_read` dumps); files written by each are read by the other.
+  The `_as_tinyexr` functions refuse them as tinyexr does, with the new
+  `parse_exr_header_from_memory_as_tinyexr` and `parse_exr_multipart_header_from_memory_as_tinyexr`.
+
+- **libdeflate.** The new `libdeflate` module is a port of the parts of libdeflate 1.26 that
+  OpenEXR uses: zlib streams at its levels 0 and 2 to 9, and back, with OpenEXR's handling of
+  the answer. Checked against libdeflate on 40,000 made-up sources (the `libdeflate` dump).
+
 - **ZFP `.exr` compression.** `tinyexr` now reads and writes the ZFP compression tinyexr
   adds to the format (`COMPRESSIONTYPE_ZFP`), with a port of the zfp library's coder of
   blocks of floats: at a fixed rate, a precision or a tolerance, set by the attributes
@@ -36,6 +51,9 @@
 
 - **Breaking:** `LoadOptions` gains the four gamma and scale settings and is no longer `Eq`;
   `Info` gains `is_hdr`; `ImageType` gains a variant for each new format.
+  `tinyexr::parse_exr_header_from_memory` and `parse_exr_multipart_header_from_memory` now
+  accept DWAA and DWAB files, which they refused; their `_as_tinyexr` counterparts keep
+  tinyexr's answer.
 
 ## 0.3.2
 

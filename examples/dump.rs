@@ -89,6 +89,17 @@
 //!                                                   ones that program wrote to the file read
 //!   dump tinyexr_deep <seed> <count> <file>         the deep files that program wrote, read
 //!
+//! And of the comparison with OpenEXR 3.5, as `compare/dump_libdeflate.c` does with its
+//! libdeflate and `compare/dump_dwa.c` with its OpenEXRCore:
+//!
+//!   dump libdeflate <seed> <count>   made-up data compressed at libdeflate's levels 0 and 2 to
+//!                                    9; each stream decompressed whole, into too little room
+//!                                    and into more, damaged, cut short and with bytes after it
+//!   dump dwa_write <seed> <count>    made-up blocks of an image compressed with DWAA or DWAB
+//!                                    at a made-up level, and back
+//!   dump dwa_read <seed> <count>     those blocks, compressed, damaged in one of eleven ways,
+//!                                    decompressed
+//!
 //! And of the comparison with bc7e.ispc, as `compare/dump_bc7e.cpp` does with the ISPC encoder:
 //!
 //!   dump bc7e_presets <seed> <blocks> [file]    made-up blocks packed with each of the seven
@@ -576,6 +587,8 @@ fn main() {
         "bc2" => print!("{}", made_up::bc2(seed, blocks)),
         "bc6h_enc" => print!("{}", made_up::bc6h_enc(seed, blocks)),
         "miniz" => print!("{}", made_up::miniz(seed, blocks)),
+        "libdeflate" => print!("{}", made_up::libdeflate(seed, blocks)),
+        "dwa_write" | "dwa_read" => print!("{}", made_up::dwa(what, seed, blocks)),
         "stb_image_write" => print!("{}", made_up::stb_image_write(seed, blocks)),
         "stb_image" => print!("{}", made_up::stb_image(seed, blocks)),
         "stb_image_more" => print!("{}", made_up::stb_image_more(seed, blocks)),

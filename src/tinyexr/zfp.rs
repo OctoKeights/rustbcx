@@ -1,6 +1,6 @@
 //! The ZFP compression tinyexr adds to the format: a port of `FindZFPCompressionParam`,
 //! `CompressZfp` and `DecompressZfp` of tinyexr v3.4.0 (`tinyexr.h`), and of what they use of
-//! the zfp library v1.0.1 (https://github.com/LLNL/zfp): its stream of bits
+//! the zfp library v1.0.1 (<https://github.com/LLNL/zfp>): its stream of bits
 //! (`bitstream.inl`), the settings of a stream (`zfp.c`), and its coder of blocks of four by
 //! four floats (`template/encode*.c`, `template/decode*.c`, `template/codec*.c`, built for
 //! floats in two dimensions, without `ZFP_WITH_DAZ` and with the rounding it has by default).

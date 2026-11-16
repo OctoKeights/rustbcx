@@ -32,7 +32,9 @@ Each port is verified byte for byte against its original (see
 | `zstd` | [zstd](https://github.com/facebook/zstd): the compressor of `lib/compress`, every strategy, and the reference decoder in `doc/educational_decoder` | Zstandard in both directions, for Zstandard-supercompressed `.ktx2` files. Compresses at every level, the negative ones to 22; decompresses frames of any level |
 | `stb_image` | Sean Barrett's [stb](https://github.com/nothings/stb), `stb_image.h`: every reader and the zlib decoder | Decodes `.png`, `.bmp`, `.jpg`, `.tga`, `.psd`, `.gif` (every frame), `.pgm`, `.ppm` and Radiance `.hdr`, at 8 or 16 bits per channel or as floats |
 | `stb_image_write` | stb, `stb_image_write.h`: the PNG, BMP and JPEG writers | Encodes 8-bit pixels to `.png`, `.bmp` and `.jpg` |
-| `tinyexr` | Syoyo Fujita's [tinyexr](https://github.com/syoyo/tinyexr), `tinyexr.h`: the reader and writer | Reads and writes `.exr` as half, float or integer channels: scanlines or tiles, mip and rip levels, uncompressed or RLE, ZIP, PIZ, PXR24, B44 or tinyexr's ZFP; single-part and multi-part files; reads deep images |
+| `tinyexr` | Syoyo Fujita's [tinyexr](https://github.com/syoyo/tinyexr), `tinyexr.h`: the reader and writer | Reads and writes `.exr` as half, float or integer channels: scanlines or tiles, mip and rip levels, uncompressed or RLE, ZIP, PIZ, PXR24, B44, DWAA, DWAB or tinyexr's ZFP; single-part and multi-part files; reads deep images |
+| `dwa` | OpenEXR 3.5's [OpenEXRCore](https://github.com/AcademySoftwareFoundation/openexr), `internal_dwa*` and `internal_huf.c` | DWAA and DWAB, DreamWorks Animation's lossy `.exr` compressions, a block at a time, as OpenEXR does them on x86-64 with AVX |
+| `libdeflate` | Eric Biggers's [libdeflate](https://github.com/ebiggers/libdeflate) 1.26, as OpenEXR 3.5 bundles it | zlib in both directions, as OpenEXR makes and reads it for DWAA and DWAB |
 
 ### Original code
 

@@ -25,16 +25,25 @@ fn past_the_end() -> ExrError {
 
 /// `ParseEXRMultipartHeaderFromMemory`: the header of every part of a file of many parts.
 pub fn parse_exr_multipart_header_from_memory(version: &ExrVersion, memory: &[u8]) -> Result<Vec<ExrHeader>, ExrError> {
+    parse_multipart_header(version, memory, false)
+}
+
+/// `ParseEXRMultipartHeaderFromMemory` exactly as tinyexr has it, which refuses DWAA and DWAB.
+pub fn parse_exr_multipart_header_from_memory_as_tinyexr(version: &ExrVersion, memory: &[u8]) -> Result<Vec<ExrHeader>, ExrError> {
+    parse_multipart_header(version, memory, true)
+}
+
+fn parse_multipart_header(version: &ExrVersion, memory: &[u8], as_tinyexr: bool) -> Result<Vec<ExrHeader>, ExrError> {
     if memory.len() < EXR_VERSION_SIZE {
         return Err(ExrError { code: ERROR_INVALID_DATA, message: "Data size too short".to_string() });
     }
     // (Every header but the first is read as if it had the whole of the file after the first
     // header to itself: the second time round, with ones past the end.)
-    let (zeros, beyond) = parse_headers(version, memory, 0x00);
+    let (zeros, beyond) = parse_headers(version, memory, 0x00, as_tinyexr);
     if !beyond {
         return zeros;
     }
-    let (ones, _) = parse_headers(version, memory, 0xff);
+    let (ones, _) = parse_headers(version, memory, 0xff, as_tinyexr);
     if same(&zeros, &ones) {
         zeros
     } else {
@@ -60,7 +69,7 @@ fn same(a: &Result<Vec<ExrHeader>, ExrError>, b: &Result<Vec<ExrHeader>, ExrErro
 
 /// The headers as the original parses them, with `pad` past the end of the file; and
 /// whether the parsing was handed bytes past the end.
-fn parse_headers(version: &ExrVersion, memory: &[u8], pad: u8) -> (Result<Vec<ExrHeader>, ExrError>, bool) {
+fn parse_headers(version: &ExrVersion, memory: &[u8], pad: u8, as_tinyexr: bool) -> (Result<Vec<ExrHeader>, ExrError>, bool) {
     let size = memory.len();
     let marker_size = size - EXR_VERSION_SIZE;
     let mut padded = memory.to_vec();
@@ -78,7 +87,7 @@ fn parse_headers(version: &ExrVersion, memory: &[u8], pad: u8) -> (Result<Vec<Ex
 
         let mut err_str = String::new();
         let mut empty_header = false;
-        if let Err(code) = parse_exr_header(&mut info, &mut empty_header, version, &mut err_str, &padded[marker..marker + marker_size]) {
+        if let Err(code) = parse_exr_header(&mut info, &mut empty_header, version, &mut err_str, &padded[marker..marker + marker_size], as_tinyexr) {
             return (Err(ExrError { code, message: err_str }), beyond);
         }
 

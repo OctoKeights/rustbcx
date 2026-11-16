@@ -88,11 +88,23 @@
 # the others follow the format, as compare/files.sh checks with another reader. And
 # tinyexr_zfp_write and tinyexr_zfp_read are the same of images made for ZFP compression.
 #
+# libdeflate (src/libdeflate) and DWAA and DWAB (src/dwa) are compared with OpenEXR 3.5
+# (https://github.com/AcademySoftwareFoundation/openexr), whose checkout goes in $OPENEXR:
+# compare/dump_libdeflate.c is built against the libdeflate in its external/deflate. Dump:
+# libdeflate, with a hundredth of [blocks] as the number of made-up sources, each compressed
+# at a level and decompressed whole, damaged and into too little room. compare/dump_dwa.c is
+# built against its OpenEXRCore, which needs a CMake build of OpenEXR, whose build folder
+# goes in $OPENEXR_BUILD (with Imath as that build fetches it). Dumps: dwa_write, with a
+# hundredth of [blocks] as the number of made-up blocks, each written by OpenEXRCore as the
+# one block of a file, of lines or of a tile, compressed with DWAA or DWAB and decompressed;
+# and dwa_read, with as many, each then damaged and decompressed. OpenEXRCore has other code
+# for DWA on a machine without AVX and F16C, and those blocks are not the port's.
+#
 # Without the ISPC compiler the bc7e dumps and bc6h_pack are left out, without $BCDEC bc2 and
 # the BC6H dumps, without $ISPCTC bc6h_pack, without $BC6HENC bc6h_enc, without $MINIZ miniz,
 # stb_image and the tinyexr dumps, without $STB stb_image_write and stb_image, without $ZSTD
-# the three zstd dumps, and without $TINYEXR or $ZFP the tinyexr dumps; the script says so and
-# fails.
+# the three zstd dumps, without $TINYEXR or $ZFP the tinyexr dumps, without $OPENEXR libdeflate
+# and the dwa dumps, and without $OPENEXR_BUILD the dwa dumps; the script says so and fails.
 set -u
 if [ $# -lt 1 ]; then
     echo "usage: $0 <folder with bc7enc_rdo's sources> [blocks] [seeds] [dumps]" >&2
@@ -102,7 +114,7 @@ here=$(cd "$(dirname "$0")/.." && pwd)
 source=$1
 blocks=${2:-200000}
 seeds=${3:-3}
-dumps=${4:-bc7decomp unpack bc1 bc345 bc7enc bc7block ert rdo bc7e_presets bc7e_settings rdo_bc7e bc2 bc6h_unpack bc6h_pack bc6h_enc miniz stb_image_write stb_image stb_image_more zstd_decode zstd_compress zstd_compress_more zstd_compress_long zstd_entropy tinyexr_write tinyexr_read tinyexr_parts tinyexr_deep tinyexr_zfp_write tinyexr_zfp_read}
+dumps=${4:-bc7decomp unpack bc1 bc345 bc7enc bc7block ert rdo bc7e_presets bc7e_settings rdo_bc7e bc2 bc6h_unpack bc6h_pack bc6h_enc miniz stb_image_write stb_image stb_image_more zstd_decode zstd_compress zstd_compress_more zstd_compress_long zstd_entropy tinyexr_write tinyexr_read tinyexr_parts tinyexr_deep tinyexr_zfp_write tinyexr_zfp_read libdeflate dwa_write dwa_read}
 tmp=${TMPDIR:-/tmp}/rustbcx-compare
 mkdir -p "$tmp" || exit 2
 
@@ -119,6 +131,8 @@ built_stbiw=0
 built_stbi=0
 built_zstd=0
 built_tinyexr=0
+built_libdeflate=0
+built_dwa=0
 built_bc6h_pack=0
 bad=0
 # (ert.h uses the fixed-width integer types without including their header; no contraction of
@@ -243,6 +257,43 @@ for what in $dumps; do
         fi
         reference=$tmp/dump-stb-image
         count=$((blocks / 10))
+        ;;
+    libdeflate)
+        if [ "$built_libdeflate" -eq 0 ]; then
+            if [ -z "${OPENEXR:-}" ] || [ ! -f "$OPENEXR/external/deflate/libdeflate.h" ]; then
+                echo "$what: NOT COMPARED, no OpenEXR (put its checkout in \$OPENEXR)"
+                bad=$((bad + 1))
+                continue
+            fi
+            deflate=$OPENEXR/external/deflate
+            mkdir -p "$tmp/deflate-obj" || exit 2
+            (cd "$tmp/deflate-obj" && ${CC:-cc} -O2 -c -I "$deflate" "$deflate"/lib/*.c "$deflate"/lib/x86/cpu_features.c) || exit 2
+            ${CC:-cc} -O2 -I "$deflate" "$here/compare/dump_libdeflate.c" "$tmp"/deflate-obj/*.o -o "$tmp/dump-libdeflate" || exit 2
+            built_libdeflate=1
+        fi
+        reference=$tmp/dump-libdeflate
+        count=$((blocks / 100))
+        ;;
+    dwa_write | dwa_read)
+        if [ "$built_dwa" -eq 0 ]; then
+            if [ -z "${OPENEXR:-}" ] || [ ! -f "$OPENEXR/src/lib/OpenEXRCore/openexr.h" ]; then
+                echo "$what: NOT COMPARED, no OpenEXR (put its checkout in \$OPENEXR)"
+                bad=$((bad + 1))
+                continue
+            fi
+            core=$(find "${OPENEXR_BUILD:-/nonexistent}" -name 'libOpenEXRCore*.a' 2> /dev/null | head -1)
+            imath=$(find "${OPENEXR_BUILD:-/nonexistent}" -path '*/Imath/ImathConfig.h' 2> /dev/null | head -1)
+            if [ -z "$core" ] || [ -z "$imath" ] || [ ! -f "${OPENEXR_BUILD:-}/cmake/OpenEXRConfig.h" ]; then
+                echo "$what: NOT COMPARED, no build of OpenEXR (put its CMake build folder, with OpenEXRCore built, in \$OPENEXR_BUILD)"
+                bad=$((bad + 1))
+                continue
+            fi
+            ${CC:-cc} -O2 -I "$OPENEXR/src/lib/OpenEXRCore" -I "$OPENEXR_BUILD/cmake" -I "$(dirname "$(dirname "$imath")")" -c "$here/compare/dump_dwa.c" -o "$tmp/dump_dwa.o" || exit 2
+            ${CXX:-c++} "$tmp/dump_dwa.o" "$core" -lm -o "$tmp/dump-dwa" || exit 2
+            built_dwa=1
+        fi
+        reference=$tmp/dump-dwa
+        count=$((blocks / 100))
         ;;
     stb_image_write)
         if [ "$built_stbiw" -eq 0 ]; then

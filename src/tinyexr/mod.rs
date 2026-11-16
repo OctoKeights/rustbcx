@@ -3,8 +3,8 @@
 //! threads and with miniz for its ZIP compression.
 //!
 //! A file of one part, of scanlines or of tiles (with mip or rip levels), whose pixels are
-//! uncompressed or compressed with RLE, ZIPS, ZIP, PIZ, PXR24, B44 or B44A. Its channels are
-//! halves, floats or 32-bit integers.
+//! uncompressed or compressed with RLE, ZIPS, ZIP, PIZ, PXR24, B44 or B44A, or with DWAA or
+//! DWAB, which tinyexr does not have. Its channels are halves, floats or 32-bit integers.
 //!
 //! - [`load_exr_from_memory`] gives red, green, blue and alpha as floats, and
 //!   [`save_exr_to_memory`] writes floats of one, three or four to a pixel: what most
@@ -34,6 +34,13 @@
 //!   too few values, or a type that is not the values' type, is refused.
 //! - A small PIZ block of many different values, which the original writes past its buffer
 //!   for, is written as the original would write it with room enough.
+//! - **DWAA and DWAB**, which tinyexr refuses ("Unknown compression type."), are read and
+//!   written as OpenEXR 3.5 reads and writes them on an x86-64 machine with AVX ([`crate::dwa`]),
+//!   at the level of loss of the header's `dwaCompressionLevel`
+//!   ([`dwa_compression_level_attribute`]; 45 without it). The functions that end in
+//!   `_as_tinyexr`, [`parse_exr_header_from_memory_as_tinyexr`] and
+//!   [`parse_exr_multipart_header_from_memory_as_tinyexr`] among them, refuse them as tinyexr
+//!   does.
 //!
 //! Files of several parts are read and written
 //! ([`parse_exr_multipart_header_from_memory`], [`load_exr_multipart_image_from_memory`],
@@ -68,9 +75,12 @@ mod zip_rle;
 
 pub use chunk::{tile_levels, TileLevel};
 pub use deep::{load_deep_exr_from_memory, DeepImage};
-pub use encode::{save_exr_image_to_memory, save_exr_image_to_memory_as_tinyexr, save_exr_multipart_image_to_memory, save_exr_multipart_image_to_memory_as_tinyexr, save_exr_to_memory, ZFP_NOT_MULTIPLE_OF_FOUR, ZFP_TOO_LARGE};
+pub use encode::{
+    dwa_compression_level_attribute, save_exr_image_to_memory, save_exr_image_to_memory_as_tinyexr, save_exr_multipart_image_to_memory, save_exr_multipart_image_to_memory_as_tinyexr, save_exr_to_memory, DWA_INVALID_LEVEL, ZFP_NOT_MULTIPLE_OF_FOUR,
+    ZFP_TOO_LARGE,
+};
 pub use zfp::{ZfpSettings, ZFP_COMPRESSIONTYPE_ACCURACY, ZFP_COMPRESSIONTYPE_PRECISION, ZFP_COMPRESSIONTYPE_RATE};
-pub use parts::{load_exr_multipart_image_from_memory, load_exr_multipart_image_from_memory_as_tinyexr, parse_exr_multipart_header_from_memory, PAST_THE_END};
+pub use parts::{load_exr_multipart_image_from_memory, load_exr_multipart_image_from_memory_as_tinyexr, parse_exr_multipart_header_from_memory, parse_exr_multipart_header_from_memory_as_tinyexr, PAST_THE_END};
 
 /// The original's error codes (`TINYEXR_ERROR_*`).
 pub const ERROR_INVALID_MAGIC_NUMBER: i32 = -1;
@@ -103,6 +113,12 @@ pub const COMPRESSIONTYPE_PIZ: i32 = 4;
 pub const COMPRESSIONTYPE_PXR24: i32 = 5;
 pub const COMPRESSIONTYPE_B44: i32 = 6;
 pub const COMPRESSIONTYPE_B44A: i32 = 7;
+/// DreamWorks Animation's lossy compressions, of 32 lines and of 256 lines to a block (which
+/// tinyexr does not have: the functions that end in `_as_tinyexr` refuse them as it does).
+/// The `dwaCompressionLevel` attribute of a header, which
+/// [`dwa_compression_level_attribute`] makes, says how lossy (45 if a header has none).
+pub const COMPRESSIONTYPE_DWAA: i32 = 8;
+pub const COMPRESSIONTYPE_DWAB: i32 = 9;
 /// A tinyexr extension, of floats only, with the zfp library's coder; its settings are in
 /// attributes of the header, which [`ZfpSettings`] makes.
 pub const COMPRESSIONTYPE_ZFP: i32 = 128;
@@ -400,7 +416,7 @@ pub(super) fn read_channel_info(channels: &mut Vec<ChannelInfo>, data: &[u8]) ->
 /// `ParseEXRHeader`: the attributes of a header at the start of `buf`. In a file of many
 /// parts, an empty header (a lone zero byte) is the end of the list of headers: then
 /// `empty_header` is set and `info` is left as it is.
-pub(super) fn parse_exr_header(info: &mut HeaderInfo, empty_header: &mut bool, version: &ExrVersion, err: &mut String, buf: &[u8]) -> Result<(), i32> {
+pub(super) fn parse_exr_header(info: &mut HeaderInfo, empty_header: &mut bool, version: &ExrVersion, err: &mut String, buf: &[u8], as_tinyexr: bool) -> Result<(), i32> {
     let mut size = buf.len();
     let mut marker = 0usize;
 
@@ -512,6 +528,11 @@ pub(super) fn parse_exr_header(info: &mut HeaderInfo, empty_header: &mut bool, v
             }
 
             if compression == COMPRESSIONTYPE_PXR24 || compression == COMPRESSIONTYPE_B44 || compression == COMPRESSIONTYPE_B44A {
+                ok = true;
+            }
+
+            // (Not in the original.)
+            if !as_tinyexr && (compression == COMPRESSIONTYPE_DWAA || compression == COMPRESSIONTYPE_DWAB) {
                 ok = true;
             }
 
@@ -841,7 +862,17 @@ pub(super) fn convert_header(info: &HeaderInfo, warn: &mut String, err: &mut Str
 
 /// `ParseEXRHeaderFromMemory`: the header of a file of one part.
 pub fn parse_exr_header_from_memory(version: &ExrVersion, memory: &[u8]) -> Result<ExrHeader, ExrError> {
-    let (exr_header, code, message) = parse_exr_header_from_memory_whole(version, memory);
+    parse_header(version, memory, false)
+}
+
+/// `ParseEXRHeaderFromMemory` exactly as tinyexr has it, which refuses DWAA and DWAB
+/// ("Unknown compression type.").
+pub fn parse_exr_header_from_memory_as_tinyexr(version: &ExrVersion, memory: &[u8]) -> Result<ExrHeader, ExrError> {
+    parse_header(version, memory, true)
+}
+
+fn parse_header(version: &ExrVersion, memory: &[u8], as_tinyexr: bool) -> Result<ExrHeader, ExrError> {
+    let (exr_header, code, message) = parse_exr_header_from_memory_whole(version, memory, as_tinyexr);
     if code != 0 {
         return Err(ExrError { code, message });
     }
@@ -850,7 +881,7 @@ pub fn parse_exr_header_from_memory(version: &ExrVersion, memory: &[u8]) -> Resu
 
 /// `ParseEXRHeaderFromMemory` with all it answers: the original fills in the header as far
 /// as it got even when it then says no.
-fn parse_exr_header_from_memory_whole(version: &ExrVersion, memory: &[u8]) -> (ExrHeader, i32, String) {
+fn parse_exr_header_from_memory_whole(version: &ExrVersion, memory: &[u8], as_tinyexr: bool) -> (ExrHeader, i32, String) {
     let mut err = String::new();
     if memory.len() < 8 {
         return (ExrHeader::default(), ERROR_INVALID_DATA, "Insufficient header/data size.\n".to_string());
@@ -863,7 +894,7 @@ fn parse_exr_header_from_memory_whole(version: &ExrVersion, memory: &[u8]) -> (E
     let mut ret = 0;
     {
         let mut err_str = String::new();
-        if let Err(code) = parse_exr_header(&mut info, &mut false, version, &mut err_str, marker) {
+        if let Err(code) = parse_exr_header(&mut info, &mut false, version, &mut err_str, marker, as_tinyexr) {
             ret = code;
             if !err_str.is_empty() {
                 err = err_str;
@@ -968,7 +999,7 @@ fn load_rgba(memory: &[u8], as_tinyexr: bool) -> Result<(Vec<f32>, i32, i32), Ex
         Err(code) => return Err(ExrError { code, message: format!("Failed to parse EXR version. code({code})") }),
     };
 
-    let mut exr_header = parse_exr_header_from_memory(&exr_version, memory)?;
+    let mut exr_header = parse_header(&exr_version, memory, as_tinyexr)?;
 
     // Read HALF channel as FLOAT.
     for i in 0..exr_header.channels.len() {
@@ -1171,6 +1202,36 @@ mod tests {
             load_exr_image_from_memory_as_tinyexr(&mut header, file).unwrap()
         } else {
             load_exr_image_from_memory(&mut header, file).unwrap()
+        }
+    }
+
+    #[test]
+    fn dwa_is_written_and_read_but_not_as_tinyexr() {
+        // A smooth image: the lossy compression keeps it near, and smaller.
+        let smooth = |c: usize, count: usize| ChannelData::Float((0..count).map(|i| ((i % 70) as f32 * 0.01 + (i / 70) as f32 * 0.02 + c as f32 * 0.1).sin().abs()).collect());
+        for compression_type in [COMPRESSIONTYPE_DWAA, COMPRESSIONTYPE_DWAB] {
+            let (image, mut header) = image_of(70, 300, compression_type, smooth, PIXELTYPE_HALF, PIXELTYPE_FLOAT);
+            let file = save_exr_image_to_memory(&image, &header).unwrap();
+            let (rgba, width, height) = load_exr_from_memory(&file).unwrap();
+            assert_eq!((width, height), (70, 300));
+            let ChannelData::Float(red) = &image.images[2] else { unreachable!() };
+            assert!(rgba.chunks_exact(4).zip(red).all(|(pixel, red)| (pixel[0] - red).abs() < 0.02 && pixel[3] == 1.0), "compression {compression_type}");
+            let (_, plain) = image_of(70, 300, COMPRESSIONTYPE_NONE, smooth, PIXELTYPE_HALF, PIXELTYPE_FLOAT);
+            assert!(file.len() * 3 < save_exr_image_to_memory(&image, &plain).unwrap().len());
+
+            // tinyexr knows neither: it writes no such file, and reads none.
+            assert!(save_exr_image_to_memory_as_tinyexr(&image, &header).is_err());
+            let version = parse_exr_version_from_memory(&file).unwrap();
+            let refused = parse_exr_header_from_memory_as_tinyexr(&version, &file).unwrap_err();
+            assert_eq!((refused.code, refused.message.as_str()), (ERROR_UNSUPPORTED_FORMAT, "Unknown compression type."));
+            assert!(load_exr_from_memory_as_tinyexr(&file).is_err());
+
+            // The level of loss, as OpenEXR bounds it.
+            header.custom_attributes = vec![dwa_compression_level_attribute(-1.0)];
+            assert_eq!(save_exr_image_to_memory(&image, &header).unwrap_err().message, DWA_INVALID_LEVEL);
+            header.custom_attributes = vec![dwa_compression_level_attribute(0.0)];
+            let lossless_quantization = save_exr_image_to_memory(&image, &header).unwrap();
+            assert!(lossless_quantization.len() > file.len());
         }
     }
 

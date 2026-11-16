@@ -3,6 +3,7 @@
 //! `SaveEXRToMemory` of tinyexr v3.4.0 (`tinyexr.h`).
 
 use super::b44::compress_b44;
+use crate::dwa;
 use super::chunk::{level_index, num_scanline_blocks, precalculate_tile_info, tile_offsets_shape, OffsetData};
 use super::decode::ChannelData;
 use super::piz::compress_piz;
@@ -10,8 +11,8 @@ use super::pxr24::compress_pxr24;
 use super::zfp::{compress_zfp, zfp_param_for_writing, zfp_stream_size, ZfpParam};
 use super::zip_rle::{compress_rle, compress_zip};
 use super::{
-    float_to_half_full, half_to_float, ChannelInfo, ExrError, ExrHeader, ExrImage, ExrTile, COMPRESSIONTYPE_B44, COMPRESSIONTYPE_B44A, COMPRESSIONTYPE_NONE, COMPRESSIONTYPE_PIZ, COMPRESSIONTYPE_PXR24,
-    COMPRESSIONTYPE_RLE, COMPRESSIONTYPE_ZFP, COMPRESSIONTYPE_ZIP, COMPRESSIONTYPE_ZIPS, ERROR_DATA_TOO_LARGE, ERROR_INVALID_ARGUMENT, ERROR_INVALID_DATA, ERROR_SERIALIZATION_FAILED, PIXELTYPE_FLOAT,
+    float_to_half_full, half_to_float, Attribute, ChannelInfo, ExrError, ExrHeader, ExrImage, ExrTile, COMPRESSIONTYPE_B44, COMPRESSIONTYPE_B44A, COMPRESSIONTYPE_NONE, COMPRESSIONTYPE_PIZ, COMPRESSIONTYPE_PXR24,
+    COMPRESSIONTYPE_DWAA, COMPRESSIONTYPE_DWAB, COMPRESSIONTYPE_RLE, COMPRESSIONTYPE_ZFP, COMPRESSIONTYPE_ZIP, COMPRESSIONTYPE_ZIPS, ERROR_DATA_TOO_LARGE, ERROR_INVALID_ARGUMENT, ERROR_INVALID_DATA, ERROR_SERIALIZATION_FAILED, PIXELTYPE_FLOAT,
     PIXELTYPE_HALF, PIXELTYPE_UINT, TILE_RIPMAP_LEVELS,
 };
 
@@ -72,6 +73,7 @@ fn encode_pixel_data(
     file_types: &[i32],
     channel_offset_list: &[usize],
     zfp: &ZfpParam,
+    dwa: &DwaParam,
     err: &mut String,
     as_tinyexr: bool,
 ) -> bool {
@@ -191,12 +193,51 @@ fn encode_pixel_data(
         // (The format's rule again; for B44 this is every block of an image without a
         // channel of halves.)
         out_data.extend_from_slice(if !as_tinyexr && block.len() >= buf.len() { &buf } else { &block });
+    } else if !as_tinyexr && (compression_type == COMPRESSIONTYPE_DWAA || compression_type == COMPRESSIONTYPE_DWAB) {
+        // (Not in the original. A block that does not come out smaller is stored as it is.)
+        let channels: Vec<dwa::Channel> = dwa.names.iter().zip(file_types).map(|(name, &pixel_type)| dwa::Channel { name, pixel_type, p_linear: false }).collect();
+        out_data.extend_from_slice(&dwa::compress(&buf, &channels, width_size, num_lines as usize, dwa.level, dwa.deflate_ac));
     } else {
         return false;
     }
 
     true
 }
+
+/// What a block of DWAA or DWAB needs of the header: the channels' names, the level, and
+/// whether its AC coefficients are compressed by ZIP, as OpenEXR has them for the tiles of
+/// DWAA (by Huffman coding otherwise).
+pub(super) struct DwaParam {
+    names: Vec<String>,
+    level: f32,
+    deflate_ac: bool,
+}
+
+impl DwaParam {
+    fn new(exr_header: &ExrHeader, tiled: bool) -> DwaParam {
+        let names = exr_header.channels.iter().map(|channel| channel.name.split('\0').next().unwrap_or("").to_string()).collect();
+        DwaParam { names, level: dwa_level(&exr_header.custom_attributes), deflate_ac: tiled && exr_header.compression_type == COMPRESSIONTYPE_DWAA }
+    }
+}
+
+/// The `dwaCompressionLevel` of a header's attributes (a `float`), or OpenEXR's 45.
+fn dwa_level(attributes: &[Attribute]) -> f32 {
+    attributes
+        .iter()
+        .find(|attribute| attribute.name == "dwaCompressionLevel" && attribute.type_name == "float" && attribute.value.len() == 4)
+        .map_or(45.0, |attribute| f32::from_le_bytes([attribute.value[0], attribute.value[1], attribute.value[2], attribute.value[3]]))
+}
+
+/// The attribute that sets the level of DWAA and DWAB compression (`dwaCompressionLevel`),
+/// for a header's `custom_attributes`: OpenEXR's "base error" times 100000, from 0 to
+/// 6550400000. With 0 nothing is lost to the quantization (but some to the rest); OpenEXR's
+/// default is 45.
+pub fn dwa_compression_level_attribute(level: f32) -> Attribute {
+    Attribute { name: "dwaCompressionLevel".to_string(), type_name: "float".to_string(), value: level.to_le_bytes().to_vec() }
+}
+
+/// What the port refuses to write with DWAA or DWAB compression, as OpenEXR refuses it.
+pub const DWA_INVALID_LEVEL: &str = "Invalid dwa quality level specified";
 
 /// `EncodeTiledLevel`: the tiles of one level, each as a block in `data_list` from
 /// `start_index` on.
@@ -211,6 +252,7 @@ fn encode_tiled_level(
     channel_offset_list: &[usize],
     pixel_data_size: usize,
     zfp: &ZfpParam,
+    dwa: &DwaParam,
     err: &mut String,
     as_tinyexr: bool,
 ) -> i32 {
@@ -252,6 +294,7 @@ fn encode_tiled_level(
             &exr_header.requested_pixel_types,
             channel_offset_list,
             zfp,
+            dwa,
             err,
             as_tinyexr,
         );
@@ -296,7 +339,7 @@ fn encode_chunk(
     err: &mut String,
     as_tinyexr: bool,
 ) -> i32 {
-    let num_scanlines = num_scanline_blocks(exr_header.compression_type);
+    let num_scanlines = num_scanline_blocks(exr_header.compression_type, as_tinyexr);
 
     data_list.clear();
     data_list.resize(num_blocks as usize, Vec::new());
@@ -323,6 +366,7 @@ fn encode_chunk(
 
     // Use ZFP compression parameter from custom attributes(if such a parameter exists)
     let zfp = zfp_param_for_writing(&exr_header.custom_attributes);
+    let dwa = DwaParam::new(exr_header, !exr_image.tiles.is_empty());
 
     let mut offset = chunk_offset;
     // (In a file of many parts, each block has its part's number before it.)
@@ -361,7 +405,7 @@ fn encode_chunk(
             }
 
             let mut e = String::new();
-            let ret = encode_tiled_level(image, exr_header, data_list, block_idx, num_x_tiles, num_y_tiles, &channel_offset_list, pixel_data_size, &zfp, &mut e, as_tinyexr);
+            let ret = encode_tiled_level(image, exr_header, data_list, block_idx, num_x_tiles, num_y_tiles, &channel_offset_list, pixel_data_size, &zfp, &dwa, &mut e, as_tinyexr);
             if ret != 0 {
                 if !e.is_empty() {
                     err.push_str(&e);
@@ -408,6 +452,7 @@ fn encode_chunk(
                 &exr_header.requested_pixel_types,
                 &channel_offset_list,
                 &zfp,
+                &dwa,
                 err,
                 as_tinyexr,
             );
@@ -443,8 +488,15 @@ fn encode_chunk(
 
 /// What the original would read past its memory for, or throw on, in what it is handed.
 /// (It is handed pointers and trusts the header for what is behind them.)
-fn check(exr_image: &ExrImage, exr_header: &ExrHeader) -> Result<(), ExrError> {
+fn check(exr_image: &ExrImage, exr_header: &ExrHeader, as_tinyexr: bool) -> Result<(), ExrError> {
     let refuse = |message: &str| Err(ExrError { code: ERROR_INVALID_ARGUMENT, message: message.to_string() });
+    // (OpenEXR's bounds for the level of DWAA and DWAB.)
+    if !as_tinyexr && (exr_header.compression_type == COMPRESSIONTYPE_DWAA || exr_header.compression_type == COMPRESSIONTYPE_DWAB) {
+        let level = dwa_level(&exr_header.custom_attributes);
+        if !(0.0..=65504.0 * 100000.0).contains(&level) {
+            return refuse(DWA_INVALID_LEVEL);
+        }
+    }
     let num_channels = exr_header.channels.len();
     if num_channels == 0 {
         return refuse("An image needs a channel.");
@@ -495,7 +547,7 @@ fn check(exr_image: &ExrImage, exr_header: &ExrHeader) -> Result<(), ExrError> {
             return refuse("An image needs a width and a height.");
         }
         check_images(&exr_image.images, exr_image.width as usize * exr_image.height as usize)?;
-        let lines = num_scanline_blocks(exr_header.compression_type);
+        let lines = num_scanline_blocks(exr_header.compression_type, as_tinyexr);
         let sizes: Vec<(i32, i32)> = (0..exr_image.height).step_by(lines as usize).map(|start| (exr_image.width, lines.min(exr_image.height - start))).collect();
         return check_zfp(&sizes);
     }
@@ -614,7 +666,7 @@ fn save_parts(parts: &[(&ExrImage, &ExrHeader)], as_tinyexr: bool) -> Result<Vec
         }
     }
     for &(exr_image, exr_header) in parts {
-        check(exr_image, exr_header)?;
+        check(exr_image, exr_header, as_tinyexr)?;
     }
 
     let mut memory = Vec::new();
@@ -648,7 +700,7 @@ fn save_parts(parts: &[(&ExrImage, &ExrHeader)], as_tinyexr: bool) -> Result<Vec
     let mut offset_data: Vec<OffsetData> = (0..num_parts).map(|_| OffsetData::default()).collect();
     for (i, &(exr_image, exr_header)) in parts.iter().enumerate() {
         if exr_image.tiles.is_empty() {
-            let num_scanlines = num_scanline_blocks(exr_header.compression_type);
+            let num_scanlines = num_scanline_blocks(exr_header.compression_type, as_tinyexr);
             chunk_count[i] = (exr_image.height + num_scanlines - 1) / num_scanlines;
             // `InitSingleResolutionOffsets`.
             offset_data[i].offsets = vec![vec![vec![0u64; chunk_count[i] as usize]]];

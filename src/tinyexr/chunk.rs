@@ -5,7 +5,7 @@
 use super::decode::{allocate_image, compute_channel_layout, decode_pixel_data, decode_tiled_pixel_data};
 use super::zfp::{find_zfp_compression_param, ZfpParam};
 use super::{
-    ExrHeader, ExrImage, ExrTile, COMPRESSIONTYPE_B44, COMPRESSIONTYPE_B44A, COMPRESSIONTYPE_PIZ, COMPRESSIONTYPE_PXR24, COMPRESSIONTYPE_ZFP, COMPRESSIONTYPE_ZIP, ERROR_INVALID_ARGUMENT,
+    ExrHeader, ExrImage, ExrTile, COMPRESSIONTYPE_B44, COMPRESSIONTYPE_B44A, COMPRESSIONTYPE_DWAA, COMPRESSIONTYPE_DWAB, COMPRESSIONTYPE_PIZ, COMPRESSIONTYPE_PXR24, COMPRESSIONTYPE_ZFP, COMPRESSIONTYPE_ZIP, ERROR_INVALID_ARGUMENT,
     ERROR_INVALID_DATA, ERROR_INVALID_HEADER, TILE_MIPMAP_LEVELS, TILE_ONE_LEVEL, TILE_RIPMAP_LEVELS, TILE_ROUND_DOWN, TILE_ROUND_UP,
 };
 
@@ -23,9 +23,14 @@ pub(super) struct OffsetData {
     pub(super) num_y_levels: i32,
 }
 
-/// How many scanlines a block holds, by compression.
-pub(super) fn num_scanline_blocks(compression_type: i32) -> i32 {
-    if compression_type == COMPRESSIONTYPE_ZIP {
+/// How many scanlines a block holds, by compression. (tinyexr has DWAA and DWAB as it has
+/// any compression it does not know, of one line.)
+pub(super) fn num_scanline_blocks(compression_type: i32, as_tinyexr: bool) -> i32 {
+    if !as_tinyexr && compression_type == COMPRESSIONTYPE_DWAA {
+        32
+    } else if !as_tinyexr && compression_type == COMPRESSIONTYPE_DWAB {
+        256
+    } else if compression_type == COMPRESSIONTYPE_ZIP {
         16
     } else if compression_type == COMPRESSIONTYPE_PIZ {
         32
@@ -216,7 +221,7 @@ pub(super) fn decode_chunk(exr_image: &mut ExrImage, exr_header: &mut ExrHeader,
     let size = head.len();
     let num_channels = exr_header.channels.len() as i32;
 
-    let num_scanline_blocks = num_scanline_blocks(exr_header.compression_type);
+    let num_scanline_blocks = num_scanline_blocks(exr_header.compression_type, as_tinyexr);
 
     let mut zfp = None;
     if exr_header.compression_type == COMPRESSIONTYPE_ZFP {
@@ -799,7 +804,7 @@ pub(crate) fn decode_exr_image(exr_image: &mut ExrImage, exr_header: &mut ExrHea
         return ERROR_INVALID_ARGUMENT;
     }
 
-    let num_scanline_blocks = num_scanline_blocks(exr_header.compression_type);
+    let num_scanline_blocks = num_scanline_blocks(exr_header.compression_type, as_tinyexr);
 
     if exr_header.data_window.max_x < exr_header.data_window.min_x || exr_header.data_window.max_x.wrapping_sub(exr_header.data_window.min_x) == i32::MAX {
         // Issue 63

@@ -20,6 +20,9 @@ Rust.
 | Zstandard (`zstd`) | Meta Platforms, Inc. and affiliates; originally by Yann Collet | [zstd](https://github.com/facebook/zstd) |
 | Image codecs (`stb_image`, `stb_image_write`) | Sean Barrett and others; the JPEG writer is derived from Jon Olick's `jo_jpeg.cpp` | [stb](https://github.com/nothings/stb) |
 | `.exr` codec | Syoyo Fujita and many contributors, with code from OpenEXR by Industrial Light & Magic | [tinyexr](https://github.com/syoyo/tinyexr) |
+| ZFP for `.exr` | Lawrence Livermore National Security, LLC | [zfp](https://github.com/LLNL/zfp) |
+| DWAA and DWAB (`dwa`) | DreamWorks Animation and the Contributors to the OpenEXR Project | [OpenEXR](https://github.com/AcademySoftwareFoundation/openexr) |
+| zlib for DWA (`libdeflate`) | Eric Biggers and others | [libdeflate](https://github.com/ebiggers/libdeflate) |
 
 ## Licences
 
@@ -34,11 +37,14 @@ repository:
   [`LICENSE-bcdec.txt`](../LICENSE-bcdec.txt),
   [`LICENSE-ispc-texcomp.txt`](../LICENSE-ispc-texcomp.txt),
   [`LICENSE-bc6h_enc.txt`](../LICENSE-bc6h_enc.txt),
-  [`LICENSE-miniz.txt`](../LICENSE-miniz.txt) and
-  [`LICENSE-stb.txt`](../LICENSE-stb.txt).
+  [`LICENSE-miniz.txt`](../LICENSE-miniz.txt),
+  [`LICENSE-stb.txt`](../LICENSE-stb.txt) and
+  [`LICENSE-libdeflate.txt`](../LICENSE-libdeflate.txt).
 
-- **BSD:** zstd, in [`LICENSE-zstd.txt`](../LICENSE-zstd.txt); and tinyexr with the OpenEXR
-  code it contains, in [`LICENSE-tinyexr.txt`](../LICENSE-tinyexr.txt).
+- **BSD:** zstd, in [`LICENSE-zstd.txt`](../LICENSE-zstd.txt); tinyexr with the OpenEXR
+  code it contains, in [`LICENSE-tinyexr.txt`](../LICENSE-tinyexr.txt); zfp, in
+  [`LICENSE-zfp.txt`](../LICENSE-zfp.txt); and OpenEXR, in
+  [`LICENSE-openexr.txt`](../LICENSE-openexr.txt).
 
 The exact terms for each component are those in its notice file.
 

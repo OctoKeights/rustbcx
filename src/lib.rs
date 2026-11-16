@@ -23,14 +23,18 @@
 //!   which is the encoder of Microsoft's DirectXTex).
 //! - [`miniz`]: zlib and deflate, both ways (Rich Geldreich's
 //!   [miniz](https://github.com/richgel999/miniz)), for the files below.
-//! - [`zstd`]: Zstandard, both ways, for the same files: bytes to frames at zstd's levels 1 to
-//!   3 and its negative ones (part of the compressor of [zstd](https://github.com/facebook/zstd)),
-//!   and frames to bytes (the reference decoder that comes with it, `doc/educational_decoder`).
-//! - [`stb_image`] and [`stb_image_write`]: `.png`, `.bmp` and `.jpg` files to images and
-//!   back (`stb_image.h` and `stb_image_write.h`, from Sean Barrett's
+//! - [`zstd`]: Zstandard, both ways, for the same files: bytes to frames at every level of zstd,
+//!   the negative ones to 22 (the compressor of [zstd](https://github.com/facebook/zstd)), and
+//!   frames to bytes (the reference decoder that comes with it, `doc/educational_decoder`).
+//! - [`stb_image`] and [`stb_image_write`]: `.png`, `.bmp`, `.jpg`, `.tga`, `.psd`, `.gif`,
+//!   `.pgm`, `.ppm` and `.hdr` files to images, and `.png`, `.bmp` and `.jpg` back
+//!   (`stb_image.h` and `stb_image_write.h`, from Sean Barrett's
 //!   [stb](https://github.com/nothings/stb)).
 //! - [`tinyexr`]: `.exr` files to halves, floats or integers and back (Syoyo Fujita's
-//!   [tinyexr](https://github.com/syoyo/tinyexr)).
+//!   [tinyexr](https://github.com/syoyo/tinyexr)), with [`dwa`], OpenEXR's DWAA and DWAB
+//!   compressions (from [OpenEXR](https://github.com/AcademySoftwareFoundation/openexr)'s
+//!   OpenEXRCore), and [`libdeflate`], the zlib they use (Eric Biggers's
+//!   [libdeflate](https://github.com/ebiggers/libdeflate)).
 //!
 //! And around the ports, the crate's own: [`bc2`], the one block format of the family none of
 //! the originals has; [`image`], the images the encoders take, read from picture files and
@@ -60,10 +64,12 @@ pub mod bc7decomp;
 pub mod bc7e;
 pub mod bc7enc;
 pub mod dds;
+pub mod dwa;
 pub mod ert;
 mod fmath;
 pub mod image;
 pub mod ktx;
+pub mod libdeflate;
 mod lanes;
 pub mod miniz;
 mod parallel;

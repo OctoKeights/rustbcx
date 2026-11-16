@@ -2,13 +2,14 @@
 //! `DecodePixelData`, `DecodeTiledPixelData`, `ComputeChannelLayout` and `AllocateImage` of
 //! tinyexr v3.4.0 (`tinyexr.h`).
 
+use crate::dwa;
 use super::b44::decompress_b44;
 use super::piz::decompress_piz;
 use super::pxr24::decompress_pxr24;
 use super::zfp::{decompress_zfp, ZfpParam};
 use super::zip_rle::{decompress_rle, decompress_zip};
 use super::{
-    half_to_float, ChannelInfo, COMPRESSIONTYPE_B44, COMPRESSIONTYPE_B44A, COMPRESSIONTYPE_NONE, COMPRESSIONTYPE_PIZ, COMPRESSIONTYPE_PXR24, COMPRESSIONTYPE_RLE, COMPRESSIONTYPE_ZFP,
+    half_to_float, ChannelInfo, COMPRESSIONTYPE_B44, COMPRESSIONTYPE_B44A, COMPRESSIONTYPE_DWAA, COMPRESSIONTYPE_DWAB, COMPRESSIONTYPE_NONE, COMPRESSIONTYPE_PIZ, COMPRESSIONTYPE_PXR24, COMPRESSIONTYPE_RLE, COMPRESSIONTYPE_ZFP,
     COMPRESSIONTYPE_ZIP, COMPRESSIONTYPE_ZIPS, PIXELTYPE_FLOAT, PIXELTYPE_HALF, PIXELTYPE_UINT,
 };
 
@@ -391,6 +392,19 @@ pub(crate) fn decode_pixel_data(
             ch_offset += ch_width * ch_height * ch_bytes;
         }
         true
+    } else if !as_tinyexr && (compression_type == COMPRESSIONTYPE_DWAA || compression_type == COMPRESSIONTYPE_DWAB) {
+        // (Not in the original.) A block as long as its pixels is its pixels.
+        let Some(size) = block_size(width, num_lines, pixel_data_size).filter(|&size| size != 0) else { return false };
+        if data_len == size {
+            return unpack_lines(out_images, requested_pixel_types, block, line_order, width, height, x_stride, line_no, num_lines, pixel_data_size, channels, channel_offset_list);
+        }
+        let mut out_buf = vec![0u8; size];
+        let names: Vec<&str> = channels.iter().map(|channel| channel.name.split('\0').next().unwrap_or("")).collect();
+        let dwa_channels: Vec<dwa::Channel> = channels.iter().zip(&names).map(|(channel, name)| dwa::Channel { name, pixel_type: channel.pixel_type, p_linear: channel.p_linear != 0 }).collect();
+        if dwa::uncompress(block, &dwa_channels, width as usize, num_lines as usize, &mut out_buf).is_err() {
+            return false;
+        }
+        unpack_lines(out_images, requested_pixel_types, &out_buf, line_order, width, height, x_stride, line_no, num_lines, pixel_data_size, channels, channel_offset_list)
     } else if compression_type == COMPRESSIONTYPE_NONE {
         let width_size = width.max(0) as usize;
         for (c, channel) in channels.iter().enumerate() {
