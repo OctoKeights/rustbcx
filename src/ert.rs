@@ -419,10 +419,11 @@ where
     if !(1..=4).contains(&num_comps) {
         return false;
     }
-    for i in num_comps as usize..4 {
-        if params.color_weights[i] != 0 {
-            return false;
-        }
+    if params.color_weights[num_comps as usize..]
+        .iter()
+        .any(|&weight| weight != 0)
+    {
+        return false;
     }
 
     let total_color_weight = params.color_weights[0]
