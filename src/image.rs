@@ -10,11 +10,45 @@ use crate::stb_image::{self, LoadError, LoadOptions};
 use crate::stb_image_write::{self, WriteOptions};
 use crate::tinyexr::{self, ChannelData, ChannelInfo, ExrError, ExrHeader, ExrImage};
 
+/// Two images, or the slices of a volume, that have to be of one size and are not.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SizeMismatch {
+    /// The width and height of the first.
+    pub first: (u32, u32),
+    /// The width and height of the one that differs from it.
+    pub other: (u32, u32),
+}
+
+impl SizeMismatch {
+    fn check(first: (u32, u32), other: (u32, u32)) -> Result<(), SizeMismatch> {
+        if first == other {
+            Ok(())
+        } else {
+            Err(SizeMismatch { first, other })
+        }
+    }
+}
+
+impl std::fmt::Display for SizeMismatch {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "an image of {} by {} with one of {} by {}",
+            self.first.0, self.first.1, self.other.0, self.other.1
+        )
+    }
+}
+
+impl std::error::Error for SizeMismatch {}
+
 /// An image: `width * height` pixels in rows from the top, each red, green, blue, alpha.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Image {
+    /// The width in pixels.
     pub width: u32,
+    /// The height in pixels.
     pub height: u32,
+    /// The pixels, `width * height` of them, row after row from the top.
     pub pixels: Vec<ColorRgba>,
 }
 
@@ -166,15 +200,14 @@ impl Image {
     /// in this image and in `behind`, an image of the same size: two slices of a volume to one
     /// of its next mip level. With itself behind it, [`Image::half`].
     ///
-    /// # Panics
+    /// # Errors
     ///
     /// When the two are not of one size.
-    pub fn half_with(&self, behind: &Image) -> Image {
-        assert_eq!(
-            (self.width, self.height),
-            (behind.width, behind.height),
-            "two slices of one size"
-        );
+    pub fn half_with(&self, behind: &Image) -> Result<Image, SizeMismatch> {
+        SizeMismatch::check((self.width, self.height), (behind.width, behind.height))?;
+        if self.width == 0 || self.height == 0 {
+            return Ok(Image::default());
+        }
         let (width, height) = ((self.width / 2).max(1), (self.height / 2).max(1));
         let mut half = Image::new(width, height);
         for y in 0..height {
@@ -203,15 +236,26 @@ impl Image {
                 half.pixels[(x + y * width) as usize] = pixel;
             }
         }
-        half
+        Ok(half)
     }
 
     /// The next mip level of a volume, given as its slices from the front: half as many slices
     /// (rounded down, but never none), each the average of two ([`Image::half_with`]; a last
     /// slice with none behind it counts twice).
-    pub fn half_volume(slices: &[Image]) -> Vec<Image> {
+    ///
+    /// # Errors
+    ///
+    /// When the slices are not all of one size.
+    pub fn half_volume(slices: &[Image]) -> Result<Vec<Image>, SizeMismatch> {
         if slices.is_empty() {
-            return Vec::new();
+            return Ok(Vec::new());
+        }
+        // (Checked first, so that every slice is, and not only those that are halved.)
+        for slice in slices {
+            SizeMismatch::check(
+                (slices[0].width, slices[0].height),
+                (slice.width, slice.height),
+            )?;
         }
         (0..(slices.len() / 2).max(1))
             .map(|z| {
@@ -238,10 +282,14 @@ impl Image {
     /// rest made up (grey in all three colours, opaque), one of 16 bits a channel is brought
     /// down to 8, and an HDR file's floats with a gamma of 2.2. Of a GIF, the first frame.
     pub fn from_file_bytes(file: &[u8]) -> Result<Image, LoadError> {
-        let loaded = stb_image::load_from_memory(file, 4, &LoadOptions::default())?;
+        let loaded = stb_image::load(
+            file,
+            Some(stb_image::Channels::Rgba),
+            &LoadOptions::default(),
+        )?;
         Ok(Image {
-            width: loaded.x as u32,
-            height: loaded.y as u32,
+            width: loaded.width,
+            height: loaded.height,
             pixels: loaded
                 .data
                 .as_chunks::<4>()
@@ -266,62 +314,60 @@ impl Image {
     }
 
     /// The pixels as the writers take them: three bytes each when all are opaque, else four.
-    fn for_file(&self) -> Option<(i32, i32, i32, Vec<u8>)> {
-        let (width, height) = (
-            i32::try_from(self.width).ok()?,
-            i32::try_from(self.height).ok()?,
-        );
+    fn for_file(&self) -> Option<(stb_image_write::Channels, Vec<u8>)> {
         if self.pixels.len() != self.width as usize * self.height as usize {
             return None;
         }
-        if self.is_opaque() {
-            Some((
-                width,
-                height,
-                3,
-                self.pixels
-                    .iter()
-                    .flat_map(|pixel| [pixel[0], pixel[1], pixel[2]])
-                    .collect(),
-            ))
+        Some(if self.is_opaque() {
+            let rgb = self
+                .pixels
+                .iter()
+                .flat_map(|pixel| [pixel[0], pixel[1], pixel[2]]);
+            (stb_image_write::Channels::Rgb, rgb.collect())
         } else {
-            Some((width, height, 4, self.as_rgba8().to_vec()))
-        }
+            (stb_image_write::Channels::Rgba, self.as_rgba8().to_vec())
+        })
+    }
+
+    /// The image as the writers take it, or None for an image of no pixels or one too large
+    /// for the formats.
+    fn written(&self, write: impl Fn(&stb_image_write::Image) -> Vec<u8>) -> Option<Vec<u8>> {
+        let (channels, bytes) = self.for_file()?;
+        let image = stb_image_write::Image::new(&bytes, self.width, self.height, channels).ok()?;
+        Some(write(&image))
     }
 
     /// The image as the bytes of a `.png` file, written by [`crate::stb_image_write`]: with
     /// alpha unless every pixel is opaque. None for an image of no pixels.
     pub fn to_png(&self) -> Option<Vec<u8>> {
-        let (width, height, channels, bytes) = self.for_file()?;
-        stb_image_write::write_png(&bytes, 0, width, height, channels, &WriteOptions::default())
+        self.written(|image| stb_image_write::write_png(image, &WriteOptions::default()))
     }
 
     /// The image as the bytes of a `.bmp` file: 32 bits a pixel with alpha, or 24 when every
     /// pixel is opaque. None for an image of no pixels.
     pub fn to_bmp(&self) -> Option<Vec<u8>> {
-        let (width, height, channels, bytes) = self.for_file()?;
-        stb_image_write::write_bmp(width, height, channels, &bytes, 0, &WriteOptions::default())
+        self.written(|image| stb_image_write::write_bmp(image, &WriteOptions::default()))
     }
 
     /// The image as the bytes of a `.jpg` file, at a quality from 1 to 100. The format holds
     /// no alpha, and loses a little of the colour. None for an image of no pixels.
-    pub fn to_jpg(&self, quality: i32) -> Option<Vec<u8>> {
-        let (width, height) = (
-            i32::try_from(self.width).ok()?,
-            i32::try_from(self.height).ok()?,
-        );
+    pub fn to_jpg(&self, quality: u8) -> Option<Vec<u8>> {
         if self.pixels.len() != self.width as usize * self.height as usize {
             return None;
         }
-        stb_image_write::write_jpg(
-            width,
-            height,
-            4,
+        let image = stb_image_write::Image::new(
             self.as_rgba8(),
-            quality.clamp(1, 100),
-            0,
-            &WriteOptions::default(),
+            self.width,
+            self.height,
+            stb_image_write::Channels::Rgba,
         )
+        .ok()?;
+        let quality = quality.clamp(1, 100);
+        Some(stb_image_write::write_jpg(
+            &image,
+            quality,
+            &WriteOptions::default(),
+        ))
     }
 
     /// Writes the image to disk as the file its name ends in says: `.png`, `.bmp`, or `.jpg`
@@ -355,8 +401,11 @@ impl Image {
 /// blue as half floats. (The crate's own.)
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct HdrImage {
+    /// The width in pixels.
     pub width: u32,
+    /// The height in pixels.
     pub height: u32,
+    /// The pixels, `width * height` of them, row after row from the top.
     pub pixels: Vec<RgbHalf>,
 }
 
@@ -433,11 +482,13 @@ impl HdrImage {
 
     /// The red, green and blue of a `.exr` file as floats, read by [`crate::tinyexr`].
     fn exr_floats(file: &[u8]) -> Result<(u32, u32, Vec<f32>), ExrError> {
-        let (rgba, width, height) = tinyexr::load_exr_from_memory(file)?;
+        let image = tinyexr::load_rgba(file)?;
         Ok((
-            width as u32,
-            height as u32,
-            rgba.as_chunks::<4>()
+            image.width as u32,
+            image.height as u32,
+            image
+                .data
+                .as_chunks::<4>()
                 .0
                 .iter()
                 .flat_map(|pixel| [pixel[0], pixel[1], pixel[2]])
@@ -464,11 +515,9 @@ impl HdrImage {
     /// The image in the bytes of a Radiance `.hdr` file, read by [`crate::stb_image`]. (Its
     /// values are never below zero.)
     pub fn from_hdr_bytes(file: &[u8]) -> Result<HdrImage, LoadError> {
-        let loaded = stb_image::loadf_from_memory(file, 3, &LoadOptions::default())?;
-        Ok(
-            HdrImage::from_rgb_f32(loaded.x as u32, loaded.y as u32, &loaded.data)
-                .unwrap_or_default(),
-        )
+        let rgb = Some(stb_image::Channels::Rgb);
+        let loaded = stb_image::load_f32(file, rgb, &LoadOptions::default())?;
+        Ok(HdrImage::from_rgb_f32(loaded.width, loaded.height, &loaded.data).unwrap_or_default())
     }
 
     /// Reads a `.exr` or Radiance `.hdr` file from disk, whichever its bytes say it is. A file
@@ -476,7 +525,7 @@ impl HdrImage {
     /// the [`ExrError`] or [`LoadError`] inside.
     pub fn load(path: impl AsRef<Path>) -> std::io::Result<HdrImage> {
         let file = std::fs::read(path)?;
-        if stb_image::is_hdr_from_memory(&file) {
+        if stb_image::is_hdr(&file) {
             return HdrImage::from_hdr_bytes(&file)
                 .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error));
         }
@@ -489,7 +538,7 @@ impl HdrImage {
     /// below zero.
     pub fn load_signed(path: impl AsRef<Path>) -> std::io::Result<HdrImage> {
         let file = std::fs::read(path)?;
-        if stb_image::is_hdr_from_memory(&file) {
+        if stb_image::is_hdr(&file) {
             return HdrImage::from_hdr_bytes(&file)
                 .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error));
         }
@@ -524,22 +573,22 @@ impl HdrImage {
                 .iter()
                 .map(|name| ChannelInfo {
                     name: name.to_string(),
-                    pixel_type: tinyexr::PIXELTYPE_HALF,
+                    pixel_type: tinyexr::PixelType::HALF,
                     x_sampling: 1,
                     y_sampling: 1,
                     p_linear: 0,
                 })
                 .collect(),
-            pixel_types: vec![tinyexr::PIXELTYPE_HALF; 3],
-            requested_pixel_types: vec![tinyexr::PIXELTYPE_HALF; 3],
+            pixel_types: vec![tinyexr::PixelType::HALF; 3],
+            requested_pixel_types: vec![tinyexr::PixelType::HALF; 3],
             compression_type: if width < 16 && height < 16 {
-                tinyexr::COMPRESSIONTYPE_NONE
+                tinyexr::Compression::NONE
             } else {
-                tinyexr::COMPRESSIONTYPE_ZIP
+                tinyexr::Compression::ZIP
             },
             ..ExrHeader::default()
         };
-        tinyexr::save_exr_image_to_memory(&image, &header).ok()
+        tinyexr::save_image(&image, &header).ok()
     }
 
     /// Writes the image to disk as a `.exr` file. A name with any other ending, and an image
@@ -618,15 +667,14 @@ impl HdrImage {
     /// in this image and in `behind`, an image of the same size: two slices of a volume to one
     /// of its next mip level. With itself behind it, [`HdrImage::half`].
     ///
-    /// # Panics
+    /// # Errors
     ///
     /// When the two are not of one size.
-    pub fn half_with(&self, behind: &HdrImage) -> HdrImage {
-        assert_eq!(
-            (self.width, self.height),
-            (behind.width, behind.height),
-            "two slices of one size"
-        );
+    pub fn half_with(&self, behind: &HdrImage) -> Result<HdrImage, SizeMismatch> {
+        SizeMismatch::check((self.width, self.height), (behind.width, behind.height))?;
+        if self.width == 0 || self.height == 0 {
+            return Ok(HdrImage::default());
+        }
         let (width, height) = ((self.width / 2).max(1), (self.height / 2).max(1));
         let mut half = HdrImage::new(width, height);
         for y in 0..height {
@@ -649,15 +697,26 @@ impl HdrImage {
                 half.pixels[(x + y * width) as usize] = pixel;
             }
         }
-        half
+        Ok(half)
     }
 
     /// The next mip level of a volume, given as its slices from the front: half as many slices
     /// (rounded down, but never none), each the average of two ([`HdrImage::half_with`]; a
     /// last slice with none behind it counts twice).
-    pub fn half_volume(slices: &[HdrImage]) -> Vec<HdrImage> {
+    ///
+    /// # Errors
+    ///
+    /// When the slices are not all of one size.
+    pub fn half_volume(slices: &[HdrImage]) -> Result<Vec<HdrImage>, SizeMismatch> {
         if slices.is_empty() {
-            return Vec::new();
+            return Ok(Vec::new());
+        }
+        // (Checked first, so that every slice is, and not only those that are halved.)
+        for slice in slices {
+            SizeMismatch::check(
+                (slices[0].width, slices[0].height),
+                (slice.width, slice.height),
+            )?;
         }
         (0..(slices.len() / 2).max(1))
             .map(|z| {
@@ -733,8 +792,8 @@ mod tests {
                 && Image::new(4, 0).to_jpg(90).is_none()
         );
         assert_eq!(
-            Image::from_file_bytes(&[]),
-            Err(LoadError("unknown image type"))
+            Image::from_file_bytes(&[]).unwrap_err().reason(),
+            "unknown image type"
         );
     }
 
@@ -794,8 +853,8 @@ mod tests {
             assert_eq!(HdrImage::from_file_bytes(&file).unwrap(), image);
             assert_eq!(HdrImage::from_file_bytes_signed(&file).unwrap(), image);
             // The file is what tinyexr's reader says: three channels of halves.
-            let version = tinyexr::parse_exr_version_from_memory(&file).unwrap();
-            let header = tinyexr::parse_exr_header_from_memory(&version, &file).unwrap();
+            let version = tinyexr::parse_version(&file).unwrap();
+            let header = tinyexr::parse_header(&version, &file).unwrap();
             assert_eq!(
                 header
                     .channels
@@ -804,20 +863,20 @@ mod tests {
                     .collect::<Vec<_>>(),
                 ["B", "G", "R"]
             );
-            assert_eq!(header.pixel_types, [tinyexr::PIXELTYPE_HALF; 3]);
+            assert_eq!(header.pixel_types, [tinyexr::PixelType::HALF; 3]);
             assert_eq!(
                 header.compression_type,
                 if width < 16 {
-                    tinyexr::COMPRESSIONTYPE_NONE
+                    tinyexr::Compression::NONE
                 } else {
-                    tinyexr::COMPRESSIONTYPE_ZIP
+                    tinyexr::Compression::ZIP
                 }
             );
         }
 
         // What is below zero is kept only when asked for; floats in a file come in as halves.
-        let file = tinyexr::save_exr_to_memory(&[-1.0, 0.5, 2.0, 1e9, 0.25, -0.5], 2, 1, 3, false)
-            .unwrap();
+        let file =
+            tinyexr::save_floats(&[-1.0, 0.5, 2.0, 1e9, 0.25, -0.5], 2, 1, 3, false).unwrap();
         let image = HdrImage::from_file_bytes(&file).unwrap();
         assert_eq!(image.to_rgb_f32(), [0.0, 0.5, 2.0, 65504.0, 0.25, 0.0]);
         let signed = HdrImage::from_file_bytes_signed(&file).unwrap();
@@ -901,7 +960,8 @@ mod tests {
         let slice = |value: u8| Image::from_pixels(2, 2, vec![[value, 0, 0, 255]; 4]).unwrap();
         // Five slices to two: the first two and the next two; the fifth is left out, as an odd
         // column is.
-        let level = Image::half_volume(&[slice(10), slice(20), slice(30), slice(41), slice(200)]);
+        let level =
+            Image::half_volume(&[slice(10), slice(20), slice(30), slice(41), slice(200)]).unwrap();
         assert_eq!(level.len(), 2);
         assert_eq!((level[0].width, level[0].height), (1, 1));
         assert_eq!((level[0].pixels[0][0], level[1].pixels[0][0]), (15, 36));
@@ -911,13 +971,13 @@ mod tests {
             *pixel = [(i * 17) as u8, (i * 5) as u8, 3, 255];
         }
         assert_eq!(
-            Image::half_volume(std::slice::from_ref(&lone)),
+            Image::half_volume(std::slice::from_ref(&lone)).unwrap(),
             [lone.half()]
         );
-        assert!(Image::half_volume(&[]).is_empty());
+        assert!(Image::half_volume(&[]).unwrap().is_empty());
 
         let hdr = |value: f32| HdrImage::from_rgb_f32(2, 2, &[value; 12]).unwrap();
-        let level = HdrImage::half_volume(&[hdr(1.0), hdr(2.0), hdr(8.0)]);
+        let level = HdrImage::half_volume(&[hdr(1.0), hdr(2.0), hdr(8.0)]).unwrap();
         assert_eq!(level.len(), 1);
         assert_eq!(half_to_float(level[0].pixels[0][1]), 1.5);
         let lone = HdrImage::from_rgb_f32(
@@ -927,10 +987,10 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            HdrImage::half_volume(std::slice::from_ref(&lone)),
+            HdrImage::half_volume(std::slice::from_ref(&lone)).unwrap(),
             [lone.half()]
         );
-        assert!(HdrImage::half_volume(&[]).is_empty());
+        assert!(HdrImage::half_volume(&[]).unwrap().is_empty());
     }
 
     #[test]

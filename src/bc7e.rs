@@ -15,6 +15,8 @@
 //! (The partition and anchor tables are the ones [`crate::bc7decomp`] has: the two originals
 //! hold the same tables.)
 
+// (As in the original, loops index several arrays in step and functions take the original's parameters.)
+#![allow(clippy::needless_range_loop, clippy::too_many_arguments)]
 // The code follows the original's line for line, and these are its shapes.
 #![allow(
     clippy::collapsible_else_if,
@@ -22,6 +24,7 @@
     clippy::implicit_saturating_sub
 )]
 
+use crate::LengthMismatch;
 use crate::bc7decomp::{
     ANCHOR_INDEX_SECOND_SUBSET, ANCHOR_INDEX_THIRD_SUBSET_1, ANCHOR_INDEX_THIRD_SUBSET_2,
     ColorRgba, PARTITION2, PARTITION3,
@@ -70,9 +73,13 @@ pub struct AlphaSettings {
     pub max_mode7_partitions_to_try: u32,
     /// Multiplies the four error weights for modes 6 and 7.
     pub mode67_error_weight_mul: [u32; 4],
+    /// Whether mode 4 may be used.
     pub use_mode4: bool,
+    /// Whether mode 5 may be used.
     pub use_mode5: bool,
+    /// Whether mode 6 may be used.
     pub use_mode6: bool,
+    /// Whether mode 7 may be used.
     pub use_mode7: bool,
     /// Try mode 4 with a colour channel swapped with alpha.
     pub use_mode4_rotation: bool,
@@ -106,7 +113,9 @@ pub struct CompressBlockParams {
     pub pbit_search: bool,
     /// Pack opaque blocks with mode 6 only.
     pub mode6_only: bool,
+    /// The settings for blocks without alpha.
     pub opaque_settings: OpaqueSettings,
+    /// The settings for blocks with alpha.
     pub alpha_settings: AlphaSettings,
 }
 
@@ -285,7 +294,7 @@ impl CompressBlockParams {
 /// for what doesn't fit or is not a number.
 #[inline]
 fn f2i(value: f32) -> i32 {
-    if value >= -2_147_483_648.0 && value < 2_147_483_648.0 {
+    if (-2_147_483_648.0..2_147_483_648.0).contains(&value) {
         value as i32
     } else {
         i32::MIN
@@ -4309,41 +4318,38 @@ impl Bc7e {
     /// The work is shared out among all the machine's threads; the blocks are the same however
     /// many there are. [`Bc7e::compress_blocks_on`] takes the number of threads.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// If there are not as many blocks as sets of pixels.
+    /// If there are not as many blocks as sets of pixels; nothing is packed then.
     pub fn compress_blocks(
         &self,
         blocks: &mut [[u8; 16]],
         pixels: &[[ColorRgba; 16]],
         comp_params: &CompressBlockParams,
-    ) {
-        self.compress_blocks_on(0, blocks, pixels, comp_params);
+    ) -> Result<(), LengthMismatch> {
+        self.compress_blocks_on(0, blocks, pixels, comp_params)
     }
 
     /// [`Bc7e::compress_blocks`] on a number of threads: 0 for all the machine has, 1 to stay
     /// on the calling thread.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// If there are not as many blocks as sets of pixels.
+    /// If there are not as many blocks as sets of pixels; nothing is packed then.
     pub fn compress_blocks_on(
         &self,
         threads: u32,
         blocks: &mut [[u8; 16]],
         pixels: &[[ColorRgba; 16]],
         comp_params: &CompressBlockParams,
-    ) {
-        assert_eq!(
-            blocks.len(),
-            pixels.len(),
-            "a block for each sixteen pixels"
-        );
+    ) -> Result<(), LengthMismatch> {
+        LengthMismatch::check(blocks.len(), pixels.len())?;
         parallel::for_each_run(blocks, pixels, threads, |blocks, pixels| {
             for (block, pixels) in blocks.iter_mut().zip(pixels) {
                 self.compress_block(block, pixels, comp_params);
             }
         });
+        Ok(())
     }
 }
 
@@ -4620,7 +4626,9 @@ mod tests {
         let params = CompressBlockParams::basic(true);
         let pixels = [[[9u8, 8, 7, 255]; 16], [[1u8, 2, 3, 4]; 16], [[0u8; 4]; 16]];
         let mut together = [[0u8; 16]; 3];
-        encoder.compress_blocks(&mut together, &pixels, &params);
+        encoder
+            .compress_blocks(&mut together, &pixels, &params)
+            .unwrap();
         for i in 0..3 {
             let mut alone = [0u8; 16];
             encoder.compress_block(&mut alone, &pixels[i], &params);
@@ -4643,21 +4651,31 @@ mod tests {
             .collect();
         let params = CompressBlockParams::ultrafast(false);
         let mut on_all = vec![[0u8; 16]; pixels.len()];
-        encoder.compress_blocks(&mut on_all, &pixels, &params);
+        encoder
+            .compress_blocks(&mut on_all, &pixels, &params)
+            .unwrap();
         for threads in [1, 3] {
             let mut blocks = vec![[0u8; 16]; pixels.len()];
-            encoder.compress_blocks_on(threads, &mut blocks, &pixels, &params);
+            encoder
+                .compress_blocks_on(threads, &mut blocks, &pixels, &params)
+                .unwrap();
             assert_eq!(blocks, on_all, "{threads} threads");
         }
     }
 
     #[test]
-    #[should_panic(expected = "a block for each sixteen pixels")]
-    fn the_wrong_number_of_blocks_panics() {
-        Bc7e::new().compress_blocks(
+    fn the_wrong_number_of_blocks_is_refused() {
+        let result = Bc7e::new().compress_blocks(
             &mut [[0u8; 16]; 2],
             &[[[0u8; 4]; 16]; 3],
             &CompressBlockParams::basic(false),
+        );
+        assert_eq!(
+            result,
+            Err(LengthMismatch {
+                blocks: 2,
+                pixels: 3
+            })
         );
     }
 }

@@ -11,6 +11,9 @@
 //! costs, `compute_match_cost_estimate`, `tracked_stat`, `compute_block_max_std_dev` and
 //! `bc7_block`. They are not here.)
 
+// (As in the original, loops index several arrays in step.)
+#![allow(clippy::needless_range_loop)]
+
 use crate::bc7decomp::{
     ANCHOR_INDEX_SECOND_SUBSET, ANCHOR_INDEX_THIRD_SUBSET_1, ANCHOR_INDEX_THIRD_SUBSET_2,
     ColorRgba, PARTITION2, PARTITION3,
@@ -24,6 +27,34 @@ pub const BLOCK_SIZE: usize = 16;
 pub const MAX_PARTITIONS: u32 = 64;
 /// The highest uber level.
 pub const MAX_UBER_LEVEL: u32 = 4;
+
+/// Why [`Bc7Enc::compress_block`] could not pack a block with the settings it was given.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum CompressBlockError {
+    /// The mode mask has none of the modes the block needs: 1 or 6 for an opaque block, 5, 6
+    /// or 7 for one with alpha.
+    NoModeAllowed,
+    /// None of the modes allowed could pack the block: mode 1 is the only one and
+    /// `max_partitions` is 0, or the error weights are out of range.
+    NoModeFits,
+    /// `force_selectors` is set and a selector is 16 or more.
+    SelectorOutOfRange,
+}
+
+impl fmt::Display for CompressBlockError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            CompressBlockError::NoModeAllowed => {
+                "the mode mask has none of the modes the block needs"
+            }
+            CompressBlockError::NoModeFits => "none of the modes allowed could pack the block",
+            CompressBlockError::SelectorOutOfRange => "a forced selector is 16 or more",
+        })
+    }
+}
+
+impl std::error::Error for CompressBlockError {}
 
 /// The settings of [`Bc7Enc::compress_block`]: `bc7enc_compress_block_params`.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -204,7 +235,7 @@ impl fmt::Display for CompressBlockParams {
 /// and the lowest int for what doesn't fit or is not a number.
 #[inline]
 fn f2i(value: f32) -> i32 {
-    if value >= -2_147_483_648.0 && value < 2_147_483_648.0 {
+    if (-2_147_483_648.0..2_147_483_648.0).contains(&value) {
         value as i32
     } else {
         i32::MIN
@@ -1265,6 +1296,7 @@ impl Bc7Enc {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn find_optimal_solution(
         &self,
         mode: u32,
@@ -2802,13 +2834,10 @@ impl Bc7Enc {
         pixels: &[ColorRgba; 16],
         comp_params: &CompressBlockParams,
         params: &mut ColorCellCompressorParams,
-    ) {
-        assert!(
-            (comp_params.mode_mask & (1 << 6)) != 0
-                || (comp_params.mode_mask & (1 << 5)) != 0
-                || (comp_params.mode_mask & (1 << 7)) != 0,
-            "a block with alpha needs mode 5, 6 or 7 in the mode mask"
-        );
+    ) -> Result<(), CompressBlockError> {
+        if comp_params.mode_mask & (1 << 5 | 1 << 6 | 1 << 7) == 0 {
+            return Err(CompressBlockError::NoModeAllowed);
+        }
 
         params.selector_weights = &WEIGHTS4;
         params.selector_weightsx = &WEIGHTS4X;
@@ -2935,8 +2964,9 @@ impl Bc7Enc {
 
             encode_bc7_block(block, &opt_results6);
         } else {
-            panic!("no mode could pack the block: the error weights are out of range");
+            return Err(CompressBlockError::NoModeFits);
         }
+        Ok(())
     }
 
     fn handle_opaque_block(
@@ -2945,11 +2975,10 @@ impl Bc7Enc {
         pixels: &[ColorRgba; 16],
         comp_params: &CompressBlockParams,
         params: &mut ColorCellCompressorParams,
-    ) {
-        assert!(
-            (comp_params.mode_mask & (1 << 6)) != 0 || (comp_params.mode_mask & (1 << 1)) != 0,
-            "an opaque block needs mode 1 or 6 in the mode mask"
-        );
+    ) -> Result<(), CompressBlockError> {
+        if comp_params.mode_mask & (1 << 1 | 1 << 6) == 0 {
+            return Err(CompressBlockError::NoModeAllowed);
+        }
 
         let mut opt_results = OptimizationResults::default();
         // (The C++ leaves the mode unset until one is chosen.)
@@ -3040,32 +3069,36 @@ impl Bc7Enc {
             }
         }
 
-        assert!(
-            chosen,
-            "no mode could pack the block: mode 1 alone needs max_partitions above 0 and error weights in range"
-        );
+        if !chosen {
+            return Err(CompressBlockError::NoModeFits);
+        }
 
         encode_bc7_block(block, &opt_results);
+        Ok(())
     }
 
     /// Packs a single block of 16 RGBA pixels (R first in memory) to the 128-bit BC7 block
     /// `block`: `bc7enc_compress_block`. Blocks with alpha use mode 5, 6 or 7, and opaque
     /// blocks mode 1 or 6, as the mode mask allows.
     ///
-    /// Returns true if the block had any pixels with alpha < 255 (or alpha was forced),
-    /// otherwise it returns false. (This is not an error code - a block is always encoded.)
+    /// Returns true if the block had any pixels with alpha below 255 (or alpha was forced),
+    /// otherwise false.
     ///
-    /// # Panics
+    /// # Errors
     ///
     /// If the mode mask has none of the modes the block needs (1 or 6 for an opaque block; 5,
-    /// 6 or 7 for one with alpha), or mode 1 is the only one and `max_partitions` is 0. Also
-    /// if a forced selector is 16 or more.
+    /// 6 or 7 for one with alpha), if none of them can pack it (mode 1 is the only one and
+    /// `max_partitions` is 0, or the error weights are out of range), or if a forced selector
+    /// is 16 or more. `block` is then left as it was.
     pub fn compress_block(
         &self,
         block: &mut [u8; 16],
         pixels: &[ColorRgba; 16],
         comp_params: &CompressBlockParams,
-    ) -> bool {
+    ) -> Result<bool, CompressBlockError> {
+        if comp_params.force_selectors && comp_params.selectors.iter().any(|&s| s >= 16) {
+            return Err(CompressBlockError::SelectorOutOfRange);
+        }
         debug_assert!(self.mode_1_optimal_endpoints[255][0].hi != 0);
 
         let mut params = ColorCellCompressorParams {
@@ -3092,19 +3125,12 @@ impl Bc7Enc {
             params.weights = comp_params.weights;
         }
 
-        if comp_params.force_alpha {
-            self.handle_alpha_block(block, pixels, comp_params, &mut params);
-            return true;
+        if comp_params.force_alpha || pixels.iter().any(|pixel| pixel[3] < 255) {
+            self.handle_alpha_block(block, pixels, comp_params, &mut params)?;
+            return Ok(true);
         }
-
-        for pixel in pixels {
-            if pixel[3] < 255 {
-                self.handle_alpha_block(block, pixels, comp_params, &mut params);
-                return true;
-            }
-        }
-        self.handle_opaque_block(block, pixels, comp_params, &mut params);
-        false
+        self.handle_opaque_block(block, pixels, comp_params, &mut params)?;
+        Ok(false)
     }
 }
 
@@ -3181,7 +3207,9 @@ mod tests {
             params.uber_level = uber_level;
             let mut block = [0u8; 16];
             assert!(
-                !encoder.compress_block(&mut block, &source, &params),
+                !encoder
+                    .compress_block(&mut block, &source, &params)
+                    .unwrap(),
                 "no pixel has alpha"
             );
             assert!(matches!(mode_of(&block), 1 | 6));
@@ -3204,7 +3232,11 @@ mod tests {
             let mut params = CompressBlockParams::new();
             params.mode_mask = mask;
             let mut block = [0u8; 16];
-            assert!(encoder.compress_block(&mut block, &source, &params));
+            assert!(
+                encoder
+                    .compress_block(&mut block, &source, &params)
+                    .unwrap()
+            );
             let mode = mode_of(&block);
             assert!(
                 matches!(mode, 5..=7) && mask & (1 << mode) != 0,
@@ -3224,7 +3256,11 @@ mod tests {
         let mut params = CompressBlockParams::new();
         params.force_alpha = true;
         let mut block = [0u8; 16];
-        assert!(encoder.compress_block(&mut block, &ramp([255, 255, 255], |_| 255), &params));
+        assert!(
+            encoder
+                .compress_block(&mut block, &ramp([255, 255, 255], |_| 255), &params)
+                .unwrap()
+        );
         assert!(matches!(mode_of(&block), 5..=7));
     }
 
@@ -3243,7 +3279,9 @@ mod tests {
             let source = [color; 16];
             let mut block = [0u8; 16];
             assert_eq!(
-                encoder.compress_block(&mut block, &source, &params),
+                encoder
+                    .compress_block(&mut block, &source, &params)
+                    .unwrap(),
                 color[3] < 255
             );
             let mut pixels = [[0u8; 4]; 16];
@@ -3271,7 +3309,11 @@ mod tests {
         let mut params = CompressBlockParams::new();
         params.mode_mask = 1 << 1;
         let mut block = [0u8; 16];
-        assert!(!encoder.compress_block(&mut block, &source, &params));
+        assert!(
+            !encoder
+                .compress_block(&mut block, &source, &params)
+                .unwrap()
+        );
         assert_eq!(mode_of(&block), 1);
         let mut pixels = [[0u8; 4]; 16];
         assert!(unpack_bc7(&block, &mut pixels));
@@ -3289,7 +3331,9 @@ mod tests {
         }
         let source = ramp([255, 255, 255], |_| 255);
         let mut block = [0u8; 16];
-        encoder.compress_block(&mut block, &source, &params);
+        encoder
+            .compress_block(&mut block, &source, &params)
+            .unwrap();
         assert_eq!(mode_of(&block), 6);
         // Mode 6: 7 bits of mode, 56 of endpoints, 2 p-bits, then the selectors: 3 bits for
         // the first, which is below 8, and 4 for each of the rest.
@@ -3330,19 +3374,34 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "an opaque block needs mode 1 or 6")]
-    fn an_opaque_block_without_its_modes_panics() {
+    fn settings_that_cannot_pack_a_block_are_refused() {
+        let encoder = Bc7Enc::new();
+        let mut block = [7u8; 16];
         let mut params = CompressBlockParams::new();
         params.mode_mask = 1 << 5;
-        Bc7Enc::new().compress_block(&mut [0u8; 16], &[[9, 9, 9, 255]; 16], &params);
-    }
-
-    #[test]
-    #[should_panic(expected = "a block with alpha needs mode 5, 6 or 7")]
-    fn a_block_with_alpha_without_its_modes_panics() {
-        let mut params = CompressBlockParams::new();
+        assert_eq!(
+            encoder.compress_block(&mut block, &[[9, 9, 9, 255]; 16], &params),
+            Err(CompressBlockError::NoModeAllowed)
+        );
         params.mode_mask = 1 << 1;
-        Bc7Enc::new().compress_block(&mut [0u8; 16], &[[9, 9, 9, 100]; 16], &params);
+        assert_eq!(
+            encoder.compress_block(&mut block, &[[9, 9, 9, 100]; 16], &params),
+            Err(CompressBlockError::NoModeAllowed)
+        );
+        params.max_partitions = 0;
+        assert_eq!(
+            encoder.compress_block(&mut block, &[[9, 9, 9, 255]; 16], &params),
+            Err(CompressBlockError::NoModeFits)
+        );
+        let mut params = CompressBlockParams::new();
+        params.force_selectors = true;
+        params.selectors[15] = 16;
+        assert_eq!(
+            encoder.compress_block(&mut block, &[[9, 9, 9, 255]; 16], &params),
+            Err(CompressBlockError::SelectorOutOfRange)
+        );
+        // The block is left as it was.
+        assert_eq!(block, [7u8; 16]);
     }
 
     /// A running hash of 4,000 made-up blocks packed with the settings varied. The C++ library
@@ -3387,7 +3446,9 @@ mod tests {
             params.mode17_partition_estimation_filterbank = (i / 11) % 2 == 0;
 
             let mut block = [0u8; 16];
-            let alpha = encoder.compress_block(&mut block, &pixels, &params);
+            let alpha = encoder
+                .compress_block(&mut block, &pixels, &params)
+                .unwrap();
             assert_eq!(
                 alpha,
                 i % 2 == 1 && pixels.iter().any(|pixel| pixel[3] < 255)

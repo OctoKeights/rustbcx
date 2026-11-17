@@ -454,7 +454,9 @@ fn dump_bc7enc(seed: u64, blocks: u32) {
         }
 
         let mut block = [0xEEu8; 16];
-        let flag = encoder.compress_block(&mut block, &pixels, &params);
+        let flag = encoder
+            .compress_block(&mut block, &pixels, &params)
+            .expect("settings that pack every block");
         with_alpha += u32::from(flag);
         hash.add(&block);
         hash.add(&[u8::from(flag)]);
@@ -552,7 +554,9 @@ fn dump_bc7e(presets: bool, seed: u64, blocks: u32, path: Option<&String>) {
     if presets {
         for (name, profile) in PROFILES {
             for perceptual in [false, true] {
-                encoder.compress_blocks(&mut packed, &pixels, &profile(perceptual));
+                encoder
+                    .compress_blocks(&mut packed, &pixels, &profile(perceptual))
+                    .expect("a block for each sixteen pixels");
                 println!(
                     "{name} {} {:016x}",
                     if perceptual { "perceptual" } else { "linear" },
@@ -569,11 +573,13 @@ fn dump_bc7e(presets: bool, seed: u64, blocks: u32, path: Option<&String>) {
         while first < blocks as usize {
             let count = (blocks as usize - first).min(32);
             let params = make_settings(&mut random);
-            encoder.compress_blocks(
-                &mut packed[first..first + count],
-                &pixels[first..first + count],
-                &params,
-            );
+            encoder
+                .compress_blocks(
+                    &mut packed[first..first + count],
+                    &pixels[first..first + count],
+                    &params,
+                )
+                .expect("a block for each sixteen pixels");
             first += count;
         }
         println!("settings {:016x}", hash(&packed, &mut modes));

@@ -225,13 +225,13 @@ fn unpack_bc7_mode0_2(mode: u32, data_chunks: &[u64; 2], pixels: &mut [ColorRgba
     }
 
     for (e, endpoint) in endpoints.iter_mut().enumerate() {
-        for c in 0..4 {
-            endpoint[c] = if c == 3 {
+        for (c, value) in endpoint.iter_mut().enumerate() {
+            *value = if c == 3 {
                 255
             } else if pbit_count != 0 {
-                dequant_pbit(u32::from(endpoint[c]), pbits[e], endpoint_bits) as u8
+                dequant_pbit(u32::from(*value), pbits[e], endpoint_bits) as u8
             } else {
-                dequant(u32::from(endpoint[c]), endpoint_bits) as u8
+                dequant(u32::from(*value), endpoint_bits) as u8
             };
         }
     }
@@ -323,12 +323,12 @@ fn unpack_bc7_mode1_3_7(mode: u32, data_chunks: &[u64; 2], pixels: &mut [ColorRg
     }
 
     for (e, endpoint) in endpoints.iter_mut().enumerate() {
-        for c in 0..4 {
-            endpoint[c] = if mode != 7 && c == 3 {
+        for (c, value) in endpoint.iter_mut().enumerate() {
+            *value = if mode != 7 && c == 3 {
                 255
             } else {
                 dequant_pbit(
-                    u32::from(endpoint[c]),
+                    u32::from(*value),
                     pbits[if shared_pbits { e >> 1 } else { e }],
                     endpoint_bits,
                 ) as u8
@@ -419,9 +419,9 @@ fn unpack_bc7_mode4_5(mode: u32, data_chunks: &[u64; 2], pixels: &mut [ColorRgba
     }
 
     for endpoint in &mut endpoints {
-        for c in 0..4 {
-            endpoint[c] = dequant(
-                u32::from(endpoint[c]),
+        for (c, value) in endpoint.iter_mut().enumerate() {
+            *value = dequant(
+                u32::from(*value),
                 if c == 3 {
                     a_endpoint_bits
                 } else {

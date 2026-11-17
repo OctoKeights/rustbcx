@@ -286,7 +286,9 @@ pub fn ert(seed: u64, blocks: u32) -> String {
             }
             2 => {
                 for (block, pixels) in packed.as_chunks_mut::<16>().0.iter_mut().zip(&px) {
-                    bc7_encoder.compress_block(block, pixels, &bc7_params);
+                    bc7_encoder
+                        .compress_block(block, pixels, &bc7_params)
+                        .expect("settings that pack every block");
                 }
                 set_weights(&mut p, 4);
                 ert::reduce_entropy(
@@ -793,7 +795,8 @@ pub fn bc6h_pack(seed: u64, blocks: u32) -> String {
     let mut modes = [0u32; 15];
     let mut printed = String::new();
     for (name, settings) in profiles {
-        bc6h::compress_blocks_bc6h(&mut packed, &pixels, &settings);
+        bc6h::compress_blocks_bc6h(&mut packed, &pixels, &settings)
+            .expect("a block for each sixteen pixels");
         let mut hash = Hash::new();
         for block in &packed {
             hash.add(block);

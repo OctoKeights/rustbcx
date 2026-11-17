@@ -99,6 +99,7 @@ impl std::error::Error for TextureError {}
 /// `.ktx` files hold.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Texture {
+    /// The format of the blocks.
     pub format: TextureFormat,
     /// Whether the colours are sRGB. Only a note for whoever reads the file: the blocks are the
     /// same either way.
@@ -500,7 +501,7 @@ pub fn compress_many(
             break;
         }
         current = if layout == Layout::Volume {
-            Image::half_volume(&current)
+            Image::half_volume(&current).ok()?
         } else {
             current.iter().map(Image::half).collect()
         };
@@ -614,7 +615,7 @@ fn compress_hdr_with(
             break;
         }
         current = if volume {
-            HdrImage::half_volume(&current)
+            HdrImage::half_volume(&current).ok()?
         } else {
             current.iter().map(HdrImage::half).collect()
         };
@@ -729,6 +730,7 @@ impl Reader<'_> {
 /// Checks what a file's header says of its texture, and makes the texture with room for its
 /// levels and nothing in them yet. `levels` is how many the file says it has (none counts as
 /// one), and `depth`, `layers` and `cube` are as [`Texture`] holds them.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn texture_from_header(
     format: TextureFormat,
     srgb: bool,
@@ -944,7 +946,7 @@ mod tests {
             images[4].pixel(3, 3)
         ));
         // The second slice of the second level is the third and fourth slices together.
-        let between = Image::half_volume(&images[..5])[1].pixel(1, 1);
+        let between = Image::half_volume(&images[..5]).unwrap()[1].pixel(1, 1);
         assert!(near(
             volume
                 .unpack_image(1, 1, Bc1ApproxMode::Ideal)

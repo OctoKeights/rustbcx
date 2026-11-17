@@ -5,6 +5,9 @@
 //! are an [`Rgbcx`], made by [`Rgbcx::new`], and the encoders that need them are its methods.
 //! The BC4 and BC5 encoders and all the unpackers need no tables and are plain functions.
 
+// (As in the original, loops index several arrays in step and functions take the original's parameters.)
+#![allow(clippy::needless_range_loop, clippy::too_many_arguments)]
+
 use crate::rgbcx_tables::{
     BEST_TOTAL_ORDERINGS3, BEST_TOTAL_ORDERINGS4, MIDPOINT5, MIDPOINT6,
     NUM_UNIQUE_TOTAL_ORDERINGS3, NUM_UNIQUE_TOTAL_ORDERINGS4, UNIQUE_TOTAL_ORDERS3,
@@ -69,22 +72,33 @@ pub const ENCODE_BC1_BOUNDING_BOX_INT: u32 = 32768;
 /// Try refining the final endpoints by examining nearby colors: the number of rounds, shifted
 /// up by this.
 pub const ENCODE_BC1_ENDPOINT_SEARCH_ROUNDS_SHIFT: u32 = 22;
+/// The bits of the flags that hold the number of rounds of endpoint search.
 pub const ENCODE_BC1_ENDPOINT_SEARCH_ROUNDS_MASK: u32 =
     1023 << ENCODE_BC1_ENDPOINT_SEARCH_ROUNDS_SHIFT;
 
+/// The fewest total orderings of a block's colours `encode_bc1` tries.
 pub const MIN_TOTAL_ORDERINGS: u32 = 1;
+/// The most total orderings it tries for a block of three colours.
 pub const MAX_TOTAL_ORDERINGS3: u32 = 32;
+/// The most total orderings it tries for a block of four colours.
 pub const MAX_TOTAL_ORDERINGS4: u32 = 128;
+/// The total orderings tried for four colours by default.
 pub const DEFAULT_TOTAL_ORDERINGS_TO_TRY: u32 = 10;
+/// The total orderings tried for three colours by default.
 pub const DEFAULT_TOTAL_ORDERINGS_TO_TRY3: u32 = 1;
 
 /// The lowest and highest level `encode_bc1` knows. Level 0 is fastest, 18 is highest quality.
 pub const MIN_LEVEL: u32 = 0;
+/// See [`MIN_LEVEL`].
 pub const MAX_LEVEL: u32 = 18;
 
+/// How far around its endpoints `encode_bc4_hq` searches by default.
 pub const BC4_DEFAULT_SEARCH_RAD: u32 = 3;
+/// For `encode_bc4_hq`: try blocks of eight interpolated values.
 pub const BC4_USE_MODE8_FLAG: u32 = 1;
+/// For `encode_bc4_hq`: try blocks of six interpolated values with 0 and 255.
 pub const BC4_USE_MODE6_FLAG: u32 = 2;
+/// For `encode_bc4_hq`: try both kinds of block.
 pub const BC4_USE_ALL_MODES: u32 = 3;
 
 const TOTAL_ORDER_4_0_16: u32 = 15;
@@ -100,7 +114,7 @@ const TOTAL_ORDER_3_2_16: u32 = 89;
 /// and the lowest int for what doesn't fit or is not a number.
 #[inline]
 fn f2i(value: f32) -> i32 {
-    if value >= -2_147_483_648.0 && value < 2_147_483_648.0 {
+    if (-2_147_483_648.0..2_147_483_648.0).contains(&value) {
         value as i32
     } else {
         i32::MIN

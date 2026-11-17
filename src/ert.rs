@@ -238,6 +238,7 @@ pub(crate) fn compute_block_max_std_dev(
 }
 
 /// The mean squared error between two blocks of pixels, over the channels in use.
+#[allow(clippy::too_many_arguments)]
 fn compute_block_mse(
     pixels_a: &[ColorRgba],
     pixels_b: &[ColorRgba],
@@ -304,8 +305,8 @@ fn compute_block_mse(
                     &pixels_a[(x + y_ofs) as usize],
                     &pixels_b[(x + y_ofs) as usize],
                 );
-                for c in 0..num_comps as usize {
-                    total_err += u64::from(wdd(weights[c], d(a, b, c)));
+                for (c, &weight) in weights[..num_comps as usize].iter().enumerate() {
+                    total_err += u64::from(wdd(weight, d(a, b, c)));
                 }
             }
         }
@@ -965,7 +966,7 @@ mod tests {
             .iter_mut()
             .zip(pixels.as_chunks::<16>().0.iter())
         {
-            encoder.compress_block(block, pixels, &params);
+            encoder.compress_block(block, pixels, &params).unwrap();
         }
         (pixels, packed)
     }

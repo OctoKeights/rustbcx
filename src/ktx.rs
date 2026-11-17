@@ -15,13 +15,12 @@ use crate::zstd;
 pub enum Supercompression {
     /// Not at all: the blocks as they are, ready for the GPU.
     None,
-    /// As zlib streams ([`crate::miniz`]), at a level from 1, the quickest, to 9, the
-    /// smallest (10 tries harder still, and below 0 is miniz's default).
-    Zlib(i32),
-    /// As Zstandard frames ([`crate::zstd`]), at one of zstd's levels: 1, the quickest, to
-    /// 22, the smallest, or a negative one, which is quicker still and compresses less; 0 is
-    /// zstd's default, 3.
-    Zstd(i32),
+    /// As zlib streams ([`crate::miniz`]), at one of miniz's levels: from
+    /// [`miniz::Level::FASTEST`] to [`miniz::Level::BEST`], or [`miniz::Level::DEFAULT`].
+    Zlib(miniz::Level),
+    /// As Zstandard frames ([`crate::zstd`]), at one of zstd's levels: from 1, the quickest,
+    /// to 22, the smallest, or a negative one, which is quicker still and compresses less.
+    Zstd(zstd::Level),
 }
 
 impl Supercompression {
@@ -506,7 +505,8 @@ pub fn read_ktx2(file: &[u8]) -> Result<Texture, TextureError> {
                 .ok_or(TextureError::Invalid(
                     "a level's compressed bytes are damaged",
                 ))?,
-            _ => miniz::uncompress(bytes, size)
+            _ => miniz::decompress(bytes, size)
+                .ok()
                 .filter(|blocks| blocks.len() == size)
                 .ok_or(TextureError::Invalid(
                     "a level's compressed bytes are damaged",
@@ -701,7 +701,8 @@ mod tests {
         }
         let plain = write_ktx2(&out).unwrap();
         for zlib_level in [1, 6, 9] {
-            let file = write_ktx2_with(&out, Supercompression::Zlib(zlib_level)).unwrap();
+            let level = miniz::Level::new(zlib_level).unwrap();
+            let file = write_ktx2_with(&out, Supercompression::Zlib(level)).unwrap();
             assert!(
                 file.len() < plain.len() / 4,
                 "{zlib_level}: {} {}",
@@ -721,7 +722,7 @@ mod tests {
             for level in 0..4 {
                 assert_eq!(entry(level, 2), out.levels[level].len());
                 assert_eq!(
-                    miniz::uncompress(
+                    miniz::decompress(
                         &file[entry(level, 0)..entry(level, 0) + entry(level, 1)],
                         out.levels[level].len()
                     )
@@ -753,7 +754,8 @@ mod tests {
 
         // The same with Zstandard: the scheme is 2, and each level is one frame.
         for zstd_level in [-5, 1, 3, 9, 19] {
-            let file = write_ktx2_with(&out, Supercompression::Zstd(zstd_level)).unwrap();
+            let level = zstd::Level::new(zstd_level).unwrap();
+            let file = write_ktx2_with(&out, Supercompression::Zstd(level)).unwrap();
             assert!(
                 file.len() < plain.len() / 4,
                 "{zstd_level}: {} {}",

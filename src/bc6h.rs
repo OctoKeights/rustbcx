@@ -21,6 +21,9 @@
 //! counts as a large negative number, so among such blocks the packer's choices are less good
 //! than its search would allow.
 
+// (As in the original, loops index several arrays in step.)
+#![allow(clippy::needless_range_loop)]
+
 /// A pixel of HDR colour as half floats: red, green, blue, each the 16 bits of an IEEE half.
 pub type RgbHalf = [u16; 3];
 
@@ -709,7 +712,7 @@ pub fn unpack_bc6h_float(block: &[u8; 16], is_signed: bool) -> [[f32; 3]; 16] {
 /// Float to int as the x86 instruction ISPC compiles a cast to: toward zero, and the lowest int
 /// for what does not fit or is not a number.
 fn f2i(x: f32) -> i32 {
-    if x >= -2147483648.0 && x < 2147483648.0 {
+    if (-2147483648.0..2147483648.0).contains(&x) {
         x as i32
     } else {
         i32::MIN
@@ -2269,39 +2272,36 @@ pub fn compress_block_bc6h(
 /// machine's threads; the blocks are the same however many there are.
 /// [`compress_blocks_bc6h_on`] takes the number of threads.
 ///
-/// # Panics
+/// # Errors
 ///
-/// When there is not a block for each sixteen pixels.
+/// When there is not a block for each sixteen pixels; nothing is packed then.
 pub fn compress_blocks_bc6h(
     blocks: &mut [[u8; 16]],
     pixels: &[[RgbHalf; 16]],
     settings: &Bc6hEncSettings,
-) {
-    compress_blocks_bc6h_on(0, blocks, pixels, settings);
+) -> Result<(), crate::LengthMismatch> {
+    compress_blocks_bc6h_on(0, blocks, pixels, settings)
 }
 
 /// [`compress_blocks_bc6h`] on a number of threads: 0 for all the machine has, 1 to stay on the
 /// calling thread.
 ///
-/// # Panics
+/// # Errors
 ///
-/// When there is not a block for each sixteen pixels.
+/// When there is not a block for each sixteen pixels; nothing is packed then.
 pub fn compress_blocks_bc6h_on(
     threads: u32,
     blocks: &mut [[u8; 16]],
     pixels: &[[RgbHalf; 16]],
     settings: &Bc6hEncSettings,
-) {
-    assert_eq!(
-        blocks.len(),
-        pixels.len(),
-        "a block for each sixteen pixels"
-    );
+) -> Result<(), crate::LengthMismatch> {
+    crate::LengthMismatch::check(blocks.len(), pixels.len())?;
     crate::parallel::for_each_run(blocks, pixels, threads, |blocks, pixels| {
         for (block, pixels) in blocks.iter_mut().zip(pixels) {
             compress_block_bc6h(block, pixels, settings);
         }
     });
+    Ok(())
 }
 
 #[cfg(test)]
@@ -2400,9 +2400,9 @@ mod tests {
             })
             .collect();
         let mut blocks = vec![[0u8; 16]; pixels.len()];
-        compress_blocks_bc6h(&mut blocks, &pixels, &Bc6hEncSettings::basic());
+        compress_blocks_bc6h(&mut blocks, &pixels, &Bc6hEncSettings::basic()).unwrap();
         let mut on_three = vec![[0u8; 16]; pixels.len()];
-        compress_blocks_bc6h_on(3, &mut on_three, &pixels, &Bc6hEncSettings::basic());
+        compress_blocks_bc6h_on(3, &mut on_three, &pixels, &Bc6hEncSettings::basic()).unwrap();
         assert_eq!(on_three, blocks);
         for (block, pixels) in blocks.iter().zip(&pixels) {
             let mut one = [0u8; 16];

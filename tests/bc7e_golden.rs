@@ -24,7 +24,9 @@ fn packs_as_the_ispc_encoder_does() {
     let mut modes = [0u32; 9];
     for (name, profile) in PROFILES {
         for perceptual in [false, true] {
-            encoder.compress_blocks(&mut packed, &pixels, &profile(perceptual));
+            encoder
+                .compress_blocks(&mut packed, &pixels, &profile(perceptual))
+                .expect("a block for each sixteen pixels");
             printed += &format!(
                 "{name} {} {:016x}\n",
                 if perceptual { "perceptual" } else { "linear" },
@@ -43,7 +45,9 @@ fn packs_as_the_ispc_encoder_does() {
     let mut packed = vec![[0u8; 16]; pixels.len()];
     let mut modes = [0u32; 9];
     for (packed, pixels) in packed.chunks_mut(32).zip(pixels.chunks(32)) {
-        encoder.compress_blocks(packed, pixels, &make_settings(&mut random));
+        encoder
+            .compress_blocks(packed, pixels, &make_settings(&mut random))
+            .expect("a block for each sixteen pixels");
     }
     printed += &format!("settings {:016x}\n", hash(&packed, &mut modes));
     printed += &format!(

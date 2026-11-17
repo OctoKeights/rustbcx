@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.6.0
+
+- **Breaking: the 0.2 releases of the ported crates.** miniz_nrp, zstd_nrp, stb_image_nrp,
+  stb_image_write_nrp and tinyexr_nrp were each rewritten with an idiomatic API, and
+  `rustbcx::miniz`, `rustbcx::zstd`, `rustbcx::stb_image`, `rustbcx::stb_image_write` and
+  `rustbcx::tinyexr` now give those. Each crate's changelog lists its changes; their output
+  is unchanged. Reading and writing image files is 2% to 117% faster, and Zstandard
+  supercompressed `.ktx2` files decompress 27% to 67% faster.
+
+- **Breaking: no panics on bad input.** Functions that panicked on arguments they could not
+  use now return an error:
+
+  - `bc7enc::Bc7Enc::compress_block` returns a `Result<bool, CompressBlockError>` when the
+    settings leave no mode that can pack the block, or a forced selector is out of range;
+    `RdoBcEncoder::encode` then returns false.
+
+  - `bc7e::Bc7e::compress_blocks` and `compress_blocks_on`, and
+    `bc6h::compress_blocks_bc6h` and `compress_blocks_bc6h_on`, return a `LengthMismatch`
+    when there is not a block for each set of sixteen pixels.
+
+  - `Image::half_with`, `Image::half_volume`, `HdrImage::half_with` and
+    `HdrImage::half_volume` return a `SizeMismatch` when the images are not of one size.
+
+- **Breaking: typed settings.** `Supercompression::Zlib` and `Supercompression::Zstd` take a
+  `miniz::Level` and a `zstd::Level`, and `Image::to_jpg` takes its quality as a `u8`.
+
+- **Documentation.** Every public item is documented, and the crate warns on any that is
+  not (`missing_docs`).
+
 ## 0.5.0
 
 - **Breaking: the image codecs and supercompression are crates of their own.** The ports of

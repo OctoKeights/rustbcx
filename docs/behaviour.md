@@ -60,7 +60,7 @@
   rejected here, with the reason in the `LoadError`, and a damaged file it accepts is
   accepted here. PNG checksums are not verified, as in the original. `Image` holds 8 bits
   per channel, so a 16-bit `.png` is reduced to 8 on loading;
-  `stb_image::load_16_from_memory` retains all 16.
+  `stb_image::load_16` retains all 16.
 
 - **A number at the very end of a text `.pgm` or `.ppm` file is read as 0**, as stb_image
   reads it. End the file with a newline.

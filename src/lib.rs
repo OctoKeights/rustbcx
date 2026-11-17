@@ -59,12 +59,7 @@
 
 #![forbid(unsafe_code)]
 #![cfg_attr(feature = "nightly-simd", feature(portable_simd))]
-// The code follows the originals' line for line, and these are its shapes.
-#![allow(
-    clippy::needless_range_loop,
-    clippy::too_many_arguments,
-    clippy::manual_range_contains
-)]
+#![warn(missing_docs)]
 
 pub mod bc2;
 pub mod bc6h;
@@ -84,6 +79,39 @@ pub mod rdo_bc_encoder;
 pub mod rgbcx;
 mod rgbcx_tables;
 pub mod texture;
+
+/// Blocks and the sets of sixteen pixels to pack into them, which are not as many as each
+/// other.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LengthMismatch {
+    /// How many blocks there are.
+    pub blocks: usize,
+    /// How many sets of sixteen pixels there are.
+    pub pixels: usize,
+}
+
+impl LengthMismatch {
+    /// `Ok` when there is a block for each set of pixels.
+    pub(crate) fn check(blocks: usize, pixels: usize) -> Result<(), LengthMismatch> {
+        if blocks == pixels {
+            Ok(())
+        } else {
+            Err(LengthMismatch { blocks, pixels })
+        }
+    }
+}
+
+impl std::fmt::Display for LengthMismatch {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{} blocks for {} sets of sixteen pixels",
+            self.blocks, self.pixels
+        )
+    }
+}
+
+impl std::error::Error for LengthMismatch {}
 
 // The ports that are crates of their own, under the names they had here.
 pub use miniz_nrp as miniz;

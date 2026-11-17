@@ -60,14 +60,14 @@ fn describe(name: &str, t: &Texture) {
 fn exr(out: &str) {
     use rustbcx::tinyexr::{self, Box2i, ChannelData, ChannelInfo, ExrHeader, ExrImage, ExrTile};
     let compressions = [
-        ("none", tinyexr::COMPRESSIONTYPE_NONE),
-        ("rle", tinyexr::COMPRESSIONTYPE_RLE),
-        ("zips", tinyexr::COMPRESSIONTYPE_ZIPS),
-        ("zip", tinyexr::COMPRESSIONTYPE_ZIP),
-        ("piz", tinyexr::COMPRESSIONTYPE_PIZ),
-        ("pxr24", tinyexr::COMPRESSIONTYPE_PXR24),
-        ("b44", tinyexr::COMPRESSIONTYPE_B44),
-        ("b44a", tinyexr::COMPRESSIONTYPE_B44A),
+        ("none", tinyexr::Compression::NONE),
+        ("rle", tinyexr::Compression::RLE),
+        ("zips", tinyexr::Compression::ZIPS),
+        ("zip", tinyexr::Compression::ZIP),
+        ("piz", tinyexr::Compression::PIZ),
+        ("pxr24", tinyexr::Compression::PXR24),
+        ("b44", tinyexr::Compression::B44),
+        ("b44a", tinyexr::Compression::B44A),
     ];
     for (shape, w, h, tile) in [
         ("lines", 37i32, 45i32, 0i32),
@@ -80,8 +80,8 @@ fn exr(out: &str) {
             .collect();
         for (compression, compression_type) in compressions {
             for (stored, file_type) in [
-                ("half", tinyexr::PIXELTYPE_HALF),
-                ("float", tinyexr::PIXELTYPE_FLOAT),
+                ("half", tinyexr::PixelType::HALF),
+                ("float", tinyexr::PixelType::FLOAT),
             ] {
                 let mut header = ExrHeader {
                     channels: ["B", "G", "R"]
@@ -94,7 +94,7 @@ fn exr(out: &str) {
                             p_linear: 0,
                         })
                         .collect(),
-                    pixel_types: vec![tinyexr::PIXELTYPE_FLOAT; 3],
+                    pixel_types: vec![tinyexr::PixelType::FLOAT; 3],
                     requested_pixel_types: vec![file_type; 3],
                     compression_type,
                     data_window: Box2i {
@@ -152,14 +152,13 @@ fn exr(out: &str) {
                     }
                 }
                 let name = format!("{out}/{shape}-{compression}-{stored}.exr");
-                let file =
-                    tinyexr::save_exr_image_to_memory(&image, &header).expect("an .exr file");
-                let (rgba, read_width, read_height) =
-                    tinyexr::load_exr_from_memory(&file).expect("the file read back");
-                assert_eq!((read_width, read_height), (w, h), "{name}");
+                let file = tinyexr::save_image(&image, &header).expect("an .exr file");
+                let read = tinyexr::load_rgba(&file).expect("the file read back");
+                assert_eq!((read.width, read.height), (w, h), "{name}");
+                let rgba = read.data;
                 // Floats come back as they were, but from PXR24, which keeps 24 bits of them.
-                if file_type == tinyexr::PIXELTYPE_FLOAT
-                    && compression_type != tinyexr::COMPRESSIONTYPE_PXR24
+                if file_type == tinyexr::PixelType::FLOAT
+                    && compression_type != tinyexr::Compression::PXR24
                 {
                     for (pixel, read) in rgba.as_chunks::<4>().0.iter().enumerate() {
                         assert_eq!(read[..3], values[pixel * 3..pixel * 3 + 3], "{name}");
@@ -191,14 +190,13 @@ fn main() {
             eprintln!("usage: files --exr-same <file.exr> <file.gbr>");
             std::process::exit(2);
         };
-        let (rgba, _, _) =
-            match rustbcx::tinyexr::load_exr_from_memory(&std::fs::read(&file).expect("read")) {
-                Ok(read) => read,
-                Err(error) => {
-                    eprintln!("{file}: {error}");
-                    std::process::exit(1);
-                }
-            };
+        let rgba = match rustbcx::tinyexr::load_rgba(&std::fs::read(&file).expect("read")) {
+            Ok(read) => read.data,
+            Err(error) => {
+                eprintln!("{file}: {error}");
+                std::process::exit(1);
+            }
+        };
         let plane = |k: usize| {
             rgba.as_chunks::<4>()
                 .0
@@ -319,13 +317,24 @@ fn main() {
                         assert_eq!(back, t, "{file}");
                     }
                     let file = format!("{out}/{name}.zlib.ktx2");
-                    t.save_ktx2(&file, Supercompression::Zlib(1 + (state >> 50) as i32 % 9))
-                        .unwrap();
+                    t.save_ktx2(
+                        &file,
+                        Supercompression::Zlib(
+                            rustbcx::miniz::Level::new(1 + ((state >> 50) as i32 % 9) as u8)
+                                .unwrap(),
+                        ),
+                    )
+                    .unwrap();
                     assert_eq!(Texture::load(&file).unwrap(), t, "{file}");
                     let file = format!("{out}/{name}.zstd.ktx2");
                     t.save_ktx2(
                         &file,
-                        Supercompression::Zstd([1, 2, 3, 0, -1, -7][(state >> 45) as usize % 6]),
+                        Supercompression::Zstd(
+                            rustbcx::zstd::Level::new(
+                                [1, 2, 3, 0, -1, -7][(state >> 45) as usize % 6],
+                            )
+                            .unwrap(),
+                        ),
                     )
                     .unwrap();
                     assert_eq!(Texture::load(&file).unwrap(), t, "{file}");

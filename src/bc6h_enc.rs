@@ -17,6 +17,9 @@
 //! A pixel's values have to be numbers; what is infinite or not a number has no place in a
 //! block, and the original does not say what it makes of one.
 
+// (As in the original, loops index several arrays in step.)
+#![allow(clippy::needless_range_loop)]
+
 use crate::bc6h::float_to_half;
 use crate::bc6h_enc_tables::{DESC, FIX_UP, PARTITION_TABLE, field};
 

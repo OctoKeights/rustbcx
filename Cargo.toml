@@ -1,7 +1,7 @@
 [package]
 name = "rustbcx"
 description = "Deterministic BC1 to BC7 GPU texture compression in pure, safe Rust: bit-identical ports of bc7enc_rdo and related encoders, with DDS and KTX output."
-version = "0.5.0"
+version = "0.6.0"
 edition = "2024"
 rust-version = "1.100"
 license = "Apache-2.0"
@@ -11,11 +11,11 @@ keywords = ["bc7", "bc6h", "dds", "texture", "compression"]
 categories = ["compression", "graphics", "game-development"]
 
 [dependencies]
-miniz_nrp = { version = "0.1.0", git = "https://github.com/OctoKeights/miniz_nrp" }
-stb_image_nrp = { version = "0.1.0", git = "https://github.com/OctoKeights/stb_image_nrp" }
-stb_image_write_nrp = { version = "0.1.0", git = "https://github.com/OctoKeights/stb_image_write_nrp" }
-tinyexr_nrp = { version = "0.1.0", git = "https://github.com/OctoKeights/tinyexr_nrp" }
-zstd_nrp = { version = "0.1.0", git = "https://github.com/OctoKeights/zstd_nrp" }
+miniz_nrp = { version = "0.2.0", git = "https://github.com/OctoKeights/miniz_nrp" }
+stb_image_nrp = { version = "0.2.0", git = "https://github.com/OctoKeights/stb_image_nrp" }
+stb_image_write_nrp = { version = "0.2.0", git = "https://github.com/OctoKeights/stb_image_write_nrp" }
+tinyexr_nrp = { version = "0.2.0", git = "https://github.com/OctoKeights/tinyexr_nrp" }
+zstd_nrp = { version = "0.2.0", git = "https://github.com/OctoKeights/zstd_nrp" }
 
 [features]
 # The hottest loops written with `std::simd`, which needs a nightly compiler. The blocks are

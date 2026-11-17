@@ -378,7 +378,7 @@ fn compute_block_mse_scales(
 
             let y_avg = y_total as f32 / y_num as f32;
 
-            if y_avg < DARK_THRESHOLD || y_avg >= BRIGHT_THRESHOLD {
+            if !(DARK_THRESHOLD..BRIGHT_THRESHOLD).contains(&y_avg) {
                 yl = 1.0;
             }
 
@@ -454,9 +454,13 @@ fn compute_block_mse_scales(
     let mut block_mse_scales = vec![0.0f32; total_blocks as usize];
 
     let mut total_ultrasmooth_blocks = 0u32;
-    for i in 0..total_blocks as usize {
-        let is_ultrasmooth = vis.values[i] == 0;
-        block_mse_scales[i] = if is_ultrasmooth {
+    let blocks = total_blocks as usize;
+    for (scale, &value) in block_mse_scales[..blocks]
+        .iter_mut()
+        .zip(&vis.values[..blocks])
+    {
+        let is_ultrasmooth = value == 0;
+        *scale = if is_ultrasmooth {
             ULTRAMOOTH_BLOCK_MSE_SCALE
         } else {
             -1.0
@@ -637,14 +641,17 @@ impl RdoBcEncoder {
     }
 
     /// Packs the image, then runs the rate-distortion pass if lambda is above 0. False when
-    /// there is no image or it has no blocks.
+    /// there is no image or it has no blocks, or when the BC7 settings leave no mode that can
+    /// pack a block.
     pub fn encode(&mut self) -> bool {
         if self.packed_image.is_empty() {
             return false;
         }
 
         self.init_encoder_params();
-        self.encode_texture();
+        if !self.encode_texture() {
+            return false;
+        }
         self.postprocess_rdo();
 
         true
@@ -686,22 +693,27 @@ impl RdoBcEncoder {
         self.orig_height
     }
 
+    /// How many blocks the image is across.
     pub fn blocks_x(&self) -> u32 {
         self.blocks_x
     }
 
+    /// How many blocks the image is down.
     pub fn blocks_y(&self) -> u32 {
         self.blocks_y
     }
 
+    /// How many blocks the image has.
     pub fn total_blocks(&self) -> u32 {
         self.total_blocks
     }
 
+    /// The size of all the blocks in bytes.
     pub fn total_blocks_size_in_bytes(&self) -> u32 {
         self.total_blocks * self.bytes_per_block
     }
 
+    /// The size of a block in bytes: 8 or 16.
     pub fn bytes_per_block(&self) -> u32 {
         self.bytes_per_block
     }
@@ -711,6 +723,7 @@ impl RdoBcEncoder {
         self.pixel_format_bpp
     }
 
+    /// How many pixels the blocks cover, padding included.
     pub fn total_texels(&self) -> u32 {
         self.total_texels
     }
@@ -831,10 +844,11 @@ impl RdoBcEncoder {
         true
     }
 
-    fn encode_texture(&mut self) {
+    /// Packs every block; false if a block could not be packed with the settings.
+    fn encode_texture(&mut self) -> bool {
         let row_bytes = self.blocks_x as usize * self.bytes_per_block as usize;
         if row_bytes == 0 {
-            return;
+            return true;
         }
         let threads = parallel::worker_count(self.params.threads);
         let mut packed_image = std::mem::take(&mut self.packed_image);
@@ -844,12 +858,18 @@ impl RdoBcEncoder {
             .enumerate()
             .map(|(by, row)| (by as u32, row))
             .collect();
-        parallel::for_each(rows, threads, |(by, row)| this.encode_row(by, row));
+        let failed = std::sync::atomic::AtomicBool::new(false);
+        parallel::for_each(rows, threads, |(by, row)| {
+            if !this.encode_row(by, row) {
+                failed.store(true, std::sync::atomic::Ordering::Relaxed);
+            }
+        });
         self.packed_image = packed_image;
+        !failed.into_inner()
     }
 
-    /// Packs a row of blocks.
-    fn encode_row(&self, by: u32, row: &mut [u8]) {
+    /// Packs a row of blocks; false if a block could not be packed with the settings.
+    fn encode_row(&self, by: u32, row: &mut [u8]) -> bool {
         let params = &self.params;
         for (bx, block) in row
             .chunks_exact_mut(self.bytes_per_block as usize)
@@ -934,16 +954,17 @@ impl RdoBcEncoder {
                     if params.use_bc7e {
                         self.bc7e_encoder
                             .compress_block(block, &pixels, &self.bc7e_pack_params);
-                    } else {
-                        self.bc7enc_encoder.compress_block(
-                            block,
-                            &pixels,
-                            &self.bc7enc_pack_params,
-                        );
+                    } else if self
+                        .bc7enc_encoder
+                        .compress_block(block, &pixels, &self.bc7enc_pack_params)
+                        .is_err()
+                    {
+                        return false;
                     }
                 }
             }
         }
+        true
     }
 
     fn postprocess_rdo(&mut self) {
