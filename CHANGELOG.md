@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.0
 
 - **Breaking: the image codecs and supercompression are crates of their own.** The ports of
   miniz, zstd, stb_image, stb_image_write and tinyexr, with tinyexr's DWA (of OpenEXR), its
