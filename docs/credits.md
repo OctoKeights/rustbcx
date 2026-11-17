@@ -16,13 +16,6 @@ Rust.
 | BC6H decoding | Sergii Kudlai | [bcdec](https://github.com/iOrange/bcdec) |
 | BC6H encoding (`bc6h`) | Intel Corporation, Copyright 2017 | [ISPC Texture Compressor](https://github.com/GameTechDev/ISPCTextureCompressor) |
 | BC6H encoding (`bc6h_enc`) | Microsoft (DirectXTex); consolidated into a single file by Alexander Samusev | [bc6h_enc](https://github.com/0xc0de/bc6h_enc) |
-| zlib (`miniz`) | Rich Geldreich and others | [miniz](https://github.com/richgel999/miniz) |
-| Zstandard (`zstd`) | Meta Platforms, Inc. and affiliates; originally by Yann Collet | [zstd](https://github.com/facebook/zstd) |
-| Image codecs (`stb_image`, `stb_image_write`) | Sean Barrett and others; the JPEG writer is derived from Jon Olick's `jo_jpeg.cpp` | [stb](https://github.com/nothings/stb) |
-| `.exr` codec | Syoyo Fujita and many contributors, with code from OpenEXR by Industrial Light & Magic | [tinyexr](https://github.com/syoyo/tinyexr) |
-| ZFP for `.exr` | Lawrence Livermore National Security, LLC | [zfp](https://github.com/LLNL/zfp) |
-| DWAA and DWAB (`dwa`) | DreamWorks Animation and the Contributors to the OpenEXR Project | [OpenEXR](https://github.com/AcademySoftwareFoundation/openexr) |
-| zlib for DWA (`libdeflate`) | Eric Biggers and others | [libdeflate](https://github.com/ebiggers/libdeflate) |
 
 ## Licences
 
@@ -30,21 +23,27 @@ rustbcx is distributed under the Apache License 2.0, the licence of `bc7e.ispc`:
 [`LICENSE`](../LICENSE) and [`NOTICE`](../NOTICE).
 
 The remaining originals retain their own licences, and their notices are preserved in this
-repository:
+repository, under MIT, or MIT or public domain at your choice:
+[`LICENSE-bc7enc_rdo.txt`](../LICENSE-bc7enc_rdo.txt),
+[`LICENSE-bcdec.txt`](../LICENSE-bcdec.txt),
+[`LICENSE-ispc-texcomp.txt`](../LICENSE-ispc-texcomp.txt) and
+[`LICENSE-bc6h_enc.txt`](../LICENSE-bc6h_enc.txt).
 
-- **MIT, or MIT or public domain at your choice:**
-  [`LICENSE-bc7enc_rdo.txt`](../LICENSE-bc7enc_rdo.txt),
-  [`LICENSE-bcdec.txt`](../LICENSE-bcdec.txt),
-  [`LICENSE-ispc-texcomp.txt`](../LICENSE-ispc-texcomp.txt),
-  [`LICENSE-bc6h_enc.txt`](../LICENSE-bc6h_enc.txt),
-  [`LICENSE-miniz.txt`](../LICENSE-miniz.txt),
-  [`LICENSE-stb.txt`](../LICENSE-stb.txt) and
-  [`LICENSE-libdeflate.txt`](../LICENSE-libdeflate.txt).
+## The ports in crates of their own
 
-- **BSD:** zstd, in [`LICENSE-zstd.txt`](../LICENSE-zstd.txt); tinyexr with the OpenEXR
-  code it contains, in [`LICENSE-tinyexr.txt`](../LICENSE-tinyexr.txt); zfp, in
-  [`LICENSE-zfp.txt`](../LICENSE-zfp.txt); and OpenEXR, in
-  [`LICENSE-openexr.txt`](../LICENSE-openexr.txt).
+The image files and the supercompression of `.ktx2` are ports in crates of their own, which
+rustbcx depends on. Each is offered under its original's licence, with the original's
+notices, in its own repository:
+
+| Crate | Original | Authors | Licence |
+|---|---|---|---|
+| [miniz_nrp](https://github.com/OctoKeights/miniz_nrp) | [miniz](https://github.com/richgel999/miniz) | Rich Geldreich and others | MIT |
+| [zstd_nrp](https://github.com/OctoKeights/zstd_nrp) | [zstd](https://github.com/facebook/zstd) | Meta Platforms, Inc. and affiliates; originally by Yann Collet | BSD or GPL-2.0 |
+| [stb_image_nrp](https://github.com/OctoKeights/stb_image_nrp), [stb_image_write_nrp](https://github.com/OctoKeights/stb_image_write_nrp) | [stb](https://github.com/nothings/stb) | Sean Barrett and others; the JPEG writer is derived from Jon Olick's `jo_jpeg.cpp` | MIT or public domain |
+| [tinyexr_nrp](https://github.com/OctoKeights/tinyexr_nrp) | [tinyexr](https://github.com/syoyo/tinyexr) | Syoyo Fujita and many contributors, with code from OpenEXR by Industrial Light & Magic | BSD 3-Clause |
+| [openexr_nrp](https://github.com/OctoKeights/openexr_nrp) | [OpenEXR](https://github.com/AcademySoftwareFoundation/openexr) | DreamWorks Animation and the Contributors to the OpenEXR Project | BSD 3-Clause |
+| [zfp_nrp](https://github.com/OctoKeights/zfp_nrp) | [zfp](https://github.com/LLNL/zfp) | Lawrence Livermore National Security, LLC | BSD 3-Clause |
+| [libdeflate_nrp](https://github.com/OctoKeights/libdeflate_nrp) | [libdeflate](https://github.com/ebiggers/libdeflate) | Eric Biggers and others | MIT |
 
 The exact terms for each component are those in its notice file.
 

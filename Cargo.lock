@@ -3,5 +3,60 @@
 version = 4
 
 [[package]]
+name = "libdeflate_nrp"
+version = "0.1.0"
+source = "git+https://github.com/OctoKeights/libdeflate_nrp#ed4e18fe63fb75593b3ef474dac32f9a9a479f29"
+
+[[package]]
+name = "miniz_nrp"
+version = "0.1.0"
+source = "git+https://github.com/OctoKeights/miniz_nrp#308d4c171cb8bf328ba24eb5817bf9fb45c83bde"
+
+[[package]]
+name = "openexr_nrp"
+version = "0.1.0"
+source = "git+https://github.com/OctoKeights/openexr_nrp#2b14ced2fa9348bb42ed22be0824a55c76f2e468"
+dependencies = [
+ "libdeflate_nrp",
+]
+
+[[package]]
 name = "rustbcx"
 version = "0.4.0"
+dependencies = [
+ "miniz_nrp",
+ "stb_image_nrp",
+ "stb_image_write_nrp",
+ "tinyexr_nrp",
+ "zstd_nrp",
+]
+
+[[package]]
+name = "stb_image_nrp"
+version = "0.1.0"
+source = "git+https://github.com/OctoKeights/stb_image_nrp#cb1b01e060715b0b61228b1b485547a290048c60"
+
+[[package]]
+name = "stb_image_write_nrp"
+version = "0.1.0"
+source = "git+https://github.com/OctoKeights/stb_image_write_nrp#8945a349fa0a4d418a802d2644479bff67202c71"
+
+[[package]]
+name = "tinyexr_nrp"
+version = "0.1.0"
+source = "git+https://github.com/OctoKeights/tinyexr_nrp#477737187d2a700deb5174fb674b372ca359994f"
+dependencies = [
+ "miniz_nrp",
+ "openexr_nrp",
+ "zfp_nrp",
+]
+
+[[package]]
+name = "zfp_nrp"
+version = "0.1.0"
+source = "git+https://github.com/OctoKeights/zfp_nrp#7f0c4c2b4435006f0935067b6c9fa0cefe8b60da"
+
+[[package]]
+name = "zstd_nrp"
+version = "0.1.0"
+source = "git+https://github.com/OctoKeights/zstd_nrp#6821c31380df6b8dc4650f913004641117b7af39"

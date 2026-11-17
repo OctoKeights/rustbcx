@@ -1,6 +1,6 @@
 # Checks every push and pull request, with the Rust of rust-toolchain.toml: the formatting (the
 # Rust style guide's, by rustfmt), clippy, the documentation and the tests, the golden tests
-# against the C originals among them. The comparison with the originals themselves
+# against the originals among them. The comparison with the originals themselves
 # (compare/compare.sh) needs their checkouts and is not run here.
 name: CI
 

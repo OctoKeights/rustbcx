@@ -1,8 +1,0 @@
-dwa_read 200 68381a8f5e349968
-dwa_read 400 f9a651a67761c1e6
-dwa_read 600 c19caa670cae8778
-dwa_read bytes: 8253822 as 4959279, 234 blocks stored as they are; decompressed: 95, refused: 505
-dwa_read 200 4f55fe991a48bcef
-dwa_read 400 8582eed5b5b2f9dc
-dwa_read 600 e4b575ebabd7f341
-dwa_read bytes: 11643472 as 6194638, 200 blocks stored as they are; decompressed: 107, refused: 493

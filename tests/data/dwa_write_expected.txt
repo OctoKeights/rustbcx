@@ -1,6 +1,0 @@
-dwa_write 200 79ce91c7be47804d
-dwa_write 400 164a91219a875560
-dwa_write bytes: 7747808 as 4387015, 140 blocks stored as they are; decompressed: 260, refused: 140
-dwa_write 200 ad23273479833002
-dwa_write 400 ffa3d0f1fca8d53b
-dwa_write bytes: 8582764 as 4212217, 146 blocks stored as they are; decompressed: 254, refused: 146

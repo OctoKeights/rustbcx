@@ -41,70 +41,13 @@
 # since 2013 have). Dump: bc6h_enc, with a fortieth of [blocks], since it is a slow encoder and
 # packs every block twice.
 #
-# zlib and deflate (src/miniz) are compared with miniz (https://github.com/richgel999/miniz),
-# whose checkout goes in $MINIZ; compare/dump_miniz.c is built against its compressor and its
-# decompressor as they build by default. Dump: miniz, with a hundredth of [blocks] as the
-# number of made-up files, each some tens of thousands of bytes, compressed three ways and
-# decompressed seven.
-#
-# The image files (src/stb_image_write.rs, src/stb_image) are compared with stb
-# (https://github.com/nothings/stb), whose checkout goes in $STB. compare/dump_stb_image_write.c
-# is built against its stb_image_write.h, without contraction of a multiply and an add (its
-# JPEG writer works in floats). Dump: stb_image_write, with a tenth of [blocks] as the number
-# of made-up images, each written as .png, .bmp and .jpg. compare/dump_stb_image.c is built
-# against its stb_image.h as well, for the three formats only and with STBI_NO_SIMD (the
-# plain C, which the port is of), with memory that starts as zeros and with overflow that
-# wraps (-fwrapv), so that the damaged files among those it reads have one answer; it needs
-# $MINIZ too, to compress the files it makes up. Dump: stb_image, with a tenth of [blocks] as
-# the number of made-up files, each asked its size and read once or twice.
-#
-# Zstandard (src/zstd) is compared with zstd (https://github.com/facebook/zstd), whose checkout
-# goes in $ZSTD. Its library is built from that (without assembly and without threads), and
-# compare/dump_zstd.c against it, to make frames of every kind; the decoder is compared with
-# the reference decoder in its doc/educational_decoder, which compare/dump_zstd_edu.c wraps
-# so that a damaged frame gives its message back in place of stopping the program. Dump:
-# zstd_decode, with a tenth of [blocks] as the number of frames. The C side writes its frames
-# to a file, which the Rust side reads.
-# The compressor is compared with that library's own: compare/dump_zstd_compress.c has
-# ZSTD_compress make frames of made-up data at every level, and compare/dump_zstd_entropy.c
-# asks the entropy coders inside it one function at a time, for what a whole frame seldom or
-# never asks of them. Dumps: zstd_compress (levels 1 to 3, 4 for some sizes, 0 and the negative ones) and
-# zstd_compress_more (4 to 22), each with a hundredth of [blocks] as the number of sources (of
-# up to five megabytes each); zstd_compress_long, one source of 64 to 80 megabytes at level 22
-# for each seed, which takes long-distance matching; and zstd_entropy, with [blocks] as the
-# number of rounds.
-#
-# The .exr files (src/tinyexr) are compared with tinyexr (https://github.com/syoyo/tinyexr),
-# whose checkout goes in $TINYEXR. compare/dump_tinyexr.cc is built against its tinyexr.h
-# without threads, with the miniz in $MINIZ (the one src/miniz is the port of), and with ZFP
-# compression (TINYEXR_USE_ZFP) against the zfp library v1.0.1 in $ZFP, built as its own build
-# has it by default; with memory that starts as zeros and with overflow that wraps (-fwrapv),
-# so that the damaged files among those it reads have one answer. Dumps: tinyexr_write, with a tenth of [blocks] as the number
-# of made-up images, each saved by both sides, and every fourth saved the short way as well;
-# and tinyexr_read, with as many images, each saved by tinyexr, a third of them then damaged,
-# and read four ways. For that one the C++ side writes its files to a file, which the Rust
-# side reads. Both are of the crate's functions that do exactly as tinyexr does
-# (`..._as_tinyexr`): for PXR24 and B44 blocks that do not come out smaller than their pixels
-# the others follow the format, as compare/files.sh checks with another reader. And
-# tinyexr_zfp_write and tinyexr_zfp_read are the same of images made for ZFP compression.
-#
-# libdeflate (src/libdeflate) and DWAA and DWAB (src/dwa) are compared with OpenEXR 3.5
-# (https://github.com/AcademySoftwareFoundation/openexr), whose checkout goes in $OPENEXR:
-# compare/dump_libdeflate.c is built against the libdeflate in its external/deflate. Dump:
-# libdeflate, with a hundredth of [blocks] as the number of made-up sources, each compressed
-# at a level and decompressed whole, damaged and into too little room. compare/dump_dwa.c is
-# built against its OpenEXRCore, which needs a CMake build of OpenEXR, whose build folder
-# goes in $OPENEXR_BUILD (with Imath as that build fetches it). Dumps: dwa_write, with a
-# hundredth of [blocks] as the number of made-up blocks, each written by OpenEXRCore as the
-# one block of a file, of lines or of a tile, compressed with DWAA or DWAB and decompressed;
-# and dwa_read, with as many, each then damaged and decompressed. OpenEXRCore has other code
-# for DWA on a machine without AVX and F16C, and those blocks are not the port's.
+# The ports of miniz, zstd, stb, tinyexr, zfp, OpenEXR and libdeflate that the crate uses are
+# crates of their own (miniz_nrp and the others, https://github.com/OctoKeights), and each
+# has its own comparison with its original, in its compare/compare.sh.
 #
 # Without the ISPC compiler the bc7e dumps and bc6h_pack are left out, without $BCDEC bc2 and
-# the BC6H dumps, without $ISPCTC bc6h_pack, without $BC6HENC bc6h_enc, without $MINIZ miniz,
-# stb_image and the tinyexr dumps, without $STB stb_image_write and stb_image, without $ZSTD
-# the three zstd dumps, without $TINYEXR or $ZFP the tinyexr dumps, without $OPENEXR libdeflate
-# and the dwa dumps, and without $OPENEXR_BUILD the dwa dumps; the script says so and fails.
+# the BC6H dumps, without $ISPCTC bc6h_pack, and without $BC6HENC bc6h_enc; the script says so
+# and fails.
 set -u
 if [ $# -lt 1 ]; then
     echo "usage: $0 <folder with bc7enc_rdo's sources> [blocks] [seeds] [dumps]" >&2
@@ -114,7 +57,7 @@ here=$(cd "$(dirname "$0")/.." && pwd)
 source=$1
 blocks=${2:-200000}
 seeds=${3:-3}
-dumps=${4:-bc7decomp unpack bc1 bc345 bc7enc bc7block ert rdo bc7e_presets bc7e_settings rdo_bc7e bc2 bc6h_unpack bc6h_pack bc6h_enc miniz stb_image_write stb_image stb_image_more zstd_decode zstd_compress zstd_compress_more zstd_compress_long zstd_entropy tinyexr_write tinyexr_read tinyexr_parts tinyexr_deep tinyexr_zfp_write tinyexr_zfp_read libdeflate dwa_write dwa_read}
+dumps=${4:-bc7decomp unpack bc1 bc345 bc7enc bc7block ert rdo bc7e_presets bc7e_settings rdo_bc7e bc2 bc6h_unpack bc6h_pack bc6h_enc}
 tmp=${TMPDIR:-/tmp}/rustbcx-compare
 mkdir -p "$tmp" || exit 2
 
@@ -126,13 +69,6 @@ built_ispc=0
 built_bc2=0
 built_bc6h=0
 built_bc6h_enc=0
-built_miniz=0
-built_stbiw=0
-built_stbi=0
-built_zstd=0
-built_tinyexr=0
-built_libdeflate=0
-built_dwa=0
 built_bc6h_pack=0
 bad=0
 # (ert.h uses the fixed-width integer types without including their header; no contraction of
@@ -142,41 +78,6 @@ cpp_sources="$source/bc7decomp.cpp $source/bc7decomp_ref.cpp $source/bc7enc.cpp 
 for what in $dumps; do
     extra=
     case $what in
-    zstd_decode | zstd_compress | zstd_compress_more | zstd_compress_long | zstd_entropy)
-        if [ "$built_zstd" -eq 0 ]; then
-            if [ -z "${ZSTD:-}" ] || [ ! -f "$ZSTD/doc/educational_decoder/zstd_decompress.c" ]; then
-                echo "$what: NOT COMPARED, no zstd (put its checkout in \$ZSTD)"
-                bad=$((bad + 1))
-                continue
-            fi
-            mkdir -p "$tmp/zstd-obj" || exit 2
-            (cd "$tmp/zstd-obj" && ${CC:-cc} -O2 -c -DZSTD_DISABLE_ASM -I "$ZSTD/lib" -I "$ZSTD/lib/common" "$ZSTD"/lib/common/*.c "$ZSTD"/lib/compress/*.c "$ZSTD"/lib/decompress/*.c "$ZSTD"/lib/dictBuilder/*.c) || exit 2
-            ${CC:-cc} -O2 -c -I "$ZSTD/doc/educational_decoder" "$here/compare/dump_zstd_edu.c" -o "$tmp/dump_zstd_edu.o" || exit 2
-            ${CC:-cc} -O2 -I "$ZSTD/lib" -I "$ZSTD/lib/dictBuilder" "$here/compare/dump_zstd.c" "$tmp/dump_zstd_edu.o" "$tmp"/zstd-obj/*.o -o "$tmp/dump-zstd" || exit 2
-            ${CC:-cc} -O2 -I "$ZSTD/lib" "$here/compare/dump_zstd_compress.c" "$tmp"/zstd-obj/*.o -o "$tmp/dump-zstd-compress" || exit 2
-            ${CC:-cc} -O2 -I "$ZSTD/lib" "$here/compare/dump_zstd_entropy.c" "$tmp"/zstd-obj/*.o -o "$tmp/dump-zstd-entropy" || exit 2
-            built_zstd=1
-        fi
-        case $what in
-        zstd_decode)
-            reference=$tmp/dump-zstd
-            count=$((blocks / 10))
-            extra=$tmp/zstd-frames.bin
-            ;;
-        zstd_compress | zstd_compress_more)
-            reference=$tmp/dump-zstd-compress
-            count=$((blocks / 100))
-            ;;
-        zstd_compress_long)
-            reference=$tmp/dump-zstd-compress
-            count=1
-            ;;
-        *)
-            reference=$tmp/dump-zstd-entropy
-            count=$blocks
-            ;;
-        esac
-        ;;
     bc7e_* | rdo_bc7e)
         if [ "$built_ispc" -eq 0 ]; then
             if ! command -v "${ISPC:-ispc}" > /dev/null 2>&1; then
@@ -192,120 +93,6 @@ for what in $dumps; do
         fi
         reference=$tmp/dump-ispc
         [ "$what" = rdo_bc7e ] && reference=$tmp/dump-cpp-bc7e
-        count=$((blocks / 10))
-        ;;
-    miniz)
-        if [ "$built_miniz" -eq 0 ]; then
-            if [ -z "${MINIZ:-}" ] || [ ! -f "$MINIZ/miniz_tdef.c" ]; then
-                echo "$what: NOT COMPARED, no miniz (put its checkout in \$MINIZ)"
-                bad=$((bad + 1))
-                continue
-            fi
-            # (The header its build would make, and no .zip code, which is not ported.)
-            mkdir -p "$tmp/miniz" && echo "#define MINIZ_EXPORT" > "$tmp/miniz/miniz_export.h" || exit 2
-            ${CC:-cc} -O2 -DMINIZ_NO_ARCHIVE_APIS -I "$tmp/miniz" -I "$MINIZ" "$here/compare/dump_miniz.c" "$MINIZ/miniz.c" "$MINIZ/miniz_tdef.c" "$MINIZ/miniz_tinfl.c" -o "$tmp/dump-miniz" || exit 2
-            built_miniz=1
-        fi
-        reference=$tmp/dump-miniz
-        count=$((blocks / 100))
-        ;;
-    tinyexr_write | tinyexr_read | tinyexr_parts | tinyexr_deep | tinyexr_zfp_write | tinyexr_zfp_read)
-        if [ "$built_tinyexr" -eq 0 ]; then
-            if [ -z "${TINYEXR:-}" ] || [ ! -f "$TINYEXR/tinyexr.h" ]; then
-                echo "$what: NOT COMPARED, no tinyexr (put its checkout in \$TINYEXR)"
-                bad=$((bad + 1))
-                continue
-            fi
-            if [ -z "${MINIZ:-}" ] || [ ! -f "$MINIZ/miniz_tdef.c" ]; then
-                echo "$what: NOT COMPARED, no miniz (put its checkout in \$MINIZ)"
-                bad=$((bad + 1))
-                continue
-            fi
-            if [ -z "${ZFP:-}" ] || [ ! -f "$ZFP/include/zfp.h" ]; then
-                echo "$what: NOT COMPARED, no zfp (put its checkout, v1.0.1, in \$ZFP)"
-                bad=$((bad + 1))
-                continue
-            fi
-            mkdir -p "$tmp/miniz" "$tmp/tinyexr-obj" "$tmp/zfp-obj" && echo "#define MINIZ_EXPORT" > "$tmp/miniz/miniz_export.h" || exit 2
-            (cd "$tmp/tinyexr-obj" && ${CC:-cc} -O2 -c -DMINIZ_NO_ARCHIVE_APIS -I "$tmp/miniz" -I "$MINIZ" "$MINIZ/miniz.c" "$MINIZ/miniz_tdef.c" "$MINIZ/miniz_tinfl.c") || exit 2
-            (cd "$tmp/zfp-obj" && rm -f ./*.o && ${CC:-cc} -O2 -fwrapv -ffp-contract=off -c -I "$ZFP/include" "$ZFP"/src/*.c) || exit 2
-            ${CXX:-c++} -O2 -fwrapv -ffp-contract=off -DMINIZ_NO_ARCHIVE_APIS -I "$tmp/miniz" -I "$MINIZ" -I "$TINYEXR" -I "$ZFP/include" "$here/compare/dump_tinyexr.cc" "$tmp"/tinyexr-obj/*.o "$tmp"/zfp-obj/*.o -o "$tmp/dump-tinyexr" || exit 2
-            built_tinyexr=1
-        fi
-        reference=$tmp/dump-tinyexr
-        count=$((blocks / 10))
-        [ "$what" = tinyexr_read ] && extra=$tmp/exr-files.bin
-        [ "$what" = tinyexr_zfp_read ] && extra=$tmp/exr-zfp.bin
-        [ "$what" = tinyexr_parts ] && extra=$tmp/exr-parts.bin
-        [ "$what" = tinyexr_deep ] && extra=$tmp/exr-deep.bin
-        ;;
-    stb_image | stb_image_more)
-        if [ "$built_stbi" -eq 0 ]; then
-            if [ -z "${STB:-}" ] || [ ! -f "$STB/stb_image.h" ]; then
-                echo "$what: NOT COMPARED, no stb (put its checkout in \$STB)"
-                bad=$((bad + 1))
-                continue
-            fi
-            if [ -z "${MINIZ:-}" ] || [ ! -f "$MINIZ/miniz_tdef.c" ]; then
-                echo "$what: NOT COMPARED, no miniz (put its checkout in \$MINIZ)"
-                bad=$((bad + 1))
-                continue
-            fi
-            mkdir -p "$tmp/miniz" && echo "#define MINIZ_EXPORT" > "$tmp/miniz/miniz_export.h" || exit 2
-            ${CC:-cc} -O2 -fwrapv -ffp-contract=off -DMINIZ_NO_ARCHIVE_APIS -DMINIZ_NO_ZLIB_COMPATIBLE_NAMES -I "$tmp/miniz" -I "$MINIZ" -I "$STB" "$here/compare/dump_stb_image.c" "$MINIZ/miniz.c" "$MINIZ/miniz_tdef.c" "$MINIZ/miniz_tinfl.c" -lm -o "$tmp/dump-stb-image" || exit 2
-            built_stbi=1
-        fi
-        reference=$tmp/dump-stb-image
-        count=$((blocks / 10))
-        ;;
-    libdeflate)
-        if [ "$built_libdeflate" -eq 0 ]; then
-            if [ -z "${OPENEXR:-}" ] || [ ! -f "$OPENEXR/external/deflate/libdeflate.h" ]; then
-                echo "$what: NOT COMPARED, no OpenEXR (put its checkout in \$OPENEXR)"
-                bad=$((bad + 1))
-                continue
-            fi
-            deflate=$OPENEXR/external/deflate
-            mkdir -p "$tmp/deflate-obj" || exit 2
-            (cd "$tmp/deflate-obj" && ${CC:-cc} -O2 -c -I "$deflate" "$deflate"/lib/*.c "$deflate"/lib/x86/cpu_features.c) || exit 2
-            ${CC:-cc} -O2 -I "$deflate" "$here/compare/dump_libdeflate.c" "$tmp"/deflate-obj/*.o -o "$tmp/dump-libdeflate" || exit 2
-            built_libdeflate=1
-        fi
-        reference=$tmp/dump-libdeflate
-        count=$((blocks / 100))
-        ;;
-    dwa_write | dwa_read)
-        if [ "$built_dwa" -eq 0 ]; then
-            if [ -z "${OPENEXR:-}" ] || [ ! -f "$OPENEXR/src/lib/OpenEXRCore/openexr.h" ]; then
-                echo "$what: NOT COMPARED, no OpenEXR (put its checkout in \$OPENEXR)"
-                bad=$((bad + 1))
-                continue
-            fi
-            core=$(find "${OPENEXR_BUILD:-/nonexistent}" -name 'libOpenEXRCore*.a' 2> /dev/null | head -1)
-            imath=$(find "${OPENEXR_BUILD:-/nonexistent}" -path '*/Imath/ImathConfig.h' 2> /dev/null | head -1)
-            if [ -z "$core" ] || [ -z "$imath" ] || [ ! -f "${OPENEXR_BUILD:-}/cmake/OpenEXRConfig.h" ]; then
-                echo "$what: NOT COMPARED, no build of OpenEXR (put its CMake build folder, with OpenEXRCore built, in \$OPENEXR_BUILD)"
-                bad=$((bad + 1))
-                continue
-            fi
-            ${CC:-cc} -O2 -I "$OPENEXR/src/lib/OpenEXRCore" -I "$OPENEXR_BUILD/cmake" -I "$(dirname "$(dirname "$imath")")" -c "$here/compare/dump_dwa.c" -o "$tmp/dump_dwa.o" || exit 2
-            ${CXX:-c++} "$tmp/dump_dwa.o" "$core" -lm -o "$tmp/dump-dwa" || exit 2
-            built_dwa=1
-        fi
-        reference=$tmp/dump-dwa
-        count=$((blocks / 100))
-        ;;
-    stb_image_write)
-        if [ "$built_stbiw" -eq 0 ]; then
-            if [ -z "${STB:-}" ] || [ ! -f "$STB/stb_image_write.h" ]; then
-                echo "$what: NOT COMPARED, no stb (put its checkout in \$STB)"
-                bad=$((bad + 1))
-                continue
-            fi
-            ${CC:-cc} -O2 -ffp-contract=off -I "$STB" "$here/compare/dump_stb_image_write.c" -lm -o "$tmp/dump-stb-image-write" || exit 2
-            built_stbiw=1
-        fi
-        reference=$tmp/dump-stb-image-write
         count=$((blocks / 10))
         ;;
     bc6h_enc)

@@ -21,20 +21,26 @@
 //! - [`bc6h_enc`]: BC6H again, pixels to blocks the thorough way, and to signed blocks as well
 //!   as unsigned (`bc6h_enc.h`, Alexander Samusev's [bc6h_enc](https://github.com/0xc0de/bc6h_enc),
 //!   which is the encoder of Microsoft's DirectXTex).
-//! - [`miniz`]: zlib and deflate, both ways (Rich Geldreich's
-//!   [miniz](https://github.com/richgel999/miniz)), for the files below.
-//! - [`zstd`]: Zstandard, both ways, for the same files: bytes to frames at every level of zstd,
-//!   the negative ones to 22 (the compressor of [zstd](https://github.com/facebook/zstd)), and
-//!   frames to bytes (the reference decoder that comes with it, `doc/educational_decoder`).
+//!
+//! The image files and the supercompression of `.ktx2` are ports too, each a crate of its own
+//! under its original's licence, which this crate uses and gives again under their old names:
+//!
+//! - [`miniz`]: zlib and deflate, both ways
+//!   ([miniz_nrp](https://github.com/OctoKeights/miniz_nrp), of Rich Geldreich's
+//!   [miniz](https://github.com/richgel999/miniz)).
+//! - [`zstd`]: Zstandard, both ways, at every level of zstd
+//!   ([zstd_nrp](https://github.com/OctoKeights/zstd_nrp), of
+//!   [zstd](https://github.com/facebook/zstd)).
 //! - [`stb_image`] and [`stb_image_write`]: `.png`, `.bmp`, `.jpg`, `.tga`, `.psd`, `.gif`,
 //!   `.pgm`, `.ppm` and `.hdr` files to images, and `.png`, `.bmp` and `.jpg` back
-//!   (`stb_image.h` and `stb_image_write.h`, from Sean Barrett's
-//!   [stb](https://github.com/nothings/stb)).
-//! - [`tinyexr`]: `.exr` files to halves, floats or integers and back (Syoyo Fujita's
-//!   [tinyexr](https://github.com/syoyo/tinyexr)), with [`dwa`], OpenEXR's DWAA and DWAB
-//!   compressions (from [OpenEXR](https://github.com/AcademySoftwareFoundation/openexr)'s
-//!   OpenEXRCore), and [`libdeflate`], the zlib they use (Eric Biggers's
-//!   [libdeflate](https://github.com/ebiggers/libdeflate)).
+//!   ([stb_image_nrp](https://github.com/OctoKeights/stb_image_nrp) and
+//!   [stb_image_write_nrp](https://github.com/OctoKeights/stb_image_write_nrp), of Sean
+//!   Barrett's [stb](https://github.com/nothings/stb)).
+//! - [`tinyexr`]: `.exr` files to halves, floats or integers and back
+//!   ([tinyexr_nrp](https://github.com/OctoKeights/tinyexr_nrp), of Syoyo Fujita's
+//!   [tinyexr](https://github.com/syoyo/tinyexr)), with OpenEXR's DWAA and DWAB
+//!   ([openexr_nrp](https://github.com/OctoKeights/openexr_nrp)) and tinyexr's ZFP
+//!   ([zfp_nrp](https://github.com/OctoKeights/zfp_nrp)).
 //!
 //! And around the ports, the crate's own: [`bc2`], the one block format of the family none of
 //! the originals has; [`image`], the images the encoders take, read from picture files and
@@ -44,7 +50,7 @@
 //!
 //! The ports keep the originals' behaviour, so a block comes out as the same bytes from both
 //! (for the two ISPC originals, `bc7e.ispc` and Intel's `kernel.ispc`, as built without
-//! fast-math). The crate has no dependencies and no `unsafe`.
+//! fast-math). The crate has no `unsafe`, and no dependencies but those ports.
 //!
 //! # Cargo features
 //!
@@ -68,24 +74,23 @@ pub mod bc7decomp;
 pub mod bc7e;
 pub mod bc7enc;
 pub mod dds;
-pub mod dwa;
 pub mod ert;
 mod fmath;
 pub mod image;
 pub mod ktx;
 mod lanes;
-pub mod libdeflate;
-pub mod miniz;
 mod parallel;
 pub mod rdo_bc_encoder;
 pub mod rgbcx;
 mod rgbcx_tables;
-pub mod stb_image;
-pub mod stb_image_write;
-mod stb_image_write_tables;
 pub mod texture;
-pub mod tinyexr;
-pub mod zstd;
+
+// The ports that are crates of their own, under the names they had here.
+pub use miniz_nrp as miniz;
+pub use stb_image_nrp as stb_image;
+pub use stb_image_write_nrp as stb_image_write;
+pub use tinyexr_nrp as tinyexr;
+pub use zstd_nrp as zstd;
 
 /// (The README's examples, compiled and run with the tests.)
 #[cfg(doctest)]

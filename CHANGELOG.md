@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+- **Breaking: the image codecs and supercompression are crates of their own.** The ports of
+  miniz, zstd, stb_image, stb_image_write and tinyexr, with tinyexr's DWA (of OpenEXR), its
+  ZFP (of the zfp library) and the libdeflate DWA uses, have moved out of rustbcx into crates
+  of their own, each under its original's licence and with its own comparison and tests:
+  [miniz_nrp](https://github.com/OctoKeights/miniz_nrp),
+  [zstd_nrp](https://github.com/OctoKeights/zstd_nrp),
+  [stb_image_nrp](https://github.com/OctoKeights/stb_image_nrp),
+  [stb_image_write_nrp](https://github.com/OctoKeights/stb_image_write_nrp),
+  [tinyexr_nrp](https://github.com/OctoKeights/tinyexr_nrp),
+  [openexr_nrp](https://github.com/OctoKeights/openexr_nrp),
+  [zfp_nrp](https://github.com/OctoKeights/zfp_nrp) and
+  [libdeflate_nrp](https://github.com/OctoKeights/libdeflate_nrp) ("_nrp" for native Rust
+  port). rustbcx depends on them and gives five of them again under their old names, so
+  `rustbcx::miniz`, `rustbcx::zstd`, `rustbcx::stb_image`, `rustbcx::stb_image_write` and
+  `rustbcx::tinyexr` are as they were. `rustbcx::dwa` and `rustbcx::libdeflate` are gone:
+  use `openexr_nrp::dwa`, and libdeflate_nrp, whose functions are now libdeflate's own
+  (`zlib_compress`, `zlib_decompress` and the rest; OpenEXR's wrappers of them are
+  `openexr_nrp::compression`). The deprecated `zstd::level_is_ported` is gone too. rustbcx's
+  own licence (Apache 2.0) now covers only its own ports, and the other licences' files went
+  with their ports.
+
 - **Breaking: needs Rust 1.100.** The crate now uses Rust's 2024 edition, and its minimum
   Rust (`rust-version` in `Cargo.toml`) is 1.100, the version it is developed and checked
   with (`rust-toolchain.toml`). On an older Rust, Cargo refuses to build it and says why.

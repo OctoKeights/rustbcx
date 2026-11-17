@@ -98,8 +98,10 @@
   library's `powf` and `logf` are embedded as glibc computes them. The level of loss is the
   header's `dwaCompressionLevel` attribute (`tinyexr::dwa_compression_level_attribute`), 45
   by default. A block of AC coefficients is compressed with Huffman coding, or with ZIP for
-  the tiles of DWAA, as OpenEXR does; its ZIP is libdeflate's, ported as `libdeflate`. The
-  blocks themselves are available as `dwa::compress` and `dwa::uncompress`.
+  the tiles of DWAA, as OpenEXR does; its ZIP is libdeflate's (the port in
+  [libdeflate_nrp](https://github.com/OctoKeights/libdeflate_nrp)). The blocks themselves
+  are available as `dwa::compress` and `dwa::uncompress` of
+  [openexr_nrp](https://github.com/OctoKeights/openexr_nrp).
 
 - **Damaged multi-part and deep files get tinyexr's answer only where it is defined.**
   tinyexr's readers for these read past the end of a damaged file without checking. rustbcx

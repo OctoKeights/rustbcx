@@ -18,7 +18,9 @@ output exactly with no external toolchain.
 
 - **Bit-identical output.** Every block matches its reference encoder byte for byte.
 
-- **Zero dependencies.** Standard library only: no C++ build step, no ISPC compiler.
+- **Pure Rust all the way down.** No C++ build step, no ISPC compiler: its only
+  dependencies are its sister ports for image files and supercompression, the `_nrp` crates
+  below, each under its original's licence.
 
 - **No `unsafe` code.** Enforced by `#![forbid(unsafe_code)]`.
 
@@ -29,7 +31,7 @@ output exactly with no external toolchain.
   `.dds`, `.ktx` or `.ktx2`.
 
 - **Integrated image I/O.** Reads `.png`, `.bmp`, `.jpg`, `.tga`, `.psd`, `.gif`, `.pgm`,
-  `.ppm`, `.hdr` and `.exr`; writes `.png`, `.bmp`, `.jpg` and `.exr`. Through ports of
+  `.ppm`, `.hdr` and `.exr`; writes `.png`, `.bmp`, `.jpg` and `.exr`. Through the ports of
   stb_image, stb_image_write and tinyexr.
 
 - **Parallel and deterministic.** Uses every core by default; output is independent of the
@@ -87,10 +89,12 @@ See [Examples](docs/examples.md) for image files, HDR, cube maps and block-level
 | BC6H | `bc6h`, `bc6h_enc` | bcdec, Intel's ISPC Texture Compressor, bc6h_enc (DirectXTex) |
 | Rate-distortion optimisation | `ert`, `rdo_bc_encoder` | bc7enc_rdo |
 | Images, textures and containers | `image`, `texture`, `dds`, `ktx` | rustbcx |
-| Image codecs | `stb_image`, `stb_image_write`, `tinyexr`, `dwa`, `libdeflate` | stb, tinyexr, zfp, OpenEXR, libdeflate |
-| Supercompression | `miniz`, `zstd` | miniz, zstd |
+| Image codecs | `stb_image`, `stb_image_write`, `tinyexr` | [stb_image_nrp](https://github.com/OctoKeights/stb_image_nrp), [stb_image_write_nrp](https://github.com/OctoKeights/stb_image_write_nrp), [tinyexr_nrp](https://github.com/OctoKeights/tinyexr_nrp) (with [openexr_nrp](https://github.com/OctoKeights/openexr_nrp) and [zfp_nrp](https://github.com/OctoKeights/zfp_nrp)): ports of stb, tinyexr, OpenEXR and zfp |
+| Supercompression | `miniz`, `zstd` | [miniz_nrp](https://github.com/OctoKeights/miniz_nrp), [zstd_nrp](https://github.com/OctoKeights/zstd_nrp): ports of miniz and zstd |
 
-Full details are in the [module reference](docs/guide.md#module-reference).
+The image codecs and supercompression are ports in crates of their own, each verified
+against its original in its own repository; rustbcx gives them again under these names. Full
+details are in the [module reference](docs/guide.md#module-reference).
 
 ## Licence
 

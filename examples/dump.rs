@@ -40,66 +40,6 @@
 //!                                      unsigned BC6H by the port of bc6h_enc, as
 //!                                      `compare/dump_bc6h_enc.cpp` does with the original
 //!
-//! And of the comparison with miniz, as `compare/dump_miniz.c` does:
-//!
-//!   dump miniz <seed> <count>   made-up data compressed with flags from every level and
-//!                               strategy and with made-up flags, in one go and in pieces;
-//!                               each stream decompressed whole, into too little room,
-//!                               damaged, cut short and with bytes after it; and made-up
-//!                               bytes decompressed
-//!
-//! And of the comparison with stb_image_write.h, as `compare/dump_stb_image_write.c` does:
-//!
-//!   dump stb_image_write <seed> <count>   made-up images written as .png, .bmp and .jpg with
-//!                                         made-up settings, and made-up data through the
-//!                                         file's own zlib compressor
-//!
-//! And of the comparison with stb_image.h, as `compare/dump_stb_image.c` does:
-//!
-//!   dump stb_image <seed> <count>   made-up .png, .bmp and .jpg files, a third of them
-//!                                   damaged, asked their size and read at 8 and 16 bits a
-//!                                   channel; and made-up data through its zlib decoder
-//!   dump stb_image_more <seed> <count>
-//!                                   made-up .tga, .psd, .gif, .pnm and .hdr files, a third of
-//!                                   them damaged, asked their size, read at 8 and 16 bits a
-//!                                   channel and as floats, and as animations
-//!
-//! And of the comparison with zstd's reference decoder, as `compare/dump_zstd.c` does:
-//!
-//!   dump zstd_decode <seed> <count> <file>         the frames that program wrote to the file,
-//!   dump zstd_decode_small <seed> <count> <file>   each asked its size and decoded
-//!
-//! And of the comparison with zstd's compressor, as `compare/dump_zstd_compress.c` does:
-//!
-//!   dump zstd_compress <seed> <count>              made-up data compressed at levels 1 to 4,
-//!   dump zstd_compress_small <seed> <count>        0 and the negative ones
-//!   dump zstd_compress_more <seed> <count>         the same at levels 4 to 22
-//!   dump zstd_compress_more_small <seed> <count>
-//!   dump zstd_compress_long <seed> <count>         64 to 80 megabytes at level 22
-//!
-//! And of the comparison with tinyexr, as `compare/dump_tinyexr.cc` does:
-//!
-//!   dump tinyexr_write <seed> <count>               made-up images saved as .exr files, and
-//!   dump tinyexr_write_small <seed> <count>         every fourth the short way as well
-//!   dump tinyexr_read <seed> <count> <file>         the .exr files that program wrote to the
-//!   dump tinyexr_read_small <seed> <count> <file>   file, each read four ways
-//!   dump tinyexr_zfp_write <seed> <count>           the same of images for ZFP compression,
-//!   dump tinyexr_zfp_read <seed> <count> <file>     of floats with its settings
-//!   dump tinyexr_parts <seed> <count> <file>        files of many parts saved, and the
-//!                                                   ones that program wrote to the file read
-//!   dump tinyexr_deep <seed> <count> <file>         the deep files that program wrote, read
-//!
-//! And of the comparison with OpenEXR 3.5, as `compare/dump_libdeflate.c` does with its
-//! libdeflate and `compare/dump_dwa.c` with its OpenEXRCore:
-//!
-//!   dump libdeflate <seed> <count>   made-up data compressed at libdeflate's levels 0 and 2 to
-//!                                    9; each stream decompressed whole, into too little room
-//!                                    and into more, damaged, cut short and with bytes after it
-//!   dump dwa_write <seed> <count>    made-up blocks of an image compressed with DWAA or DWAB
-//!                                    at a made-up level, and back
-//!   dump dwa_read <seed> <count>     those blocks, compressed, damaged in one of eleven ways,
-//!                                    decompressed
-//!
 //! And of the comparison with bc7e.ispc, as `compare/dump_bc7e.cpp` does with the ISPC encoder:
 //!
 //!   dump bc7e_presets <seed> <blocks> [file]    made-up blocks packed with each of the seven
@@ -671,62 +611,6 @@ fn main() {
         "rdo_bc7e" => print!("{}", made_up::rdo(seed, blocks, true)),
         "bc2" => print!("{}", made_up::bc2(seed, blocks)),
         "bc6h_enc" => print!("{}", made_up::bc6h_enc(seed, blocks)),
-        "miniz" => print!("{}", made_up::miniz(seed, blocks)),
-        "libdeflate" => print!("{}", made_up::libdeflate(seed, blocks)),
-        "dwa_write" | "dwa_read" => print!("{}", made_up::dwa(what, seed, blocks)),
-        "stb_image_write" => print!("{}", made_up::stb_image_write(seed, blocks)),
-        "stb_image" => print!("{}", made_up::stb_image(seed, blocks)),
-        "stb_image_more" => print!("{}", made_up::stb_image_more(seed, blocks)),
-        "zstd_decode" | "zstd_decode_small" => {
-            let Some(file) = args.get(4).and_then(|path| std::fs::read(path).ok()) else {
-                eprintln!(
-                    "usage: dump {what} <seed> <count> <file of frames from compare/dump_zstd.c>"
-                );
-                std::process::exit(2);
-            };
-            print!("{}", made_up::zstd_decode(what, blocks, &file));
-        }
-        "tinyexr_write" | "tinyexr_write_small" | "tinyexr_zfp_write" => {
-            print!("{}", made_up::tinyexr_write(what, seed, blocks))
-        }
-        "tinyexr_read" | "tinyexr_read_small" | "tinyexr_zfp_read" => {
-            let Some(file) = args.get(4).and_then(|path| std::fs::read(path).ok()) else {
-                eprintln!(
-                    "usage: dump {what} <seed> <count> <file of files from compare/dump_tinyexr.cc>"
-                );
-                std::process::exit(2);
-            };
-            print!("{}", made_up::tinyexr_read(what, blocks, &file));
-        }
-        "tinyexr_parts" | "tinyexr_deep" => {
-            let Some(file) = args.get(4).and_then(|path| std::fs::read(path).ok()) else {
-                eprintln!(
-                    "usage: dump {what} <seed> <count> <file of files from compare/dump_tinyexr.cc>"
-                );
-                std::process::exit(2);
-            };
-            if what == "tinyexr_parts" {
-                print!("{}", made_up::tinyexr_parts(what, seed, blocks, &file));
-            } else {
-                print!("{}", made_up::tinyexr_deep(what, blocks, &file));
-            }
-        }
-        "zstd_compress" | "zstd_compress_small" => {
-            print!("{}", made_up::zstd_compress(what, seed, blocks, false))
-        }
-        "zstd_compress_long" => {
-            print!("{}", made_up::zstd_compress_long(what, seed, blocks, false))
-        }
-        "zstd_compress_more" | "zstd_compress_more_small" => {
-            let highest = args
-                .get(4)
-                .map_or(9, |arg| arg.parse().expect("a strategy"));
-            print!(
-                "{}",
-                made_up::zstd_compress_up_to(what, seed, blocks, false, highest)
-            );
-        }
-        "zstd_entropy" => print!("{}", made_up::zstd_entropy(seed, blocks)),
         "bc6h_unpack" => print!("{}", made_up::bc6h_unpack(seed, blocks)),
         "bc6h_pack" => print!("{}", made_up::bc6h_pack(seed, blocks)),
         "bc7e_presets" => dump_bc7e(true, seed, blocks, args.get(4)),
