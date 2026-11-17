@@ -2,8 +2,9 @@
 
 ## Unreleased
 
-- **The 2024 edition.** The crate now uses Rust's 2024 edition, so it needs Rust 1.85 or
-  later to build; it is developed and checked with Rust 1.100 (`rust-toolchain.toml`).
+- **Breaking: needs Rust 1.100.** The crate now uses Rust's 2024 edition, and its minimum
+  Rust (`rust-version` in `Cargo.toml`) is 1.100, the version it is developed and checked
+  with (`rust-toolchain.toml`). On an older Rust, Cargo refuses to build it and says why.
 
 - **Every image format stb_image reads.** `stb_image` now ports all of its readers: `.tga`,
   `.psd`, `.gif`, `.pgm`, `.ppm` and Radiance `.hdr`, alongside `.png`, `.bmp` and `.jpg`.

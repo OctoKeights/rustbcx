@@ -1,5 +1,5 @@
-# The Rust this repository is developed and checked with. (Only here: crates that depend on
-# rustbcx build it with their own.)
+# The Rust this repository is developed and checked with, and the crate's minimum
+# (rust-version in Cargo.toml): change the two together.
 [toolchain]
 channel = "1.100"
 components = ["rustfmt", "clippy"]
