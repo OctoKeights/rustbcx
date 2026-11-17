@@ -44,7 +44,7 @@ source = "git+https://github.com/OctoKeights/stb_image_write_nrp#ae7ec1564f21b8a
 [[package]]
 name = "tinyexr_nrp"
 version = "0.2.0"
-source = "git+https://github.com/OctoKeights/tinyexr_nrp#dd5941931a8ca988ad5835df48643ae0b0c64e2c"
+source = "git+https://github.com/OctoKeights/tinyexr_nrp#7995449ccf9c53ee9e1568b919bb289921c657ab"
 dependencies = [
  "miniz_nrp",
  "openexr_nrp",
