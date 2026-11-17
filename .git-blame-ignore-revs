@@ -2,7 +2,7 @@
 #   git config blame.ignoreRevsFile .git-blame-ignore-revs
 
 # Format the crate with rustfmt
-e73c9b5a745d596ef25b61983d18a021e2d4e409
+445be88599d48463802078469b0dd57474413c8b
 
 # Move to the 2024 edition (rustfmt's 2024 style)
-b74309bfa1bea6b0446e122fe6340ce7adb5d428
+25f64d43c45fa4e9586b6a72346cfe1b0f8f4d6d
