@@ -67,6 +67,8 @@ pub struct OpaqueSettings {
 }
 
 /// The settings for blocks with alpha.
+// (The original's switches, each independent of the others.)
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct AlphaSettings {
     /// How many of the partitions the estimator ranks best are tried in full for mode 7.
@@ -121,6 +123,7 @@ pub struct CompressBlockParams {
 
 impl CompressBlockParams {
     /// The base settings every profile starts from: `bc7e_compress_block_params_init`.
+    #[must_use]
     pub fn new(perceptual: bool) -> Self {
         CompressBlockParams {
             max_partitions_mode: [
@@ -167,6 +170,7 @@ impl CompressBlockParams {
     }
 
     /// `bc7e_compress_block_params_init_slowest`
+    #[must_use]
     pub fn slowest(perceptual: bool) -> Self {
         let mut p = Self::new(perceptual);
         p.opaque_settings.max_mode13_partitions_to_try = 4;
@@ -179,6 +183,7 @@ impl CompressBlockParams {
     }
 
     /// `bc7e_compress_block_params_init_veryslow`
+    #[must_use]
     pub fn veryslow(perceptual: bool) -> Self {
         let mut p = Self::new(perceptual);
         p.opaque_settings.max_mode13_partitions_to_try = 2;
@@ -191,6 +196,7 @@ impl CompressBlockParams {
     }
 
     /// `bc7e_compress_block_params_init_slow`
+    #[must_use]
     pub fn slow(perceptual: bool) -> Self {
         let mut p = Self::new(perceptual);
         p.alpha_settings.max_mode7_partitions_to_try = 2;
@@ -200,6 +206,7 @@ impl CompressBlockParams {
     }
 
     /// `bc7e_compress_block_params_init_basic`
+    #[must_use]
     pub fn basic(perceptual: bool) -> Self {
         let mut p = Self::new(perceptual);
         if perceptual {
@@ -223,6 +230,7 @@ impl CompressBlockParams {
     }
 
     /// `bc7e_compress_block_params_init_fast`
+    #[must_use]
     pub fn fast(perceptual: bool) -> Self {
         let mut p = Self::new(perceptual);
         if perceptual {
@@ -249,6 +257,7 @@ impl CompressBlockParams {
     }
 
     /// `bc7e_compress_block_params_init_veryfast`
+    #[must_use]
     pub fn veryfast(perceptual: bool) -> Self {
         let mut p = Self::new(perceptual);
         if perceptual {
@@ -272,6 +281,7 @@ impl CompressBlockParams {
     }
 
     /// `bc7e_compress_block_params_init_ultrafast`
+    #[must_use]
     pub fn ultrafast(perceptual: bool) -> Self {
         let mut p = Self::new(perceptual);
         p.mode6_only = true;
@@ -419,14 +429,14 @@ const WEIGHTS4: [u32; 16] = [0, 4, 9, 13, 17, 21, 26, 30, 34, 38, 43, 47, 51, 55
 // Precomputed weight constants used during least fit determination. For each entry in the
 // weights: w * w, (1.0f - w) * w, (1.0f - w) * (1.0f - w), w
 #[rustfmt::skip]
-const WEIGHTS2X: [f32; 4 * 4] = [0.000000, 0.000000, 1.000000, 0.000000, 0.107666, 0.220459, 0.451416, 0.328125, 0.451416, 0.220459, 0.107666, 0.671875, 1.000000, 0.000000, 0.000000, 1.000000];
+const WEIGHTS2X: [f32; 4 * 4] = [0.000_000, 0.000_000, 1.000_000, 0.000_000, 0.107_666, 0.220_459, 0.451_416, 0.328_125, 0.451_416, 0.220_459, 0.107_666, 0.671_875, 1.000_000, 0.000_000, 0.000_000, 1.000_000];
 #[rustfmt::skip]
-const WEIGHTS3X: [f32; 8 * 4] = [0.000000, 0.000000, 1.000000, 0.000000, 0.019775, 0.120850, 0.738525, 0.140625, 0.079102, 0.202148, 0.516602, 0.281250, 0.177979, 0.243896, 0.334229, 0.421875, 0.334229, 0.243896, 0.177979, 0.578125, 0.516602, 0.202148,
-    0.079102, 0.718750, 0.738525, 0.120850, 0.019775, 0.859375, 1.000000, 0.000000, 0.000000, 1.000000];
+const WEIGHTS3X: [f32; 8 * 4] = [0.000_000, 0.000_000, 1.000_000, 0.000_000, 0.019_775, 0.120_850, 0.738_525, 0.140_625, 0.079_102, 0.202_148, 0.516_602, 0.281_250, 0.177_979, 0.243_896, 0.334_229, 0.421_875, 0.334_229, 0.243_896, 0.177_979, 0.578_125, 0.516_602, 0.202_148,
+    0.079_102, 0.718_750, 0.738_525, 0.120_850, 0.019_775, 0.859_375, 1.000_000, 0.000_000, 0.000_000, 1.000_000];
 #[rustfmt::skip]
-const WEIGHTS4X: [f32; 16 * 4] = [0.000000, 0.000000, 1.000000, 0.000000, 0.003906, 0.058594, 0.878906, 0.062500, 0.019775, 0.120850, 0.738525, 0.140625, 0.041260, 0.161865, 0.635010, 0.203125, 0.070557, 0.195068, 0.539307, 0.265625, 0.107666, 0.220459,
-    0.451416, 0.328125, 0.165039, 0.241211, 0.352539, 0.406250, 0.219727, 0.249023, 0.282227, 0.468750, 0.282227, 0.249023, 0.219727, 0.531250, 0.352539, 0.241211, 0.165039, 0.593750, 0.451416, 0.220459, 0.107666, 0.671875, 0.539307, 0.195068, 0.070557, 0.734375,
-    0.635010, 0.161865, 0.041260, 0.796875, 0.738525, 0.120850, 0.019775, 0.859375, 0.878906, 0.058594, 0.003906, 0.937500, 1.000000, 0.000000, 0.000000, 1.000000];
+const WEIGHTS4X: [f32; 16 * 4] = [0.000_000, 0.000_000, 1.000_000, 0.000_000, 0.003_906, 0.058_594, 0.878_906, 0.062_500, 0.019_775, 0.120_850, 0.738_525, 0.140_625, 0.041_260, 0.161_865, 0.635_010, 0.203_125, 0.070_557, 0.195_068, 0.539_307, 0.265_625, 0.107_666, 0.220_459,
+    0.451_416, 0.328_125, 0.165_039, 0.241_211, 0.352_539, 0.406_250, 0.219_727, 0.249_023, 0.282_227, 0.468_750, 0.282_227, 0.249_023, 0.219_727, 0.531_250, 0.352_539, 0.241_211, 0.165_039, 0.593_750, 0.451_416, 0.220_459, 0.107_666, 0.671_875, 0.539_307, 0.195_068, 0.070_557, 0.734_375,
+    0.635_010, 0.161_865, 0.041_260, 0.796_875, 0.738_525, 0.120_850, 0.019_775, 0.859_375, 0.878_906, 0.058_594, 0.003_906, 0.937_500, 1.000_000, 0.000_000, 0.000_000, 1.000_000];
 
 const PARTITION1: [u8; 16] = [0; 16];
 
@@ -469,6 +479,8 @@ const MODE_5_OPTIMAL_INDEX: u32 = 1;
 const MODE_0_OPTIMAL_INDEX: u32 = 2;
 
 /// The BC7 encoder with the tables it makes at start-up.
+// (The tables are by BC7 mode, as the original names them.)
+#[allow(clippy::struct_field_names)]
 #[derive(Clone)]
 pub struct Bc7e {
     /// By component value and p-bit.
@@ -537,6 +549,8 @@ impl Bc7e {
     }
 
     /// Makes the tables.
+    // (One pass, step for step as the original's, its state shared throughout.)
+    #[allow(clippy::too_many_lines)]
     fn make_tables() -> Self {
         let empty = EndpointErr::default();
         let mut tables = Bc7e {
@@ -549,7 +563,7 @@ impl Bc7e {
             mode_0_optimal_endpoints: [[[empty; 2]; 2]; 256],
         };
         let fresh = EndpointErr {
-            error: u16::MAX as u32,
+            error: u32::from(u16::MAX),
             lo: 0,
             hi: 0,
         };
@@ -629,7 +643,7 @@ impl Bc7e {
                 expand,
                 expand,
             );
-            tables.mode_5_optimal_endpoints[c] = best.lo as u32 | ((best.hi as u32) << 8);
+            tables.mode_5_optimal_endpoints[c] = u32::from(best.lo) | (u32::from(best.hi) << 8);
         }
 
         // Mode 4: 555 3-bit indices, then 2-bit indices
@@ -647,7 +661,7 @@ impl Bc7e {
                 expand,
                 expand,
             );
-            tables.mode_4_optimal_endpoints3[c] = best.lo as u32 | ((best.hi as u32) << 8);
+            tables.mode_4_optimal_endpoints3[c] = u32::from(best.lo) | (u32::from(best.hi) << 8);
 
             let mut best = fresh;
             search_endpoints(
@@ -658,7 +672,7 @@ impl Bc7e {
                 expand,
                 expand,
             );
-            tables.mode_4_optimal_endpoints2[c] = best.lo as u32 | ((best.hi as u32) << 8);
+            tables.mode_4_optimal_endpoints2[c] = u32::from(best.lo) | (u32::from(best.hi) << 8);
         }
 
         // Mode 7: 555.1 2-bit indices
@@ -839,6 +853,8 @@ fn compute_least_squares_endpoints_a(
 }
 
 /// What a subset is packed with: `color_cell_compressor_params`.
+// (The original's switches, each independent of the others.)
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Clone, Copy)]
 struct ColorCellCompressorParams {
     num_selector_weights: u32,
@@ -1017,8 +1033,8 @@ impl Bc7e {
 
         let (er, eg, eb) = (&table[r][best_p], &table[g][best_p], &table[b][best_p]);
 
-        results.low_endpoint = [er.lo as i32, eg.lo as i32, eb.lo as i32, 0];
-        results.high_endpoint = [er.hi as i32, eg.hi as i32, eb.hi as i32, 0];
+        results.low_endpoint = [i32::from(er.lo), i32::from(eg.lo), i32::from(eb.lo), 0];
+        results.high_endpoint = [i32::from(er.hi), i32::from(eg.hi), i32::from(eb.hi), 0];
 
         results.pbits[0] = best_p as u32;
         results.pbits[1] = 0;
@@ -1167,8 +1183,8 @@ impl Bc7e {
             &table[b][best_p >> 1][best_p & 1],
         );
 
-        results.low_endpoint = [er.lo as i32, eg.lo as i32, eb.lo as i32, 0];
-        results.high_endpoint = [er.hi as i32, eg.hi as i32, eb.hi as i32, 0];
+        results.low_endpoint = [i32::from(er.lo), i32::from(eg.lo), i32::from(eb.lo), 0];
+        results.high_endpoint = [i32::from(er.hi), i32::from(eg.hi), i32::from(eb.hi), 0];
 
         results.pbits[0] = (best_p & 1) as u32;
         results.pbits[1] = (best_p >> 1) as u32;
@@ -1208,6 +1224,8 @@ impl Bc7e {
     /// Modes 6 and 7, which differ in their table and their selector weights. (Mode 7's colour
     /// is worked out from its six bits as they are, not widened to eight: as the original has
     /// it.)
+    // (The names are the original's, so that the code reads against the original.)
+    #[allow(clippy::many_single_char_names)]
     fn pack_mode67_to_one_color(
         table: &[[[EndpointErr; 2]; 2]; 256],
         weight: u32,
@@ -1247,8 +1265,18 @@ impl Bc7e {
             &table[a][best_hi_p][best_lo_p],
         );
 
-        results.low_endpoint = [er.lo as i32, eg.lo as i32, eb.lo as i32, ea.lo as i32];
-        results.high_endpoint = [er.hi as i32, eg.hi as i32, eb.hi as i32, ea.hi as i32];
+        results.low_endpoint = [
+            i32::from(er.lo),
+            i32::from(eg.lo),
+            i32::from(eb.lo),
+            i32::from(ea.lo),
+        ];
+        results.high_endpoint = [
+            i32::from(er.hi),
+            i32::from(eg.hi),
+            i32::from(eb.hi),
+            i32::from(ea.hi),
+        ];
 
         results.pbits[0] = best_lo_p as u32;
         results.pbits[1] = best_hi_p as u32;
@@ -1332,7 +1360,7 @@ impl Bc7e {
 fn best_of_four(errs: [f32; 4]) -> (f32, i32) {
     let best_err = minimumf(minimumf(minimumf(errs[0], errs[1]), errs[2]), errs[3]);
 
-    let mut best_sel = if best_err == errs[1] { 1 } else { 0 };
+    let mut best_sel = i32::from(best_err == errs[1]);
     if best_err == errs[2] {
         best_sel = 2;
     }
@@ -1344,6 +1372,8 @@ fn best_of_four(errs: [f32; 4]) -> (f32, i32) {
 }
 
 /// `best_of_four` for four pixels at a time.
+// (Inlined into the search loops, as ISPC's functions are.)
+#[allow(clippy::inline_always)]
 #[inline(always)]
 fn best_of_four_lanes(errs: [F4; 4]) -> (F4, I4) {
     let best_err = errs[0].lesser(errs[1]).lesser(errs[2]).lesser(errs[3]);
@@ -1358,7 +1388,7 @@ fn best_of_four_lanes(errs: [F4; 4]) -> (F4, I4) {
 fn evaluate_solution(
     low: &ColorQuadI,
     high: &ColorQuadI,
-    pbits: &[u32; 2],
+    pbits: [u32; 2],
     params: &ColorCellCompressorParams,
     results: &mut ColorCellCompressorResults,
     pixels: &[ColorQuadI],
@@ -1366,7 +1396,7 @@ fn evaluate_solution(
     evaluate_solution_with(
         low,
         high,
-        pbits,
+        &pbits,
         params,
         results,
         pixels,
@@ -1379,6 +1409,11 @@ fn evaluate_solution(
 /// the same order, so the answer is the same. The second is what the `nightly-simd` feature
 /// uses, with `std::simd` under it; as plain arrays it is slower than the first, which the
 /// compiler already vectorises across a palette's colours.
+// (Inlined into the search loops, as ISPC's functions are.)
+// (One pass, step for step as the original's, its state shared throughout; the names are the
+// original's, so that the code reads against the original.)
+#[allow(clippy::too_many_lines, clippy::many_single_char_names)]
+#[allow(clippy::inline_always)]
 #[inline(always)]
 fn evaluate_solution_with(
     low: &ColorQuadI,
@@ -1488,131 +1523,106 @@ fn evaluate_solution_with(
             .add(F4::splat(wa).mul(da).mul(da))
     };
 
-    if !params.perceptual {
-        if !params.has_alpha {
-            if n == 16 {
-                let mut lr = actual_min_color[0] as f32;
-                let mut lg = actual_min_color[1] as f32;
-                let mut lb = actual_min_color[2] as f32;
+    if params.perceptual {
+        wg *= PR_WEIGHT;
+        wb *= PB_WEIGHT;
 
-                let dr = actual_max_color[0] as f32 - lr;
-                let dg = actual_max_color[1] as f32 - lg;
-                let db = actual_max_color[2] as f32 - lb;
+        let mut weighted_colors_y = [0.0f32; 16];
+        let mut weighted_colors_cr = [0.0f32; 16];
+        let mut weighted_colors_cb = [0.0f32; 16];
 
-                let f = n as f32 / (dr * dr + dg * dg + db * db);
+        for i in 0..n {
+            let r = weighted_colors[i][0];
+            let g = weighted_colors[i][1];
+            let b = weighted_colors[i][2];
 
-                lr *= -dr;
-                lg *= -dg;
-                lb *= -db;
+            let y = r * 0.2126f32 + g * 0.7152f32 + b * 0.0722f32;
 
-                for i in 0..num_pixels {
-                    let c = &pixels[i];
-                    let r = c[0] as f32;
-                    let g = c[1] as f32;
-                    let b = c[2] as f32;
+            weighted_colors_y[i] = y;
+            weighted_colors_cr[i] = r - y;
+            weighted_colors_cb[i] = b - y;
+        }
 
-                    let mut best_sel =
-                        fmath::floor(((r * dr + lr) + (g * dg + lg) + (b * db + lb)) * f + 0.5f32);
-                    best_sel = clampf(best_sel, 1.0, (n - 1) as f32);
+        if lanes {
+            for chunk in 0..chunks {
+                let (r, g, b, a) = (
+                    lane(0, chunk),
+                    lane(1, chunk),
+                    lane(2, chunk),
+                    lane(3, chunk),
+                );
 
-                    let best_sel0 = best_sel - 1.0;
+                let y = r
+                    .mul(F4::splat(0.2126f32))
+                    .add(g.mul(F4::splat(0.7152f32)))
+                    .add(b.mul(F4::splat(0.0722f32)));
+                let cr = r.sub(y);
+                let cb = b.sub(y);
 
-                    let err0 = err_rgb(&weighted_colors[f2i(best_sel0) as usize], r, g, b);
-                    let err1 = err_rgb(&weighted_colors[f2i(best_sel) as usize], r, g, b);
+                let mut best_err = F4::splat(1e+10f32);
+                let mut best_sel = I4::splat(0);
+                for j in 0..n {
+                    let dl = y.sub(F4::splat(weighted_colors_y[j]));
+                    let dcr = cr.sub(F4::splat(weighted_colors_cr[j]));
+                    let dcb = cb.sub(F4::splat(weighted_colors_cb[j]));
 
-                    let min_err = minimumf(err0, err1);
-                    total_errf += min_err;
-                    results.selectors_temp[i] =
-                        f2i(if min_err == err0 { best_sel0 } else { best_sel });
+                    let mut err = F4::splat(wr)
+                        .mul(dl)
+                        .mul(dl)
+                        .add(F4::splat(wg).mul(dcr).mul(dcr))
+                        .add(F4::splat(wb).mul(dcb).mul(dcb));
+                    if params.has_alpha {
+                        let da = a.sub(F4::splat(weighted_colors[j][3]));
+                        err = err.add(F4::splat(wa).mul(da).mul(da));
+                    }
+                    best_sel = err.where_less(best_err, I4::splat(j as i32), best_sel);
+                    best_err = err.lesser(best_err);
                 }
-            } else if n == 8 {
-                if lanes {
-                    for chunk in 0..chunks {
-                        let (pr, pg, pb) = (lane(0, chunk), lane(1, chunk), lane(2, chunk));
 
-                        let (mut best_err, mut best_sel) =
-                            best_of_four_lanes(std::array::from_fn(|k| {
-                                lanes_err_rgb(&weighted_colors[k], pr, pg, pb)
-                            }));
+                let (best_err, best_sel) = (best_err.to_array(), best_sel.to_array());
+                for (l, i) in (chunk * 4..num_pixels).take(4).enumerate() {
+                    total_errf += best_err[l];
 
-                        let errs: [F4; 4] = std::array::from_fn(|k| {
-                            lanes_err_rgb(&weighted_colors[4 + k], pr, pg, pb)
-                        });
-                        best_err = best_err
-                            .lesser(errs[0].lesser(errs[1]).lesser(errs[2]).lesser(errs[3]));
-                        for k in 0..4 {
-                            best_sel =
-                                best_err.where_equal(errs[k], I4::splat(4 + k as i32), best_sel);
-                        }
-
-                        let (best_err, best_sel) = (best_err.to_array(), best_sel.to_array());
-                        for (l, i) in (chunk * 4..num_pixels).take(4).enumerate() {
-                            total_errf += best_err[l];
-
-                            results.selectors_temp[i] = best_sel[l];
-                        }
-                    }
-                } else {
-                    for i in 0..num_pixels {
-                        let pr = pixels[i][0] as f32;
-                        let pg = pixels[i][1] as f32;
-                        let pb = pixels[i][2] as f32;
-
-                        let (mut best_err, mut best_sel) = best_of_four(std::array::from_fn(|k| {
-                            err_rgb(&weighted_colors[k], pr, pg, pb)
-                        }));
-
-                        let errs: [f32; 4] =
-                            std::array::from_fn(|k| err_rgb(&weighted_colors[4 + k], pr, pg, pb));
-                        best_err = minimumf(
-                            best_err,
-                            minimumf(minimumf(minimumf(errs[0], errs[1]), errs[2]), errs[3]),
-                        );
-                        for k in 0..4 {
-                            if best_err == errs[k] {
-                                best_sel = 4 + k as i32;
-                            }
-                        }
-
-                        total_errf += best_err;
-
-                        results.selectors_temp[i] = best_sel;
-                    }
-                }
-            } else {
-                // if (N == 4)
-                if lanes {
-                    for chunk in 0..chunks {
-                        let (pr, pg, pb) = (lane(0, chunk), lane(1, chunk), lane(2, chunk));
-
-                        let (best_err, best_sel) = best_of_four_lanes(std::array::from_fn(|k| {
-                            lanes_err_rgb(&weighted_colors[k], pr, pg, pb)
-                        }));
-
-                        let (best_err, best_sel) = (best_err.to_array(), best_sel.to_array());
-                        for (l, i) in (chunk * 4..num_pixels).take(4).enumerate() {
-                            total_errf += best_err[l];
-
-                            results.selectors_temp[i] = best_sel[l];
-                        }
-                    }
-                } else {
-                    for i in 0..num_pixels {
-                        let pr = pixels[i][0] as f32;
-                        let pg = pixels[i][1] as f32;
-                        let pb = pixels[i][2] as f32;
-
-                        let (best_err, best_sel) = best_of_four(std::array::from_fn(|k| {
-                            err_rgb(&weighted_colors[k], pr, pg, pb)
-                        }));
-
-                        total_errf += best_err;
-
-                        results.selectors_temp[i] = best_sel;
-                    }
+                    results.selectors_temp[i] = best_sel[l];
                 }
             }
         } else {
+            for i in 0..num_pixels {
+                let r = pixels[i][0] as f32;
+                let g = pixels[i][1] as f32;
+                let b = pixels[i][2] as f32;
+                let a = pixels[i][3] as f32;
+
+                let y = r * 0.2126f32 + g * 0.7152f32 + b * 0.0722f32;
+                let cr = r - y;
+                let cb = b - y;
+
+                let mut best_err = 1e+10f32;
+                let mut best_sel = 0i32;
+                for j in 0..n {
+                    let dl = y - weighted_colors_y[j];
+                    let dcr = cr - weighted_colors_cr[j];
+                    let dcb = cb - weighted_colors_cb[j];
+
+                    let err = if params.has_alpha {
+                        let da = a - weighted_colors[j][3];
+                        (wr * dl * dl) + (wg * dcr * dcr) + (wb * dcb * dcb) + (wa * da * da)
+                    } else {
+                        (wr * dl * dl) + (wg * dcr * dcr) + (wb * dcb * dcb)
+                    };
+                    if err < best_err {
+                        best_err = err;
+                        best_sel = j as i32;
+                    }
+                }
+
+                total_errf += best_err;
+
+                results.selectors_temp[i] = best_sel;
+            }
+        }
+    } else {
+        if params.has_alpha {
             // alpha
             if n == 16 {
                 let mut lr = actual_min_color[0] as f32;
@@ -1755,103 +1765,128 @@ fn evaluate_solution_with(
                     }
                 }
             }
-        }
-    } else {
-        wg *= PR_WEIGHT;
-        wb *= PB_WEIGHT;
-
-        let mut weighted_colors_y = [0.0f32; 16];
-        let mut weighted_colors_cr = [0.0f32; 16];
-        let mut weighted_colors_cb = [0.0f32; 16];
-
-        for i in 0..n {
-            let r = weighted_colors[i][0];
-            let g = weighted_colors[i][1];
-            let b = weighted_colors[i][2];
-
-            let y = r * 0.2126f32 + g * 0.7152f32 + b * 0.0722f32;
-
-            weighted_colors_y[i] = y;
-            weighted_colors_cr[i] = r - y;
-            weighted_colors_cb[i] = b - y;
-        }
-
-        if lanes {
-            for chunk in 0..chunks {
-                let (r, g, b, a) = (
-                    lane(0, chunk),
-                    lane(1, chunk),
-                    lane(2, chunk),
-                    lane(3, chunk),
-                );
-
-                let y = r
-                    .mul(F4::splat(0.2126f32))
-                    .add(g.mul(F4::splat(0.7152f32)))
-                    .add(b.mul(F4::splat(0.0722f32)));
-                let cr = r.sub(y);
-                let cb = b.sub(y);
-
-                let mut best_err = F4::splat(1e+10f32);
-                let mut best_sel = I4::splat(0);
-                for j in 0..n {
-                    let dl = y.sub(F4::splat(weighted_colors_y[j]));
-                    let dcr = cr.sub(F4::splat(weighted_colors_cr[j]));
-                    let dcb = cb.sub(F4::splat(weighted_colors_cb[j]));
-
-                    let mut err = F4::splat(wr)
-                        .mul(dl)
-                        .mul(dl)
-                        .add(F4::splat(wg).mul(dcr).mul(dcr))
-                        .add(F4::splat(wb).mul(dcb).mul(dcb));
-                    if params.has_alpha {
-                        let da = a.sub(F4::splat(weighted_colors[j][3]));
-                        err = err.add(F4::splat(wa).mul(da).mul(da));
-                    }
-                    best_sel = err.where_less(best_err, I4::splat(j as i32), best_sel);
-                    best_err = err.lesser(best_err);
-                }
-
-                let (best_err, best_sel) = (best_err.to_array(), best_sel.to_array());
-                for (l, i) in (chunk * 4..num_pixels).take(4).enumerate() {
-                    total_errf += best_err[l];
-
-                    results.selectors_temp[i] = best_sel[l];
-                }
-            }
         } else {
-            for i in 0..num_pixels {
-                let r = pixels[i][0] as f32;
-                let g = pixels[i][1] as f32;
-                let b = pixels[i][2] as f32;
-                let a = pixels[i][3] as f32;
+            if n == 16 {
+                let mut lr = actual_min_color[0] as f32;
+                let mut lg = actual_min_color[1] as f32;
+                let mut lb = actual_min_color[2] as f32;
 
-                let y = r * 0.2126f32 + g * 0.7152f32 + b * 0.0722f32;
-                let cr = r - y;
-                let cb = b - y;
+                let dr = actual_max_color[0] as f32 - lr;
+                let dg = actual_max_color[1] as f32 - lg;
+                let db = actual_max_color[2] as f32 - lb;
 
-                let mut best_err = 1e+10f32;
-                let mut best_sel = 0i32;
-                for j in 0..n {
-                    let dl = y - weighted_colors_y[j];
-                    let dcr = cr - weighted_colors_cr[j];
-                    let dcb = cb - weighted_colors_cb[j];
+                let f = n as f32 / (dr * dr + dg * dg + db * db);
 
-                    let err = if params.has_alpha {
-                        let da = a - weighted_colors[j][3];
-                        (wr * dl * dl) + (wg * dcr * dcr) + (wb * dcb * dcb) + (wa * da * da)
-                    } else {
-                        (wr * dl * dl) + (wg * dcr * dcr) + (wb * dcb * dcb)
-                    };
-                    if err < best_err {
-                        best_err = err;
-                        best_sel = j as i32;
+                lr *= -dr;
+                lg *= -dg;
+                lb *= -db;
+
+                for i in 0..num_pixels {
+                    let c = &pixels[i];
+                    let r = c[0] as f32;
+                    let g = c[1] as f32;
+                    let b = c[2] as f32;
+
+                    let mut best_sel =
+                        fmath::floor(((r * dr + lr) + (g * dg + lg) + (b * db + lb)) * f + 0.5f32);
+                    best_sel = clampf(best_sel, 1.0, (n - 1) as f32);
+
+                    let best_sel0 = best_sel - 1.0;
+
+                    let err0 = err_rgb(&weighted_colors[f2i(best_sel0) as usize], r, g, b);
+                    let err1 = err_rgb(&weighted_colors[f2i(best_sel) as usize], r, g, b);
+
+                    let min_err = minimumf(err0, err1);
+                    total_errf += min_err;
+                    results.selectors_temp[i] =
+                        f2i(if min_err == err0 { best_sel0 } else { best_sel });
+                }
+            } else if n == 8 {
+                if lanes {
+                    for chunk in 0..chunks {
+                        let (pr, pg, pb) = (lane(0, chunk), lane(1, chunk), lane(2, chunk));
+
+                        let (mut best_err, mut best_sel) =
+                            best_of_four_lanes(std::array::from_fn(|k| {
+                                lanes_err_rgb(&weighted_colors[k], pr, pg, pb)
+                            }));
+
+                        let errs: [F4; 4] = std::array::from_fn(|k| {
+                            lanes_err_rgb(&weighted_colors[4 + k], pr, pg, pb)
+                        });
+                        best_err = best_err
+                            .lesser(errs[0].lesser(errs[1]).lesser(errs[2]).lesser(errs[3]));
+                        for k in 0..4 {
+                            best_sel =
+                                best_err.where_equal(errs[k], I4::splat(4 + k as i32), best_sel);
+                        }
+
+                        let (best_err, best_sel) = (best_err.to_array(), best_sel.to_array());
+                        for (l, i) in (chunk * 4..num_pixels).take(4).enumerate() {
+                            total_errf += best_err[l];
+
+                            results.selectors_temp[i] = best_sel[l];
+                        }
+                    }
+                } else {
+                    for i in 0..num_pixels {
+                        let pr = pixels[i][0] as f32;
+                        let pg = pixels[i][1] as f32;
+                        let pb = pixels[i][2] as f32;
+
+                        let (mut best_err, mut best_sel) = best_of_four(std::array::from_fn(|k| {
+                            err_rgb(&weighted_colors[k], pr, pg, pb)
+                        }));
+
+                        let errs: [f32; 4] =
+                            std::array::from_fn(|k| err_rgb(&weighted_colors[4 + k], pr, pg, pb));
+                        best_err = minimumf(
+                            best_err,
+                            minimumf(minimumf(minimumf(errs[0], errs[1]), errs[2]), errs[3]),
+                        );
+                        for k in 0..4 {
+                            if best_err == errs[k] {
+                                best_sel = 4 + k as i32;
+                            }
+                        }
+
+                        total_errf += best_err;
+
+                        results.selectors_temp[i] = best_sel;
                     }
                 }
+            } else {
+                // if (N == 4)
+                if lanes {
+                    for chunk in 0..chunks {
+                        let (pr, pg, pb) = (lane(0, chunk), lane(1, chunk), lane(2, chunk));
 
-                total_errf += best_err;
+                        let (best_err, best_sel) = best_of_four_lanes(std::array::from_fn(|k| {
+                            lanes_err_rgb(&weighted_colors[k], pr, pg, pb)
+                        }));
 
-                results.selectors_temp[i] = best_sel;
+                        let (best_err, best_sel) = (best_err.to_array(), best_sel.to_array());
+                        for (l, i) in (chunk * 4..num_pixels).take(4).enumerate() {
+                            total_errf += best_err[l];
+
+                            results.selectors_temp[i] = best_sel[l];
+                        }
+                    }
+                } else {
+                    for i in 0..num_pixels {
+                        let pr = pixels[i][0] as f32;
+                        let pg = pixels[i][1] as f32;
+                        let pb = pixels[i][2] as f32;
+
+                        let (best_err, best_sel) = best_of_four(std::array::from_fn(|k| {
+                            err_rgb(&weighted_colors[k], pr, pg, pb)
+                        }));
+
+                        total_errf += best_err;
+
+                        results.selectors_temp[i] = best_sel;
+                    }
+                }
             }
         }
     }
@@ -1944,6 +1979,8 @@ fn round_to_pbit(xl: &Vec4F, xh: &Vec4F, p: i32, iscalep: i32) -> (ColorQuadI, C
     (x_min_color, x_max_color)
 }
 
+// (One pass, step for step as the original's, its state shared throughout.)
+#[allow(clippy::too_many_lines)]
 fn find_optimal_solution(
     mode: u32,
     xl: &Vec4F,
@@ -2000,15 +2037,15 @@ fn find_optimal_solution(
                 (iscalep >> 1) as u32,
             );
 
-            if !params.endpoints_share_pbit {
-                evaluate_solution(&lo[0], &hi[0], &[0, 0], params, results, pixels);
-                evaluate_solution(&lo[0], &hi[1], &[0, 1], params, results, pixels);
-                evaluate_solution(&lo[1], &hi[0], &[1, 0], params, results, pixels);
-                evaluate_solution(&lo[1], &hi[1], &[1, 1], params, results, pixels);
-            } else {
+            if params.endpoints_share_pbit {
                 // Endpoints share pbits
-                evaluate_solution(&lo[0], &hi[0], &[0, 0], params, results, pixels);
-                evaluate_solution(&lo[1], &hi[1], &[1, 1], params, results, pixels);
+                evaluate_solution(&lo[0], &hi[0], [0, 0], params, results, pixels);
+                evaluate_solution(&lo[1], &hi[1], [1, 1], params, results, pixels);
+            } else {
+                evaluate_solution(&lo[0], &hi[0], [0, 0], params, results, pixels);
+                evaluate_solution(&lo[0], &hi[1], [0, 1], params, results, pixels);
+                evaluate_solution(&lo[1], &hi[0], [1, 0], params, results, pixels);
+                evaluate_solution(&lo[1], &hi[1], [1, 1], params, results, pixels);
             }
         } else {
             // compensated rounding
@@ -2016,7 +2053,33 @@ fn find_optimal_solution(
             let mut best_min_color = [0i32; 4];
             let mut best_max_color = [0i32; 4];
 
-            if !params.endpoints_share_pbit {
+            if params.endpoints_share_pbit {
+                // Endpoints share pbits
+                let mut best_err = 1e+9f32;
+
+                for p in 0..2i32 {
+                    let (x_min_color, x_max_color) = round_to_pbit(&xl, &xh, p, iscalep);
+
+                    let scaled_low = scale_color(&x_min_color, params);
+                    let scaled_high = scale_color(&x_max_color, params);
+
+                    let mut err = 0.0f32;
+                    for i in 0..total_comps {
+                        err += squaref((scaled_low[i] as f32 / 255.0) - xl[i])
+                            + squaref((scaled_high[i] as f32 / 255.0) - xh[i]);
+                    }
+
+                    if err < best_err {
+                        best_err = err;
+                        best_pbits[0] = p as u32;
+                        best_pbits[1] = p as u32;
+                        for c in 0..4 {
+                            best_min_color[c] = x_min_color[c] >> 1;
+                            best_max_color[c] = x_max_color[c] >> 1;
+                        }
+                    }
+                }
+            } else {
                 let mut best_err0 = 1e+9f32;
                 let mut best_err1 = 1e+9f32;
 
@@ -2051,32 +2114,6 @@ fn find_optimal_solution(
                         }
                     }
                 }
-            } else {
-                // Endpoints share pbits
-                let mut best_err = 1e+9f32;
-
-                for p in 0..2i32 {
-                    let (x_min_color, x_max_color) = round_to_pbit(&xl, &xh, p, iscalep);
-
-                    let scaled_low = scale_color(&x_min_color, params);
-                    let scaled_high = scale_color(&x_max_color, params);
-
-                    let mut err = 0.0f32;
-                    for i in 0..total_comps {
-                        err += squaref((scaled_low[i] as f32 / 255.0) - xl[i])
-                            + squaref((scaled_high[i] as f32 / 255.0) - xh[i]);
-                    }
-
-                    if err < best_err {
-                        best_err = err;
-                        best_pbits[0] = p as u32;
-                        best_pbits[1] = p as u32;
-                        for c in 0..4 {
-                            best_min_color[c] = x_min_color[c] >> 1;
-                            best_max_color[c] = x_max_color[c] >> 1;
-                        }
-                    }
-                }
             }
 
             fix_degenerate_endpoints(
@@ -2097,7 +2134,7 @@ fn find_optimal_solution(
                 evaluate_solution(
                     &best_min_color,
                     &best_max_color,
-                    &best_pbits,
+                    best_pbits,
                     params,
                     results,
                     pixels,
@@ -2137,7 +2174,7 @@ fn find_optimal_solution(
             evaluate_solution(
                 &trial_min_color,
                 &trial_max_color,
-                &[0, 0],
+                [0, 0],
                 params,
                 results,
                 pixels,
@@ -2175,6 +2212,9 @@ impl Bc7e {
     }
 
     // Note: In mode 6, m_has_alpha will only be true for transparent blocks.
+    // (One pass, step for step as the original's, its state shared throughout; the names are the
+    // original's, so that the code reads against the original.)
+    #[allow(clippy::too_many_lines, clippy::many_single_char_names)]
     fn color_cell_compression(
         &self,
         mode: u32,
@@ -2495,7 +2535,8 @@ impl Bc7e {
             }
 
             let uber_err_thresh = (num_pixels as u32 * 56) >> 4;
-            if comp_params.uber_level >= 2 && results.best_overall_err > uber_err_thresh as u64 {
+            if comp_params.uber_level >= 2 && results.best_overall_err > u64::from(uber_err_thresh)
+            {
                 let q = if comp_params.uber_level >= 4 {
                     (comp_params.uber_level - 2) as i32
                 } else {
@@ -2894,6 +2935,7 @@ fn estimate_partition_list(
     solutions: &mut [Solution],
     max_solutions: i32,
 ) -> u32 {
+    const HIGH_FREQUENCY_SORTED_PARTITION_THRESHOLD: i32 = 4;
     let orig_max_solutions = max_solutions;
     let mut max_solutions = max_solutions;
 
@@ -2908,12 +2950,11 @@ fn estimate_partition_list(
     } else if max_solutions as u32 >= total_partitions {
         for i in 0..total_partitions {
             solutions[i as usize].index = i;
-            solutions[i as usize].err = i as u64;
+            solutions[i as usize].err = u64::from(i);
         }
         return total_partitions;
     }
 
-    const HIGH_FREQUENCY_SORTED_PARTITION_THRESHOLD: i32 = 4;
     if total_subsets == 2 {
         if max_solutions < HIGH_FREQUENCY_SORTED_PARTITION_THRESHOLD {
             max_solutions = HIGH_FREQUENCY_SORTED_PARTITION_THRESHOLD;
@@ -3010,6 +3051,8 @@ impl OptimizationResults {
     }
 }
 
+// (One pass, step for step as the original's, its state shared throughout.)
+#[allow(clippy::too_many_lines)]
 fn encode_bc7_block(block: &mut [u8; 16], results: &OptimizationResults) {
     let best_mode = results.mode;
 
@@ -3192,7 +3235,7 @@ fn encode_bc7_block(block: &mut [u8; 16], results: &OptimizationResults) {
         }
     }
 
-    debug_assert!(cur_bit_ofs == 128);
+    debug_assert_eq!(cur_bit_ofs, 128);
 }
 
 #[inline]
@@ -3227,13 +3270,13 @@ fn encode_bc7_block_mode6(block: &mut [u8; 16], results: &OptimizationResults) {
     l |= (high[2] as u64) << 42;
     l |= (low[3] as u64) << 49;
     l |= (high[3] as u64) << 56;
-    l |= (pbits[0] as u64) << 63;
+    l |= u64::from(pbits[0]) << 63;
 
-    let mut h: u64 = pbits[1] as u64;
+    let mut h: u64 = u64::from(pbits[1]);
 
-    h |= ((invert_selectors ^ results.selectors[0] as u32) as u64) << 1;
+    h |= u64::from(invert_selectors ^ results.selectors[0] as u32) << 1;
     for i in 1..16 {
-        h |= ((invert_selectors ^ results.selectors[i] as u32) as u64) << (4 * i);
+        h |= u64::from(invert_selectors ^ results.selectors[i] as u32) << (4 * i);
     }
 
     block[..8].copy_from_slice(&l.to_le_bytes());
@@ -3266,7 +3309,7 @@ fn nearest_alpha_selectors(
             }
         }
 
-        trial_alpha_err += ((be * be) as u32).wrapping_mul(weight) as u64;
+        trial_alpha_err += u64::from(((be * be) as u32).wrapping_mul(weight));
 
         trial_alpha_selectors[i] = s;
     }
@@ -3348,7 +3391,7 @@ impl Bc7e {
 
             let mut trial_err =
                 self.color_cell_compression(4, params, &mut results, comp_params, pixels, true);
-            debug_assert!(trial_err == results.best_overall_err);
+            debug_assert_eq!(trial_err, results.best_overall_err);
 
             let mut la = (((lo_a + 2) >> 2) as i32).min(63) as u32;
             let mut ha = (((hi_a + 2) >> 2) as i32).min(63) as u32;
@@ -3467,7 +3510,7 @@ impl Bc7e {
 
         *mode5_err =
             self.color_cell_compression(5, params, &mut results5, comp_params, pixels, true);
-        debug_assert!(*mode5_err == results5.best_overall_err);
+        debug_assert_eq!(*mode5_err, results5.best_overall_err);
 
         opt_results5.selectors = results5.selectors;
         opt_results5.low[0] = results5.low_endpoint;
@@ -3633,7 +3676,7 @@ impl Bc7e {
                 subsets.pixels(subset),
                 refinement,
             );
-            debug_assert!(err == subset_results[subset].best_overall_err);
+            debug_assert_eq!(err, subset_results[subset].best_overall_err);
 
             trial_err = trial_err.wrapping_add(err);
             if trial_err > best_err {
@@ -3710,6 +3753,8 @@ impl Bc7e {
         }
     }
 
+    // (One pass, step for step as the original's, its state shared throughout.)
+    #[allow(clippy::too_many_lines)]
     fn handle_alpha_block(
         &self,
         block: &mut [u8; 16],
@@ -3801,7 +3846,7 @@ impl Bc7e {
 
             let mode6_err =
                 self.color_cell_compression(6, &params6, &mut results6, comp_params, pixels, true);
-            debug_assert!(mode6_err == results6.best_overall_err);
+            debug_assert_eq!(mode6_err, results6.best_overall_err);
 
             if mode6_err < best_err {
                 best_err = mode6_err;
@@ -3911,6 +3956,8 @@ impl Bc7e {
         encode_bc7_block(block, &opt_results);
     }
 
+    // (One pass, step for step as the original's, its state shared throughout.)
+    #[allow(clippy::too_many_lines)]
     fn handle_opaque_block(
         &self,
         block: &mut [u8; 16],
@@ -4245,6 +4292,8 @@ impl Bc7e {
     }
 
     /// Packs one block of 16 RGBA pixels (red first) as a BC7 block.
+    // (The names are the original's, so that the code reads against the original.)
+    #[allow(clippy::many_single_char_names)]
     pub fn compress_block(
         &self,
         block: &mut [u8; 16],
@@ -4269,10 +4318,10 @@ impl Bc7e {
         for i in 0..16 {
             let c = pixels[i];
 
-            let r = c[0] as i32;
-            let g = c[1] as i32;
-            let b = c[2] as i32;
-            let a = c[3] as i32;
+            let r = i32::from(c[0]);
+            let g = i32::from(c[1]);
+            let b = i32::from(c[2]);
+            let a = i32::from(c[3]);
 
             temp_pixels[i] = [r, g, b, a];
 
@@ -4367,8 +4416,8 @@ mod tests {
         let mut state = 5u64;
         let mut next = move || {
             state = state
-                .wrapping_mul(6364136223846793005)
-                .wrapping_add(1442695040888963407);
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
             (state >> 32) as u32
         };
         let mut compared = 0;
@@ -4456,7 +4505,7 @@ mod tests {
         let mut worst = 0;
         for i in 0..16 {
             for c in 0..4 {
-                worst = worst.max((a[i][c] as i32 - b[i][c] as i32).abs());
+                worst = worst.max((i32::from(a[i][c]) - i32::from(b[i][c])).abs());
             }
         }
         worst

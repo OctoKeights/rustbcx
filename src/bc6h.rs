@@ -122,9 +122,7 @@ fn interpolate(a: i32, b: i32, weights: &[i32], index: usize) -> i32 {
 }
 
 fn finish_unquantize(mut val: i32, is_signed: bool) -> u16 {
-    if !is_signed {
-        ((val * 31) >> 6) as u16 // scale the magnitude by 31 / 64
-    } else {
+    if is_signed {
         val = if val < 0 {
             -(((-val) * 31) >> 5)
         } else {
@@ -136,11 +134,14 @@ fn finish_unquantize(mut val: i32, is_signed: bool) -> u16 {
             val = -val;
         }
         (s | val) as u16
+    } else {
+        ((val * 31) >> 6) as u16 // scale the magnitude by 31 / 64
     }
 }
 
-/// A half float as a float: `bcdec__half_to_float_quick` (after half_to_float_fast4 of
+/// A half float as a float: `bcdec__half_to_float_quick` (after `half_to_float_fast4` of
 /// <https://gist.github.com/rygorous/2144712>).
+#[must_use]
 pub fn half_to_float(half: u16) -> f32 {
     const MAGIC: u32 = 113 << 23;
     const SHIFTED_EXP: u32 = 0x7c00 << 13; // exponent mask after shift
@@ -165,6 +166,7 @@ pub fn half_to_float(half: u16) -> f32 {
 
 /// A float as the nearest half float, ties to even; what is too large becomes infinity. (The
 /// crate's own: bcdec only goes the other way.)
+#[must_use]
 pub fn float_to_half(value: f32) -> u16 {
     let bits = value.to_bits();
     let sign = ((bits >> 16) & 0x8000) as u16;
@@ -263,12 +265,16 @@ static A_WEIGHT4: [i32; 16] = [0, 4, 9, 13, 17, 21, 26, 30, 34, 38, 43, 47, 51, 
 
 /// Unpacks a BC6H block to 16 pixels of half floats, in rows from the top. `is_signed` says
 /// which of the two kinds of BC6H the block is. A block of a reserved mode unpacks to black.
+// (One pass, step for step as the original's, its state shared throughout.)
+#[allow(clippy::too_many_lines)]
+#[must_use]
 pub fn unpack_bc6h_half(block: &[u8; 16], is_signed: bool) -> [RgbHalf; 16] {
     let mut decompressed = [[0u16; 3]; 16];
 
+    let bits = u128::from_le_bytes(*block);
     let mut bstream = Bitstream {
-        low: u64::from_le_bytes(block[..8].try_into().expect("eight bytes")),
-        high: u64::from_le_bytes(block[8..].try_into().expect("eight bytes")),
+        low: bits as u64,
+        high: (bits >> 64) as u64,
     };
 
     let (mut r, mut g, mut b) = ([0i32; 4], [0i32; 4], [0i32; 4]); // wxyz
@@ -636,7 +642,7 @@ pub fn unpack_bc6h_half(block: &[u8; 16], is_signed: bool) -> [RgbHalf; 16] {
         }
     }
 
-    let num_partitions = if mode >= 10 { 0 } else { 1 };
+    let num_partitions = usize::from(mode < 10);
 
     let actual_bits0_mode = ACTUAL_BITS_COUNT[0][mode];
     if is_signed {
@@ -702,6 +708,7 @@ pub fn unpack_bc6h_half(block: &[u8; 16], is_signed: bool) -> [RgbHalf; 16] {
 
 /// Unpacks a BC6H block to 16 pixels of floats, in rows from the top: [`unpack_bc6h_half`] with
 /// each half widened ([`half_to_float`]).
+#[must_use]
 pub fn unpack_bc6h_float(block: &[u8; 16], is_signed: bool) -> [[f32; 3]; 16] {
     unpack_bc6h_half(block, is_signed).map(|pixel| pixel.map(half_to_float))
 }
@@ -712,7 +719,7 @@ pub fn unpack_bc6h_float(block: &[u8; 16], is_signed: bool) -> [[f32; 3]; 16] {
 /// Float to int as the x86 instruction ISPC compiles a cast to: toward zero, and the lowest int
 /// for what does not fit or is not a number.
 fn f2i(x: f32) -> i32 {
-    if (-2147483648.0..2147483648.0).contains(&x) {
+    if (-2_147_483_648.0..2_147_483_648.0).contains(&x) {
         x as i32
     } else {
         i32::MIN
@@ -751,6 +758,7 @@ pub struct Bc6hEncSettings {
 
 impl Bc6hEncSettings {
     /// `GetProfile_bc6h_veryfast`: one subset only.
+    #[must_use]
     pub fn veryfast() -> Self {
         Bc6hEncSettings {
             slow_mode: false,
@@ -762,6 +770,7 @@ impl Bc6hEncSettings {
     }
 
     /// `GetProfile_bc6h_fast`.
+    #[must_use]
     pub fn fast() -> Self {
         Bc6hEncSettings {
             slow_mode: false,
@@ -773,6 +782,7 @@ impl Bc6hEncSettings {
     }
 
     /// `GetProfile_bc6h_basic`.
+    #[must_use]
     pub fn basic() -> Self {
         Bc6hEncSettings {
             slow_mode: false,
@@ -784,6 +794,7 @@ impl Bc6hEncSettings {
     }
 
     /// `GetProfile_bc6h_slow`.
+    #[must_use]
     pub fn slow() -> Self {
         Bc6hEncSettings {
             slow_mode: true,
@@ -795,6 +806,7 @@ impl Bc6hEncSettings {
     }
 
     /// `GetProfile_bc6h_veryslow`.
+    #[must_use]
     pub fn veryslow() -> Self {
         Bc6hEncSettings {
             slow_mode: true,
@@ -863,19 +875,19 @@ fn get_mode_bits(mode: usize) -> i32 {
 /// Two bits a pixel: which subset it is in.
 #[rustfmt::skip]
 static PATTERN_TABLE: [u32; 32] = [
-    0x50505050, 0x40404040, 0x54545454, 0x54505040, 0x50404000, 0x55545450, 0x55545040, 0x54504000,
-    0x50400000, 0x55555450, 0x55544000, 0x54400000, 0x55555440, 0x55550000, 0x55555500, 0x55000000,
-    0x55150100, 0x00004054, 0x15010000, 0x00405054, 0x00004050, 0x15050100, 0x05010000, 0x40505054,
-    0x00404050, 0x05010100, 0x14141414, 0x05141450, 0x01155440, 0x00555500, 0x15014054, 0x05414150,
+    0x5050_5050, 0x4040_4040, 0x5454_5454, 0x5450_5040, 0x5040_4000, 0x5554_5450, 0x5554_5040, 0x5450_4000,
+    0x5040_0000, 0x5555_5450, 0x5554_4000, 0x5440_0000, 0x5555_5440, 0x5555_0000, 0x5555_5500, 0x5500_0000,
+    0x5515_0100, 0x0000_4054, 0x1501_0000, 0x0040_5054, 0x0000_4050, 0x1505_0100, 0x0501_0000, 0x4050_5054,
+    0x0040_4050, 0x0501_0100, 0x1414_1414, 0x0514_1450, 0x0115_5440, 0x0055_5500, 0x1501_4054, 0x0541_4150,
 ];
 
 /// The pixels of the first subset in the low 16 bits and of the second in the high.
 #[rustfmt::skip]
 static PATTERN_MASK_TABLE: [u32; 32] = [
-    0xcccc3333, 0x88887777, 0xeeee1111, 0xecc81337, 0xc880377f, 0xfeec0113, 0xfec80137, 0xec80137f,
-    0xc80037ff, 0xffec0013, 0xfe80017f, 0xe80017ff, 0xffe80017, 0xff0000ff, 0xfff0000f, 0xf0000fff,
-    0xf71008ef, 0x008eff71, 0x71008eff, 0x08cef731, 0x008cff73, 0x73108cef, 0x3100ceff, 0x8cce7331,
-    0x088cf773, 0x3110ceef, 0x66669999, 0x366cc993, 0x17e8e817, 0x0ff0f00f, 0x718e8e71, 0x399cc663,
+    0xcccc_3333, 0x8888_7777, 0xeeee_1111, 0xecc8_1337, 0xc880_377f, 0xfeec_0113, 0xfec8_0137, 0xec80_137f,
+    0xc800_37ff, 0xffec_0013, 0xfe80_017f, 0xe800_17ff, 0xffe8_0017, 0xff00_00ff, 0xfff0_000f, 0xf000_0fff,
+    0xf710_08ef, 0x008e_ff71, 0x7100_8eff, 0x08ce_f731, 0x008c_ff73, 0x7310_8cef, 0x3100_ceff, 0x8cce_7331,
+    0x088c_f773, 0x3110_ceef, 0x6666_9999, 0x366c_c993, 0x17e8_e817, 0x0ff0_f00f, 0x718e_8e71, 0x399c_c663,
 ];
 
 /// The pixel whose index is stored one bit short in the second subset, in the high four bits.
@@ -1234,7 +1246,7 @@ fn block_quant(
 // LS endpoint refinement
 
 /// The two ends that fit a subset's pixels best in the least-squares sense, given their indices.
-fn opt_endpoints(ep: &mut [f32], block: &[f32; 64], bits: u32, qblock: &[u32; 2], mask: i32) {
+fn opt_endpoints(ep: &mut [f32], block: &[f32; 64], bits: u32, qblock: [u32; 2], mask: i32) {
     let levels = 1i32 << bits;
 
     let mut atb1 = [0.0f32; 4];
@@ -1333,11 +1345,11 @@ fn bc6h_enc_2p_part_fast(
 }
 
 fn bc6h_enc_2p_list(state: &mut Bc6hEncState, part_list: &[i32; 32], part_count: usize) {
+    const BITS: u32 = 3;
+    const PAIRS: usize = 2;
     if part_count == 0 {
         return;
     }
-    const BITS: u32 = 3;
-    const PAIRS: usize = 2;
 
     let mut best_qep = [0i32; 24];
     let mut best_qblock = [0u32; 2];
@@ -1370,7 +1382,7 @@ fn bc6h_enc_2p_list(state: &mut Bc6hEncState, part_list: &[i32; 32], part_count:
         let mut ep = [0.0f32; 24];
         for j in 0..PAIRS {
             let mask = get_pattern_mask(best_part_id, j);
-            opt_endpoints(&mut ep[j * 8..], &state.block, BITS, &best_qblock, mask);
+            opt_endpoints(&mut ep[j * 8..], &state.block, BITS, best_qblock, mask);
         }
 
         let mut qep = [0i32; 24];
@@ -1428,7 +1440,7 @@ fn bc6h_enc_1p(state: &mut Bc6hEncState) {
 
     // refine
     for _ in 0..state.settings.refine_iterations_1p {
-        opt_endpoints(&mut ep, &state.block, 4, &qblock, -1);
+        opt_endpoints(&mut ep, &state.block, 4, qblock, -1);
         ep_quant_dequant_bc6h(state, &mut qep, &mut ep, 1);
         err = block_quant(&mut qblock, &state.block, 4, &ep, 0);
     }
@@ -1517,6 +1529,8 @@ fn reverse_bits(mut v: u32, bits: u32) -> u32 {
 }
 
 /// The mode's bits and the endpoints, laid out as the format has them for each mode.
+// (One pass, step for step as the original's, its state shared throughout.)
+#[allow(clippy::too_many_lines)]
 #[rustfmt::skip]
 #[allow(clippy::identity_op, clippy::erasing_op)]
 fn bc6h_pack(packed: &mut [u32; 4], qep_in: &[i32], mode: i32) {
@@ -2033,7 +2047,7 @@ fn bc7_code_apply_swap_mode456(qep: &mut [i32], channels: usize, qblock: &mut [u
 /// Swaps a subset's two ends where its first index would not fit in one bit less, and says
 /// which pixels' indices have to be turned round for it. For two subsets and indices of three
 /// bits (the original's "mode 1").
-fn bc7_code_apply_swap_mode01237(qep: &mut [i32], qblock: &[u32; 2], part_id: i32) -> i32 {
+fn bc7_code_apply_swap_mode01237(qep: &mut [i32], qblock: [u32; 2], part_id: i32) -> i32 {
     const PAIRS: usize = 2;
     const LEVELS: u32 = 8;
     let mut flips = 0i32;
@@ -2081,7 +2095,7 @@ fn data_shl_1bit_from(data: &mut [u32; 5], from: i32) {
 fn bc7_code_qblock(
     data: &mut [u32; 5],
     pos: &mut usize,
-    qblock: &[u32; 2],
+    qblock: [u32; 2],
     bits: usize,
     flips: i32,
 ) {
@@ -2115,7 +2129,7 @@ fn bc6h_code_2p(
 ) {
     const BITS: usize = 3;
 
-    let flips = bc7_code_apply_swap_mode01237(qep, qblock, part_id);
+    let flips = bc7_code_apply_swap_mode01237(qep, *qblock, part_id);
 
     *data = [0; 5];
     let mut pos = 0usize;
@@ -2135,7 +2149,7 @@ fn bc6h_code_2p(
     put_bits(data, &mut pos, 5, part_id as u32);
 
     // quantized values
-    bc7_code_qblock(data, &mut pos, qblock, BITS, flips);
+    bc7_code_qblock(data, &mut pos, *qblock, BITS, flips);
 
     // bc7_code_adjust_skip_mode01237, for two subsets and indices of three bits
     let skips = get_skips(part_id);
@@ -2159,7 +2173,7 @@ fn bc6h_code_1p(data: &mut [u32; 5], qep: &mut [i32], qblock: &mut [u32; 2], mod
     put_bits(data, &mut pos, 30, packed[2]);
 
     // quantized values
-    bc7_code_qblock(data, &mut pos, qblock, 4, 0);
+    bc7_code_qblock(data, &mut pos, *qblock, 4, 0);
 }
 
 // BC6H core

@@ -1,4 +1,4 @@
-//! The entropy reduction transform, bc7enc_rdo's rate-distortion pass: the port of `ert.cpp` and
+//! The entropy reduction transform, `bc7enc_rdo`'s rate-distortion pass: the port of `ert.cpp` and
 //! `ert.h` (Richard Geldreich, Jr.).
 //!
 //! It goes over blocks that are already packed and, for each, tries copying runs of bytes into
@@ -20,6 +20,8 @@ const MATCH_CONTINUE_BITS: f32 = 1.0;
 const MATCH_REP0_BITS: f32 = 4.0;
 
 /// The settings of [`reduce_entropy`]: `reduce_entropy_params`.
+// (The original's switches, each independent of the others.)
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ReduceEntropyParams {
     /// The pass tries to reduce distortion x smooth block scale + rate x lambda (the rate is
@@ -58,6 +60,7 @@ impl Default for ReduceEntropyParams {
 
 impl ReduceEntropyParams {
     /// The C++'s defaults.
+    #[must_use]
     pub fn new() -> Self {
         ReduceEntropyParams {
             lookback_window_size: 256,
@@ -391,7 +394,13 @@ const HASH_SIZE: usize = 8192;
 ///   out from how smooth it is, where it is above 0.
 ///
 /// False when a setting is out of range or a block being gone over does not unpack.
-#[allow(clippy::too_many_arguments)]
+// (The original's hash table of recent blocks, on the stack as it has it.)
+// (Its parameters are the original's, each a separate part of the state; one pass, step for step as
+// the original's, its state shared throughout.)
+// (The mask, as the original has it: is_multiple_of(256) runs slower in this loop.)
+#[allow(clippy::verbose_bit_mask)]
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
+#[allow(clippy::large_stack_arrays)]
 pub fn reduce_entropy<F>(
     blocks: &mut [u8],
     num_blocks: u32,

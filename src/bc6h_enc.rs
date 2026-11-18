@@ -10,10 +10,10 @@
 //!
 //! The port follows the original built with `BC6H_SSE_INTRINSICS`, which is the build that
 //! does what DirectXTex does: floats become halves rounded to the nearest, ties to even, and
-//! the error of a pixel is taken over red, green and blue. (Built without it, bc6h_enc rounds
+//! the error of a pixel is taken over red, green and blue. (Built without it, `bc6h_enc` rounds
 //! halves another way, and takes the error over a fourth value as well that it never sets.)
 //!
-//! The decoder that comes with bc6h_enc is not ported: [`crate::bc6h`] unpacks both kinds.
+//! The decoder that comes with `bc6h_enc` is not ported: [`crate::bc6h`] unpacks both kinds.
 //! A pixel's values have to be numbers; what is infinite or not a number has no place in a
 //! block, and the original does not say what it makes of one.
 
@@ -22,6 +22,7 @@
 
 use crate::bc6h::float_to_half;
 use crate::bc6h_enc_tables::{DESC, FIX_UP, PARTITION_TABLE, field};
+use core::cmp::Ordering;
 
 /// A pixel: red, green, blue and alpha as floats (`HDRColorA`). The alpha is not used.
 pub type HdrColorA = [f32; 4];
@@ -100,8 +101,8 @@ fn int_color_clamp(c: &mut IntColor, min: i32, max: i32) {
 }
 
 /// `INTColor::SignExtend`
-fn int_color_sign_extend(c: &mut IntColor, prec: &[u8; 3]) {
-    for (value, &nb) in c.iter_mut().zip(prec) {
+fn int_color_sign_extend(c: &mut IntColor, prec: [u8; 3]) {
+    for (value, nb) in c.iter_mut().zip(prec) {
         let nb = i32::from(nb);
         *value |= if *value & (1 << (nb - 1)) != 0 {
             !0 ^ ((1 << nb) - 1)
@@ -248,11 +249,7 @@ fn transform_forward(end_pts: &mut [IntEndPntPair; BC6H_MAX_REGIONS]) {
     }
 }
 
-fn transform_inverse(
-    end_pts: &mut [IntEndPntPair; BC6H_MAX_REGIONS],
-    prec: &[u8; 3],
-    signed: bool,
-) {
+fn transform_inverse(end_pts: &mut [IntEndPntPair; BC6H_MAX_REGIONS], prec: [u8; 3], signed: bool) {
     for c in 0..3 {
         let wrap_mask = (1 << prec[c]) - 1;
         end_pts[0].b[c] += end_pts[0].a[c];
@@ -278,28 +275,30 @@ fn norm(a: &IntColor, b: &IntColor) -> f32 {
 
 // return # of bits needed to store n. handle signed or unsigned cases properly
 fn n_bits(mut n: i32, is_signed: bool) -> i32 {
-    let mut nb;
-    if n == 0 {
-        0 // no bits needed for 0, signed or not
-    } else if n > 0 {
-        nb = 0;
-        while n != 0 {
-            nb += 1;
-            n >>= 1;
+    let mut nb = 0;
+    match n.cmp(&0) {
+        Ordering::Equal => 0, // no bits needed for 0, signed or not
+        Ordering::Greater => {
+            while n != 0 {
+                nb += 1;
+                n >>= 1;
+            }
+            nb + i32::from(is_signed)
         }
-        nb + i32::from(is_signed)
-    } else {
-        nb = 0;
-        while n < -1 {
-            nb += 1;
-            n >>= 1;
+        Ordering::Less => {
+            while n < -1 {
+                nb += 1;
+                n >>= 1;
+            }
+            nb + 1
         }
-        nb + 1
     }
 }
 
 /// `OptimizeRGB`: the two ends of the line through the pixels named in `index` that a palette
 /// of `steps` colours along it fits best.
+// (One pass, step for step as the original's, its state shared throughout.)
+#[allow(clippy::too_many_lines)]
 fn optimize_rgb(points: &[HdrColorA; 16], steps: u32, index: &[usize]) -> ([f32; 3], [f32; 3]) {
     let (p_c, p_d): (&[f32], &[f32]) = if steps == 3 {
         (&P_C3, &P_D3)
@@ -834,7 +833,7 @@ fn optimize_one(
 /// `D3DX_BC6H::OptimizeEndPoints`
 fn optimize_end_points(
     ep: &EncodeParams,
-    org_err: &[f32; BC6H_MAX_REGIONS],
+    org_err: [f32; BC6H_MAX_REGIONS],
     org_end_pts: &[IntEndPntPair; BC6H_MAX_REGIONS],
     opt_end_pts: &mut [IntEndPntPair; BC6H_MAX_REGIONS],
 ) {
@@ -876,7 +875,7 @@ fn swap_indices(
 
     for p in 0..=partitions {
         let i = usize::from(FIX_UP[partitions][ep.shape][p]);
-        debug_assert!(usize::from(PARTITION_TABLE[partitions][ep.shape][i]) == p);
+        debug_assert_eq!(usize::from(PARTITION_TABLE[partitions][ep.shape][i]), p);
         if indices[i] & high_index_bit != 0 {
             // high bit is set, swap the aEndPts and indices for this region
             std::mem::swap(&mut end_pts[p].a, &mut end_pts[p].b);
@@ -990,7 +989,7 @@ fn emit_block(
             set_bits(block, &mut start_bit, index_prec, indices[i] as u8);
         }
     }
-    debug_assert!(start_bit == 128);
+    debug_assert_eq!(start_bit, 128);
 }
 
 /// `D3DX_BC6H::Refine`
@@ -1017,9 +1016,9 @@ fn refine(block: &mut [u8; 16], ep: &mut EncodeParams) {
     }
     if end_points_fit(ep, &org_end_pts) {
         if transformed {
-            transform_inverse(&mut org_end_pts, &ep.info().rgba_prec[0][0], ep.signed);
+            transform_inverse(&mut org_end_pts, ep.info().rgba_prec[0][0], ep.signed);
         }
-        optimize_end_points(ep, &org_err, &org_end_pts, &mut opt_end_pts);
+        optimize_end_points(ep, org_err, &org_end_pts, &mut opt_end_pts);
         assign_indices(ep, &opt_end_pts, &mut opt_idx, &mut opt_err);
         swap_indices(ep, &mut opt_end_pts, &mut opt_idx);
 
@@ -1253,8 +1252,8 @@ mod tests {
             let mut pixels = [[0.0f32; 4]; 16];
             for value in pixels.as_flattened_mut() {
                 state = state
-                    .wrapping_mul(6364136223846793005)
-                    .wrapping_add(1442695040888963407);
+                    .wrapping_mul(6_364_136_223_846_793_005)
+                    .wrapping_add(1_442_695_040_888_963_407);
                 let bits = (state >> 32) as u32;
                 *value = match i % 4 {
                     0 => f32::from_bits(bits),

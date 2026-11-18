@@ -1,4 +1,4 @@
-//! The Rust half of the comparison with bc7enc_rdo: runs the port over made-up blocks and
+//! The Rust half of the comparison with `bc7enc_rdo`: runs the port over made-up blocks and
 //! prints a running hash of what comes out, as `compare/dump.cpp` does with the C++ library.
 //! `compare/compare.sh` compares the two.
 //!
@@ -16,7 +16,7 @@
 //!                                    encoder in each of its formats, with and without the
 //!                                    rate-distortion pass, every setting varied; BC7 with
 //!                                    bc7enc
-//!   dump rdo_bc7e <seed> <blocks>    the same, BC7 with bc7e for about half the images (the
+//!   dump `rdo_bc7e` <seed> <blocks>    the same, BC7 with bc7e for about half the images (the
 //!                                    C++ side needs the ISPC object for it)
 //!   dump ert <seed> <blocks>         runs of made-up blocks, many of them near copies of the
 //!                                    blocks before, packed in one of five formats and put
@@ -29,22 +29,22 @@
 //!
 //! And of the comparison for BC6H, as `compare/dump_bc6h.cpp` does with bcdec:
 //!
-//!   dump bc6h_unpack <seed> <blocks>   made-up BC6H blocks of every mode (and of none)
+//!   dump `bc6h_unpack` <seed> <blocks>   made-up BC6H blocks of every mode (and of none)
 //!                                      unpacked as unsigned and as signed, to halves and to
 //!                                      floats
-//!   dump bc6h_pack <seed> <blocks>     made-up HDR pixels packed with each of the packer's
+//!   dump `bc6h_pack` <seed> <blocks>     made-up HDR pixels packed with each of the packer's
 //!                                      five profiles, and unpacked again, as
 //!                                      `compare/dump_bc6h.cpp` does with Intel's ISPC Texture
 //!                                      Compressor
-//!   dump bc6h_enc <seed> <blocks>      made-up HDR pixels of both signs packed as signed and as
-//!                                      unsigned BC6H by the port of bc6h_enc, as
+//!   dump `bc6h_enc` <seed> <blocks>      made-up HDR pixels of both signs packed as signed and as
+//!                                      unsigned BC6H by the port of `bc6h_enc`, as
 //!                                      `compare/dump_bc6h_enc.cpp` does with the original
 //!
 //! And of the comparison with bc7e.ispc, as `compare/dump_bc7e.cpp` does with the ISPC encoder:
 //!
-//!   dump bc7e_presets <seed> <blocks> [file]    made-up blocks packed with each of the seven
+//!   dump `bc7e_presets` <seed> <blocks> [file]    made-up blocks packed with each of the seven
 //!                                               profiles, for both error measures
-//!   dump bc7e_settings <seed> <blocks> [file]   the blocks in groups of 32, each group with
+//!   dump `bc7e_settings` <seed> <blocks> [file]   the blocks in groups of 32, each group with
 //!                                               settings made up from the seed
 //!
 //! With a file named, every block bc7e packed is written to it as well.
@@ -92,7 +92,7 @@ fn dump_bc7decomp(seed: u64, blocks: u32) {
         unpacked[mode] += u32::from(ok);
         hash.add(&[u8::from(ok)]);
         hash.add(pixels.as_flattened());
-        if (i + 1) % 100000 == 0 || i + 1 == blocks {
+        if (i + 1) % 100_000 == 0 || i + 1 == blocks {
             println!("bc7decomp {} {:016x}", i + 1, hash.value);
         }
     }
@@ -173,7 +173,7 @@ fn dump_unpack(seed: u64, blocks: u32) {
         encoder.encode_bc1_solid_block(&mut solid, r, g, b, i % 2 == 1);
         hash.add(&solid);
 
-        if (i + 1) % 100000 == 0 || i + 1 == blocks {
+        if (i + 1) % 100_000 == 0 || i + 1 == blocks {
             println!("unpack {} {:016x}", i + 1, hash.value);
         }
     }
@@ -197,28 +197,14 @@ fn dump_bc1(seed: u64, blocks: u32) {
             *value = (random.next() % 4) as u8;
         }
         let options = random.next();
-        let force = if options & 15 == 0 {
+        let force = if options.is_multiple_of(16) {
             Some(&forced)
         } else {
             None
         };
 
         let mut block = [0xEEu8; 8];
-        if i % 3 != 2 {
-            // By level: every level in turn, the slowest (19) once in 64 of its turns.
-            let mut level = i % 20;
-            if level == 19 && (i / 20) % 64 != 0 {
-                level = 5 + (i / 20) % 3;
-            }
-            encoder.encode_bc1(
-                level,
-                &mut block,
-                &pixels,
-                options & 16 != 0,
-                options & 32 != 0,
-                force,
-            );
-        } else {
+        if i % 3 == 2 {
             // By flags: any of them, with made-up numbers of orderings and rounds.
             const FLAGS: [u32; 13] = [
                 rgbcx::ENCODE_BC1_USE_LIKELY_TOTAL_ORDERINGS,
@@ -257,6 +243,20 @@ fn dump_bc1(seed: u64, blocks: u32) {
             let (orderings4, orderings3) = (random.next() % 140, random.next() % 40);
             encoder
                 .encode_bc1_with_flags(&mut block, &pixels, flags, orderings4, orderings3, force);
+        } else {
+            // By level: every level in turn, the slowest (19) once in 64 of its turns.
+            let mut level = i % 20;
+            if level == 19 && (i / 20) % 64 != 0 {
+                level = 5 + (i / 20) % 3;
+            }
+            encoder.encode_bc1(
+                level,
+                &mut block,
+                &pixels,
+                options & 16 != 0,
+                options & 32 != 0,
+                force,
+            );
         }
         hash.add(&block);
 
@@ -364,6 +364,8 @@ fn bc7_mode(block: &[u8; 16]) -> usize {
     (block[0].trailing_zeros() as usize).min(8)
 }
 
+// (Written step for step as the C++ side, `compare/dump.cpp`, has it.)
+#[allow(clippy::too_many_lines)]
 fn dump_bc7enc(seed: u64, blocks: u32) {
     const PARTITIONS: [u32; 8] = [64, 64, 64, 32, 16, 1, 0, 100];
     const MASKS: [u32; 8] = [
@@ -533,7 +535,7 @@ fn dump_bc7block(seed: u64, blocks: u32) {
         hash.add(&[u8::from(ok)]);
         hash.add(unpacked.as_flattened());
 
-        if (i + 1) % 100000 == 0 || i + 1 == blocks {
+        if (i + 1) % 100_000 == 0 || i + 1 == blocks {
             println!("bc7block {} {:016x}", i + 1, hash.value);
         }
     }

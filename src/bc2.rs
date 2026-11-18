@@ -2,10 +2,12 @@
 //! sixteen alphas of four bits each. Little used since BC3, which holds smooth alpha far
 //! better; BC2 keeps hard-edged alpha exactly on sixteen levels, and old files are full of it.
 //!
-//! (The crate's own: bc7enc_rdo has no BC2. The colours are packed and unpacked by
+//! (The crate's own: `bc7enc_rdo` has no BC2. The colours are packed and unpacked by
 //! [`crate::rgbcx`] as BC3's are; the unpacker is compared with bcdec's `bcdec_bc2`.)
 
 use crate::rgbcx::{self, Bc1ApproxMode, Color32, Rgbcx};
+use crate::{halves, halves_mut};
+use core::cmp::Ordering;
 
 /// Packs sixteen alphas, `stride` bytes apart in `pixels`, to the alpha half of a BC2 block:
 /// each to the nearest of the sixteen levels (0, 17, 34 ... 255), four bits a pixel in rows
@@ -31,20 +33,9 @@ pub fn unpack_bc2_alpha(block: &[u8; 8], pixels: &mut [u8], stride: usize) {
 /// Encodes a 4x4 block of RGBA pixels to BC2 format: the colours as [`Rgbcx::encode_bc1`]
 /// packs them at `level` without three-colour blocks, the alphas by [`encode_bc2_alpha`].
 pub fn encode_bc2(encoder: &Rgbcx, level: u32, dst: &mut [u8; 16], pixels: &[Color32; 16]) {
-    let (alpha, color) = dst.split_at_mut(8);
-    encode_bc2_alpha(
-        alpha.try_into().expect("8 bytes"),
-        &pixels.as_flattened()[3..],
-        4,
-    );
-    encoder.encode_bc1(
-        level,
-        color.try_into().expect("8 bytes"),
-        pixels,
-        false,
-        false,
-        None,
-    );
+    let (alpha, color) = halves_mut(dst);
+    encode_bc2_alpha(alpha, &pixels.as_flattened()[3..], 4);
+    encoder.encode_bc1(level, color, pixels, false, false, None);
 }
 
 /// The low-level BC2 encoder: the BC1 flags and total orderings to try given directly, as for
@@ -61,14 +52,10 @@ pub fn encode_bc2_with_flags(
         & !(rgbcx::ENCODE_BC1_USE_3COLOR_BLOCKS_FOR_BLACK_PIXELS
             | rgbcx::ENCODE_BC1_USE_3COLOR_BLOCKS);
 
-    let (alpha, color) = dst.split_at_mut(8);
-    encode_bc2_alpha(
-        alpha.try_into().expect("8 bytes"),
-        &pixels.as_flattened()[3..],
-        4,
-    );
+    let (alpha, color) = halves_mut(dst);
+    encode_bc2_alpha(alpha, &pixels.as_flattened()[3..], 4);
     encoder.encode_bc1_with_flags(
-        color.try_into().expect("8 bytes"),
+        color,
         pixels,
         flags,
         total_orderings_to_try,
@@ -80,31 +67,36 @@ pub fn encode_bc2_with_flags(
 /// The four colours of the colour half of a BC2 block, all opaque. A BC2 block always has
 /// four colours: its two endpoints and the two between them, whichever endpoint is the larger
 /// number (in BC1 that order chooses three colours and transparent black instead).
+#[must_use]
 pub fn unpack_bc2_block_colors(color_block: &[u8; 8], mode: Bc1ApproxMode) -> [Color32; 4] {
     let low = u16::from_le_bytes([color_block[0], color_block[1]]);
     let high = u16::from_le_bytes([color_block[2], color_block[3]]);
     let mut colors = [[0u8; 4]; 4];
-    if low > high {
-        rgbcx::unpack_bc1_block_colors(color_block, &mut colors, mode);
-    } else if low == high {
-        // Between a colour and itself is that colour, every way of interpolating.
-        rgbcx::unpack_bc1_block_colors(color_block, &mut colors, mode);
-        colors = [colors[0]; 4];
-    } else {
-        // The other way round BC1 would give three colours: unpack with the endpoints
-        // exchanged and put the four back in their places.
-        let exchanged = [
-            color_block[2],
-            color_block[3],
-            color_block[0],
-            color_block[1],
-            0,
-            0,
-            0,
-            0,
-        ];
-        rgbcx::unpack_bc1_block_colors(&exchanged, &mut colors, mode);
-        colors = [colors[1], colors[0], colors[3], colors[2]];
+    match low.cmp(&high) {
+        Ordering::Greater => {
+            rgbcx::unpack_bc1_block_colors(color_block, &mut colors, mode);
+        }
+        Ordering::Equal => {
+            // Between a colour and itself is that colour, every way of interpolating.
+            rgbcx::unpack_bc1_block_colors(color_block, &mut colors, mode);
+            colors = [colors[0]; 4];
+        }
+        Ordering::Less => {
+            // The other way round BC1 would give three colours: unpack with the endpoints
+            // exchanged and put the four back in their places.
+            let exchanged = [
+                color_block[2],
+                color_block[3],
+                color_block[0],
+                color_block[1],
+                0,
+                0,
+                0,
+                0,
+            ];
+            rgbcx::unpack_bc1_block_colors(&exchanged, &mut colors, mode);
+            colors = [colors[1], colors[0], colors[3], colors[2]];
+        }
     }
     colors
 }
@@ -112,16 +104,12 @@ pub fn unpack_bc2_block_colors(color_block: &[u8; 8], mode: Bc1ApproxMode) -> [C
 /// Unpacks a BC2 block to 16 pixels, in rows from the top. `mode` is how the two colours
 /// between the endpoints are worked out, as for BC1.
 pub fn unpack_bc2(block: &[u8; 16], pixels: &mut [Color32; 16], mode: Bc1ApproxMode) {
-    let (alpha, color) = block.split_at(8);
-    let colors = unpack_bc2_block_colors(color.try_into().expect("8 bytes"), mode);
+    let (alpha, color) = halves(block);
+    let colors = unpack_bc2_block_colors(color, mode);
     for (i, pixel) in pixels.iter_mut().enumerate() {
         *pixel = colors[usize::from((color[4 + i / 4] >> ((i % 4) * 2)) & 3)];
     }
-    unpack_bc2_alpha(
-        alpha.try_into().expect("8 bytes"),
-        &mut pixels.as_flattened_mut()[3..],
-        4,
-    );
+    unpack_bc2_alpha(alpha, &mut pixels.as_flattened_mut()[3..], 4);
 }
 
 #[cfg(test)]

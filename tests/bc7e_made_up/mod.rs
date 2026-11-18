@@ -32,8 +32,8 @@ impl Random {
     pub fn next(&mut self) -> u32 {
         self.state = self
             .state
-            .wrapping_mul(6364136223846793005)
-            .wrapping_add(1442695040888963407);
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
         (self.state >> 32) as u32
     }
 }
@@ -68,7 +68,7 @@ pub fn make_pixels(random: &mut Random) -> [[u8; 4]; 16] {
                     } else {
                         0
                     };
-                    pixel[c] = clamp((a[c] as i32 * (255 - t) + b[c] as i32 * t) / 255 + n);
+                    pixel[c] = clamp((i32::from(a[c]) * (255 - t) + i32::from(b[c]) * t) / 255 + n);
                 }
             }
         }
@@ -97,7 +97,7 @@ pub fn make_pixels(random: &mut Random) -> [[u8; 4]; 16] {
             if kind == 5 {
                 let at = (random.next() % 16) as usize;
                 for c in 0..4 {
-                    pixels[at][c] = (a[c] as u32 + 1 + random.next() % 40) as u8;
+                    pixels[at][c] = (u32::from(a[c]) + 1 + random.next() % 40) as u8;
                 }
             }
         }
@@ -212,10 +212,10 @@ pub fn make_settings(random: &mut Random) -> CompressBlockParams {
 
 /// FNV-1a, 64 bits, of the packed blocks; the blocks counted by mode.
 pub fn hash(blocks: &[[u8; 16]], modes: &mut [u32; 9]) -> u64 {
-    let mut value = 14695981039346656037u64;
+    let mut value = 14_695_981_039_346_656_037_u64;
     for block in blocks {
         for &byte in block {
-            value = (value ^ u64::from(byte)).wrapping_mul(1099511628211);
+            value = (value ^ u64::from(byte)).wrapping_mul(1_099_511_628_211);
         }
         modes[(block[0].trailing_zeros() as usize).min(8)] += 1;
     }

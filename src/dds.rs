@@ -1,6 +1,6 @@
 //! `.dds` files, DirectDraw Surface: the container Direct3D tools read and write.
 //!
-//! [`write()`] for one level, without sRGB, gives the bytes bc7enc_rdo's `save_dds`
+//! [`write()`] for one level, without sRGB, gives the bytes `bc7enc_rdo`'s `save_dds`
 //! (`utils.cpp`) writes. Mip levels, sRGB, BC2, BC6H, cube maps, arrays, volume textures and
 //! [`read()`] are the crate's own.
 //!
@@ -29,8 +29,8 @@ const D3D10_RESOURCE_DIMENSION_TEXTURE2D: u32 = 3;
 const D3D10_RESOURCE_DIMENSION_TEXTURE3D: u32 = 4;
 const DDS_RESOURCE_MISC_TEXTURECUBE: u32 = 0x4;
 
-const fn fourcc(code: &[u8; 4]) -> u32 {
-    u32::from_le_bytes(*code)
+const fn fourcc(code: [u8; 4]) -> u32 {
+    u32::from_le_bytes(code)
 }
 
 /// The format's number in DXGI.
@@ -67,11 +67,11 @@ pub fn write(texture: &Texture, force_dx10_header: bool) -> Option<Vec<u8>> {
     let srgb = texture.srgb && texture.format.can_be_srgb();
     let legacy_fourcc = match texture.format {
         _ if force_dx10_header || srgb || texture.layers != 0 => None,
-        TextureFormat::Bc1 => Some(fourcc(b"DXT1")),
-        TextureFormat::Bc2 => Some(fourcc(b"DXT3")),
-        TextureFormat::Bc3 => Some(fourcc(b"DXT5")),
-        TextureFormat::Bc4 => Some(fourcc(b"ATI1")),
-        TextureFormat::Bc5 => Some(fourcc(b"ATI2")),
+        TextureFormat::Bc1 => Some(fourcc(*b"DXT1")),
+        TextureFormat::Bc2 => Some(fourcc(*b"DXT3")),
+        TextureFormat::Bc3 => Some(fourcc(*b"DXT5")),
+        TextureFormat::Bc4 => Some(fourcc(*b"ATI1")),
+        TextureFormat::Bc5 => Some(fourcc(*b"ATI2")),
         _ => None,
     };
     let levels = texture.levels.len() as u32;
@@ -94,7 +94,7 @@ pub fn write(texture: &Texture, force_dx10_header: bool) -> Option<Vec<u8>> {
     }
     desc[18] = 32;
     desc[19] = DDPF_FOURCC;
-    desc[20] = legacy_fourcc.unwrap_or(fourcc(b"DX10"));
+    desc[20] = legacy_fourcc.unwrap_or(fourcc(*b"DX10"));
     // (Complex: more than one surface in the file.)
     desc[26] = DDSCAPS_TEXTURE
         | if levels > 1 { DDSCAPS_MIPMAP } else { 0 }
@@ -160,8 +160,13 @@ pub fn write(texture: &Texture, force_dx10_header: bool) -> Option<Vec<u8>> {
 /// levels; a cube map, a texture array, an array of cube maps or a volume texture as well as a
 /// plain one. (The old FourCCs `DXT2` and `DXT4` are BC2 and BC3 with the colours multiplied by
 /// alpha; they are read as BC2 and BC3, and that the colours are multiplied is not kept.)
-/// Other pixel formats, 1D textures and cube maps with faces missing are refused as
-/// unsupported.
+///
+/// # Errors
+///
+/// [`TextureError::Unsupported`] for other pixel formats, 1D textures and cube maps with faces
+/// missing, and [`TextureError::Invalid`] for a file that is not a `.dds` one or is damaged.
+// (One pass through the header, in the order the format lays it out.)
+#[allow(clippy::too_many_lines)]
 pub fn read(file: &[u8]) -> Result<Texture, TextureError> {
     if file.len() < 4 || &file[..4] != b"DDS " {
         return Err(TextureError::Invalid("no DDS signature"));
@@ -189,7 +194,7 @@ pub fn read(file: &[u8]) -> Result<Texture, TextureError> {
     let mut layers = 0;
 
     let code = desc[20];
-    let (format, srgb) = if code == fourcc(b"DX10") {
+    let (format, srgb) = if code == fourcc(*b"DX10") {
         let (dxgi, dimension, misc, array_size) =
             (reader.u32()?, reader.u32()?, reader.u32()?, reader.u32()?);
         reader.u32()?;
@@ -233,15 +238,15 @@ pub fn read(file: &[u8]) -> Result<Texture, TextureError> {
                 ));
             }
         }
-    } else if code == fourcc(b"DXT1") {
+    } else if code == fourcc(*b"DXT1") {
         (TextureFormat::Bc1, false)
-    } else if code == fourcc(b"DXT2") || code == fourcc(b"DXT3") {
+    } else if code == fourcc(*b"DXT2") || code == fourcc(*b"DXT3") {
         (TextureFormat::Bc2, false)
-    } else if code == fourcc(b"DXT4") || code == fourcc(b"DXT5") {
+    } else if code == fourcc(*b"DXT4") || code == fourcc(*b"DXT5") {
         (TextureFormat::Bc3, false)
-    } else if code == fourcc(b"ATI1") || code == fourcc(b"BC4U") {
+    } else if code == fourcc(*b"ATI1") || code == fourcc(*b"BC4U") {
         (TextureFormat::Bc4, false)
-    } else if code == fourcc(b"ATI2") || code == fourcc(b"BC5U") {
+    } else if code == fourcc(*b"ATI2") || code == fourcc(*b"BC5U") {
         (TextureFormat::Bc5, false)
     } else {
         return Err(TextureError::Unsupported(
@@ -250,7 +255,7 @@ pub fn read(file: &[u8]) -> Result<Texture, TextureError> {
     };
 
     // (Only the old header can leave faces of a cube map out.)
-    if code != fourcc(b"DX10")
+    if code != fourcc(*b"DX10")
         && cube
         && desc[27] & DDSCAPS2_CUBEMAP_ALLFACES != DDSCAPS2_CUBEMAP_ALLFACES
     {

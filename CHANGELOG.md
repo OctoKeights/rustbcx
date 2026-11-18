@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.7.0
+
+- **Breaking: `RdoBcEncoder::encode` returns a `Result`.** It gives an `EncodeError`
+  (`NoImage` when there is no image or it has no blocks, `NoMode` when the BC7 settings leave
+  no mode that can pack a block) in place of `false`, and `RdoBcEncoder::init`, which could
+  not fail, returns nothing.
+
+- **Breaking: tinyexr_nrp 0.3.** `rustbcx::tinyexr` is now tinyexr_nrp 0.3, whose header flags
+  are `bool`s and which takes an `ExrVersion` by value (see its changelog). miniz_nrp,
+  stb_image_nrp, stb_image_write_nrp and zstd_nrp are at 0.2.1, with unchanged APIs.
+
+- **Stricter lints, enforced in CI.** `Cargo.toml` turns on clippy's pedantic group for every
+  target, and forbids `unsafe` code in the tests, examples and benchmarks as well as the
+  library. Functions that return a `Result` document their errors, and the BC2, BC3, BC5, BC6H
+  and BC7 block functions split a block without any `expect`.
+
+- Output is unchanged, checked against bc7enc_rdo, bc7e.ispc, bcdec, Intel's ISPC Texture
+  Compressor and DirectXTex's BC6H encoder, and the benchmark runs 0.01% fewer instructions.
+
 ## 0.6.0
 
 - **Breaking: the 0.2 releases of the ported crates.** miniz_nrp, zstd_nrp, stb_image_nrp,

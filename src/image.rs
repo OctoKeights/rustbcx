@@ -53,7 +53,8 @@ pub struct Image {
 }
 
 impl Image {
-    /// An image of this size, black and opaque (as bc7enc_rdo's `image_u8` starts).
+    /// An image of this size, black and opaque (as `bc7enc_rdo`'s `image_u8` starts).
+    #[must_use]
     pub fn new(width: u32, height: u32) -> Image {
         Image {
             width,
@@ -63,6 +64,7 @@ impl Image {
     }
 
     /// An image from its pixels. None when there are not `width * height` of them.
+    #[must_use]
     pub fn from_pixels(width: u32, height: u32, pixels: Vec<ColorRgba>) -> Option<Image> {
         (pixels.len() == width as usize * height as usize).then_some(Image {
             width,
@@ -73,6 +75,7 @@ impl Image {
 
     /// An image from bytes, four to a pixel (red, green, blue, alpha). None when there are not
     /// `width * height * 4` of them.
+    #[must_use]
     pub fn from_rgba8(width: u32, height: u32, bytes: &[u8]) -> Option<Image> {
         if bytes.len() != width as usize * height as usize * 4 {
             return None;
@@ -90,11 +93,13 @@ impl Image {
     }
 
     /// The pixels as bytes, four to a pixel.
+    #[must_use]
     pub fn as_rgba8(&self) -> &[u8] {
         self.pixels.as_flattened()
     }
 
     /// The pixel at a place.
+    #[must_use]
     pub fn pixel(&self, x: u32, y: u32) -> ColorRgba {
         self.pixels[x as usize + y as usize * self.width as usize]
     }
@@ -107,6 +112,7 @@ impl Image {
     }
 
     /// The 4x4 block at a place counted in blocks: `image_u8::get_block`.
+    #[must_use]
     pub fn get_block(&self, bx: u32, by: u32) -> [ColorRgba; 16] {
         let mut block = [[0u8; 4]; 16];
         for y in 0..4usize {
@@ -162,8 +168,9 @@ impl Image {
 
     /// The image at half the size each way (rounded down, but never to nothing), each pixel the
     /// average of the two by two it covers, rounded to nearest: the next mip level. The values
-    /// are averaged as they are stored, alpha like the rest. (The crate's own: bc7enc_rdo
+    /// are averaged as they are stored, alpha like the rest. (The crate's own: `bc7enc_rdo`
     /// makes no mip levels.)
+    #[must_use]
     pub fn half(&self) -> Image {
         let (width, height) = ((self.width / 2).max(1), (self.height / 2).max(1));
         let mut half = Image::new(width, height);
@@ -266,6 +273,7 @@ impl Image {
     }
 
     /// The image upside down.
+    #[must_use]
     pub fn flipped_y(&self) -> Image {
         let mut flipped = Image::new(self.width, self.height);
         for y in 0..self.height {
@@ -281,6 +289,10 @@ impl Image {
     /// `.ppm` or `.hdr` file, read by [`crate::stb_image`]. A file of fewer channels gets the
     /// rest made up (grey in all three colours, opaque), one of 16 bits a channel is brought
     /// down to 8, and an HDR file's floats with a gamma of 2.2. Of a GIF, the first frame.
+    ///
+    /// # Errors
+    ///
+    /// A file of none of those kinds, or a damaged one, with `stb_image`'s reason.
     pub fn from_file_bytes(file: &[u8]) -> Result<Image, LoadError> {
         let loaded = stb_image::load(
             file,
@@ -300,15 +312,19 @@ impl Image {
         })
     }
 
-    /// Reads an image file from disk, of any kind [`Image::from_file_bytes`] reads. A file that
-    /// is none of them, or is damaged, comes back as an error of the kind `InvalidData`, with
-    /// the [`LoadError`] inside.
+    /// Reads an image file from disk, of any kind [`Image::from_file_bytes`] reads.
+    ///
+    /// # Errors
+    ///
+    /// The error reading the file; or, for a file of none of those kinds or a damaged one, an error
+    /// of the kind `InvalidData` with the [`LoadError`] inside.
     pub fn load(path: impl AsRef<Path>) -> std::io::Result<Image> {
         Image::from_file_bytes(&std::fs::read(path)?)
             .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
     }
 
     /// Whether every pixel is opaque.
+    #[must_use]
     pub fn is_opaque(&self) -> bool {
         self.pixels.iter().all(|pixel| pixel[3] == 255)
     }
@@ -339,18 +355,21 @@ impl Image {
 
     /// The image as the bytes of a `.png` file, written by [`crate::stb_image_write`]: with
     /// alpha unless every pixel is opaque. None for an image of no pixels.
+    #[must_use]
     pub fn to_png(&self) -> Option<Vec<u8>> {
         self.written(|image| stb_image_write::write_png(image, &WriteOptions::default()))
     }
 
     /// The image as the bytes of a `.bmp` file: 32 bits a pixel with alpha, or 24 when every
     /// pixel is opaque. None for an image of no pixels.
+    #[must_use]
     pub fn to_bmp(&self) -> Option<Vec<u8>> {
         self.written(|image| stb_image_write::write_bmp(image, &WriteOptions::default()))
     }
 
     /// The image as the bytes of a `.jpg` file, at a quality from 1 to 100. The format holds
     /// no alpha, and loses a little of the colour. None for an image of no pixels.
+    #[must_use]
     pub fn to_jpg(&self, quality: u8) -> Option<Vec<u8>> {
         if self.pixels.len() != self.width as usize * self.height as usize {
             return None;
@@ -371,8 +390,12 @@ impl Image {
     }
 
     /// Writes the image to disk as the file its name ends in says: `.png`, `.bmp`, or `.jpg`
-    /// or `.jpeg` (at quality 90; [`Image::to_jpg`] for another). Any other ending, and an
-    /// image of no pixels, is an error of the kind `InvalidInput`.
+    /// or `.jpeg` (at quality 90; [`Image::to_jpg`] for another).
+    ///
+    /// # Errors
+    ///
+    /// Any other ending, and an image of no pixels, as an error of the kind `InvalidInput`; and the
+    /// error writing the file.
     pub fn save(&self, path: impl AsRef<Path>) -> std::io::Result<()> {
         let path = path.as_ref();
         let extension = path
@@ -411,6 +434,7 @@ pub struct HdrImage {
 
 impl HdrImage {
     /// An image of this size, black.
+    #[must_use]
     pub fn new(width: u32, height: u32) -> HdrImage {
         HdrImage {
             width,
@@ -422,6 +446,7 @@ impl HdrImage {
     /// An image from floats, three to a pixel (red, green, blue). Each is brought into what an
     /// unsigned BC6H block can hold: below zero and not-a-number become 0, above the largest
     /// half (65504) becomes it. None when there are not `width * height * 3` of them.
+    #[must_use]
     pub fn from_rgb_f32(width: u32, height: u32, values: &[f32]) -> Option<HdrImage> {
         if values.len() != width as usize * height as usize * 3 {
             return None;
@@ -448,6 +473,7 @@ impl HdrImage {
     /// An image from floats, three to a pixel, with what is below zero kept: for signed BC6H.
     /// Each is brought into what a half holds: beyond the largest half (65504) either way
     /// becomes it, and not-a-number 0. None when there are not `width * height * 3` of them.
+    #[must_use]
     pub fn from_rgb_f32_signed(width: u32, height: u32, values: &[f32]) -> Option<HdrImage> {
         if values.len() != width as usize * height as usize * 3 {
             return None;
@@ -472,6 +498,7 @@ impl HdrImage {
     }
 
     /// The pixels as floats, three to a pixel.
+    #[must_use]
     pub fn to_rgb_f32(&self) -> Vec<f32> {
         self.pixels
             .as_flattened()
@@ -500,6 +527,10 @@ impl HdrImage {
     /// `R`, `G` and `B` (a file of one channel gives it as all three), whether the file holds
     /// halves or floats; any other channels are left. Each value is brought into what an
     /// unsigned BC6H block can hold, as [`HdrImage::from_rgb_f32`] brings it.
+    ///
+    /// # Errors
+    ///
+    /// A file that is not a `.exr` one, or is damaged, with tinyexr's code and message.
     pub fn from_file_bytes(file: &[u8]) -> Result<HdrImage, ExrError> {
         let (width, height, floats) = HdrImage::exr_floats(file)?;
         Ok(HdrImage::from_rgb_f32(width, height, &floats).unwrap_or_default())
@@ -507,6 +538,10 @@ impl HdrImage {
 
     /// The image in the bytes of a `.exr` file, with what is below zero kept: for signed
     /// BC6H, as [`HdrImage::from_rgb_f32_signed`] brings it.
+    ///
+    /// # Errors
+    ///
+    /// As [`HdrImage::from_file_bytes`].
     pub fn from_file_bytes_signed(file: &[u8]) -> Result<HdrImage, ExrError> {
         let (width, height, floats) = HdrImage::exr_floats(file)?;
         Ok(HdrImage::from_rgb_f32_signed(width, height, &floats).unwrap_or_default())
@@ -514,15 +549,22 @@ impl HdrImage {
 
     /// The image in the bytes of a Radiance `.hdr` file, read by [`crate::stb_image`]. (Its
     /// values are never below zero.)
+    ///
+    /// # Errors
+    ///
+    /// A file that is not a Radiance `.hdr` one, or is damaged, with `stb_image`'s reason.
     pub fn from_hdr_bytes(file: &[u8]) -> Result<HdrImage, LoadError> {
         let rgb = Some(stb_image::Channels::Rgb);
         let loaded = stb_image::load_f32(file, rgb, &LoadOptions::default())?;
         Ok(HdrImage::from_rgb_f32(loaded.width, loaded.height, &loaded.data).unwrap_or_default())
     }
 
-    /// Reads a `.exr` or Radiance `.hdr` file from disk, whichever its bytes say it is. A file
-    /// that is neither, or is damaged, comes back as an error of the kind `InvalidData`, with
-    /// the [`ExrError`] or [`LoadError`] inside.
+    /// Reads a `.exr` or Radiance `.hdr` file from disk, whichever its bytes say it is.
+    ///
+    /// # Errors
+    ///
+    /// The error reading the file; or, for a file that is neither or a damaged one, an error of the
+    /// kind `InvalidData` with the [`ExrError`] or [`LoadError`] inside.
     pub fn load(path: impl AsRef<Path>) -> std::io::Result<HdrImage> {
         let file = std::fs::read(path)?;
         if stb_image::is_hdr(&file) {
@@ -536,6 +578,10 @@ impl HdrImage {
     /// Reads a `.exr` file from disk, with what is below zero kept
     /// ([`HdrImage::from_file_bytes_signed`]); or a Radiance `.hdr` file, which has nothing
     /// below zero.
+    ///
+    /// # Errors
+    ///
+    /// As [`HdrImage::load`].
     pub fn load_signed(path: impl AsRef<Path>) -> std::io::Result<HdrImage> {
         let file = std::fs::read(path)?;
         if stb_image::is_hdr(&file) {
@@ -550,6 +596,7 @@ impl HdrImage {
     /// `G` and `R` of halves, as the pixels are, in scanlines, compressed with ZIP (which
     /// loses nothing), or not at all when the image is less than sixteen pixels each way, as
     /// tinyexr's `SaveEXR` chooses. None for an image of no pixels.
+    #[must_use]
     pub fn to_exr(&self) -> Option<Vec<u8>> {
         let (width, height) = (
             i32::try_from(self.width).ok()?,
@@ -591,8 +638,12 @@ impl HdrImage {
         tinyexr::save_image(&image, &header).ok()
     }
 
-    /// Writes the image to disk as a `.exr` file. A name with any other ending, and an image
-    /// of no pixels, is an error of the kind `InvalidInput`.
+    /// Writes the image to disk as a `.exr` file.
+    ///
+    /// # Errors
+    ///
+    /// A name with any other ending, and an image of no pixels, as an error of the kind
+    /// `InvalidInput`; and the error writing the file.
     pub fn save(&self, path: impl AsRef<Path>) -> std::io::Result<()> {
         let path = path.as_ref();
         if !path
@@ -612,12 +663,14 @@ impl HdrImage {
     }
 
     /// The pixel at a place.
+    #[must_use]
     pub fn pixel(&self, x: u32, y: u32) -> RgbHalf {
         self.pixels[x as usize + y as usize * self.width as usize]
     }
 
     /// The 4x4 block at a place counted in blocks; past the right and bottom edges the last
     /// column and row are repeated.
+    #[must_use]
     pub fn get_block(&self, bx: u32, by: u32) -> [RgbHalf; 16] {
         let mut block = [[0u16; 3]; 16];
         for y in 0..4 {
@@ -633,6 +686,7 @@ impl HdrImage {
 
     /// The image at half the size each way (rounded down, but never to nothing), each pixel the
     /// average of the two by two it covers, worked out in floats: the next mip level.
+    #[must_use]
     pub fn half(&self) -> HdrImage {
         let (width, height) = ((self.width / 2).max(1), (self.height / 2).max(1));
         let mut half = HdrImage::new(width, height);
@@ -854,7 +908,7 @@ mod tests {
             assert_eq!(HdrImage::from_file_bytes_signed(&file).unwrap(), image);
             // The file is what tinyexr's reader says: three channels of halves.
             let version = tinyexr::parse_version(&file).unwrap();
-            let header = tinyexr::parse_header(&version, &file).unwrap();
+            let header = tinyexr::parse_header(version, &file).unwrap();
             assert_eq!(
                 header
                     .channels
@@ -974,7 +1028,7 @@ mod tests {
             Image::half_volume(std::slice::from_ref(&lone)).unwrap(),
             [lone.half()]
         );
-        assert!(Image::half_volume(&[]).unwrap().is_empty());
+        assert_eq!(Image::half_volume(&[]), Ok(Vec::new()));
 
         let hdr = |value: f32| HdrImage::from_rgb_f32(2, 2, &[value; 12]).unwrap();
         let level = HdrImage::half_volume(&[hdr(1.0), hdr(2.0), hdr(8.0)]).unwrap();
@@ -990,7 +1044,7 @@ mod tests {
             HdrImage::half_volume(std::slice::from_ref(&lone)).unwrap(),
             [lone.half()]
         );
-        assert!(HdrImage::half_volume(&[]).unwrap().is_empty());
+        assert_eq!(HdrImage::half_volume(&[]), Ok(Vec::new()));
     }
 
     #[test]

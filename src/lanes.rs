@@ -7,6 +7,10 @@
 //! loops over them into SIMD instructions by itself. With the `nightly-simd` feature they are
 //! `std::simd` vectors, which says so outright and needs a nightly compiler.
 
+// (Each operation stands for one of ISPC's vector instructions, and is inlined into the kernels
+// that use it, as ISPC's would be; without `always` some are not.)
+#![allow(clippy::inline_always)]
+
 #[cfg(not(feature = "nightly-simd"))]
 mod plain {
     /// Four floats.

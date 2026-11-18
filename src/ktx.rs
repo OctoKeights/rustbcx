@@ -1,5 +1,5 @@
 //! `.ktx` and `.ktx2` files, the Khronos Texture containers that OpenGL and Vulkan tools read
-//! and write. (The crate's own: bc7enc_rdo writes `.dds` only.)
+//! and write. (The crate's own: `bc7enc_rdo` writes `.dds` only.)
 //!
 //! A `.ktx2` file can hold its levels as they are or compressed again, which the format calls
 //! supercompression: [`Supercompression`] says how, with zlib or with Zstandard, and
@@ -107,6 +107,7 @@ fn put_u64(file: &mut Vec<u8>, value: u64) {
 
 /// The bytes of a `.ktx` file (KTX version 1) for a texture. None when the texture is not
 /// whole ([`Texture::is_valid`]).
+#[must_use]
 pub fn write_ktx1(texture: &Texture) -> Option<Vec<u8>> {
     if !texture.is_valid() {
         return None;
@@ -162,8 +163,12 @@ fn ktx1_image_size(texture: &Texture, level: usize) -> usize {
 
 /// Reads a `.ktx` file (KTX version 1): a 2D texture in BC1, BC2, BC3, BC4, BC5, BC6H or BC7,
 /// with its mip levels; a cube map, a texture array, an array of cube maps or a volume texture
-/// as well as a plain one. A file written on a big-endian machine and other formats are refused
-/// as unsupported.
+/// as well as a plain one.
+///
+/// # Errors
+///
+/// [`TextureError::Unsupported`] for a file written on a big-endian machine and for other
+/// formats, and [`TextureError::Invalid`] for a file that is not a `.ktx` one or is damaged.
 pub fn read_ktx1(file: &[u8]) -> Result<Texture, TextureError> {
     if file.len() < 12 || file[..12] != KTX1_IDENTIFIER {
         return Err(TextureError::Invalid("no KTX identifier"));
@@ -320,12 +325,14 @@ fn data_format_descriptor(format: TextureFormat, srgb: bool) -> Vec<u8> {
 
 /// The bytes of a `.ktx2` file (KTX version 2) for a texture, its levels not supercompressed.
 /// None when the texture is not whole ([`Texture::is_valid`]).
+#[must_use]
 pub fn write_ktx2(texture: &Texture) -> Option<Vec<u8>> {
     write_ktx2_with(texture, Supercompression::None)
 }
 
 /// The bytes of a `.ktx2` file (KTX version 2) for a texture, its levels supercompressed as
 /// asked. None when the texture is not whole ([`Texture::is_valid`]).
+#[must_use]
 pub fn write_ktx2_with(texture: &Texture, supercompression: Supercompression) -> Option<Vec<u8>> {
     if !texture.is_valid() {
         return None;
@@ -405,8 +412,15 @@ pub fn write_ktx2_with(texture: &Texture, supercompression: Supercompression) ->
 /// Reads a `.ktx2` file (KTX version 2): a 2D texture in BC1, BC2, BC3, BC4, BC5, BC6H or BC7,
 /// with its mip levels; a cube map, a texture array, an array of cube maps or a volume texture
 /// as well as a plain one, its levels as they are or supercompressed with zlib or with
-/// Zstandard. Other formats and the supercompression that is left (BasisLZ, which is only for
-/// Basis's own formats) are refused as unsupported.
+/// Zstandard.
+///
+/// # Errors
+///
+/// [`TextureError::Unsupported`] for other formats and for the supercompression that is left
+/// (BasisLZ, which is only for Basis's own formats), and [`TextureError::Invalid`] for a file
+/// that is not a `.ktx2` one or is damaged.
+// (One pass through the header, in the order the format lays it out.)
+#[allow(clippy::too_many_lines)]
 pub fn read_ktx2(file: &[u8]) -> Result<Texture, TextureError> {
     if file.len() < 12 || file[..12] != KTX2_IDENTIFIER {
         return Err(TextureError::Invalid("no KTX 2 identifier"));
@@ -823,6 +837,8 @@ mod tests {
         assert_eq!(file.len(), offset(0) + 6 * 16);
     }
 
+    // (The color models as the KTX specification numbers them.)
+    #[allow(clippy::decimal_bitwise_operands)]
     #[test]
     fn the_descriptors_are_the_khronos_tools_own() {
         // BC7, sRGB: one sample of 128 bits.

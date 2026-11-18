@@ -1,4 +1,4 @@
-//! Work shared out among threads, with the standard library only. (The crate's own: bc7enc_rdo
+//! Work shared out among threads, with the standard library only. (The crate's own: `bc7enc_rdo`
 //! uses OpenMP.)
 
 use std::sync::Mutex;
@@ -8,7 +8,7 @@ pub(crate) fn worker_count(threads: u32) -> usize {
     if threads != 0 {
         threads as usize
     } else {
-        std::thread::available_parallelism().map_or(1, |count| count.get())
+        std::thread::available_parallelism().map_or(1, std::num::NonZero::get)
     }
 }
 
@@ -33,7 +33,7 @@ where
                     // (The lock is let go before the work is done.)
                     let next = queue
                         .lock()
-                        .unwrap_or_else(|poisoned| poisoned.into_inner())
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
                         .next();
                     match next {
                         Some(item) => work(item),

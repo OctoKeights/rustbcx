@@ -4,25 +4,25 @@ version = 4
 
 [[package]]
 name = "libdeflate_nrp"
-version = "0.2.0"
-source = "git+https://github.com/OctoKeights/libdeflate_nrp#a92af3537162bfcc9fbcafe4f8b4e709738aff6e"
+version = "0.2.1"
+source = "git+https://github.com/OctoKeights/libdeflate_nrp#33486227ea2a32bece86a2546db36ba625d1a8fd"
 
 [[package]]
 name = "miniz_nrp"
-version = "0.2.0"
-source = "git+https://github.com/OctoKeights/miniz_nrp#f81e4ad42f561cd529e0619fa8c324a83b9f8b8a"
+version = "0.2.1"
+source = "git+https://github.com/OctoKeights/miniz_nrp#e22de0ef2cffd2153ef9772dfd30e3e399ce7624"
 
 [[package]]
 name = "openexr_nrp"
-version = "0.2.0"
-source = "git+https://github.com/OctoKeights/openexr_nrp#294b46dbf9eb76b5837be235cef1166bee885707"
+version = "0.2.1"
+source = "git+https://github.com/OctoKeights/openexr_nrp#ef8395fd52e1460514fc714ed941ca070656b5fa"
 dependencies = [
  "libdeflate_nrp",
 ]
 
 [[package]]
 name = "rustbcx"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "miniz_nrp",
  "stb_image_nrp",
@@ -33,18 +33,18 @@ dependencies = [
 
 [[package]]
 name = "stb_image_nrp"
-version = "0.2.0"
-source = "git+https://github.com/OctoKeights/stb_image_nrp#aff7e2b4ea64debcf5bbdc07f3636dec8029a4bd"
+version = "0.2.1"
+source = "git+https://github.com/OctoKeights/stb_image_nrp#af17f9ed9f50b4eb3a54185a0737556242905963"
 
 [[package]]
 name = "stb_image_write_nrp"
-version = "0.2.0"
-source = "git+https://github.com/OctoKeights/stb_image_write_nrp#ae7ec1564f21b8a9702ae0e4bcbcad12a0688f6b"
+version = "0.2.1"
+source = "git+https://github.com/OctoKeights/stb_image_write_nrp#d3d7f30234cd7ff2b333406f2cb2011e072de0d3"
 
 [[package]]
 name = "tinyexr_nrp"
-version = "0.2.0"
-source = "git+https://github.com/OctoKeights/tinyexr_nrp#7995449ccf9c53ee9e1568b919bb289921c657ab"
+version = "0.3.0"
+source = "git+https://github.com/OctoKeights/tinyexr_nrp#ad74cafdc91d2ee844c2ec5d37160490eadc9462"
 dependencies = [
  "miniz_nrp",
  "openexr_nrp",
@@ -53,10 +53,10 @@ dependencies = [
 
 [[package]]
 name = "zfp_nrp"
-version = "0.2.0"
-source = "git+https://github.com/OctoKeights/zfp_nrp#ff95f39c09af6a150f02d5765b27e69af510d6b4"
+version = "0.2.1"
+source = "git+https://github.com/OctoKeights/zfp_nrp#681371063c0a09ae50d3b7b4dc370833cf60eb9e"
 
 [[package]]
 name = "zstd_nrp"
-version = "0.2.0"
-source = "git+https://github.com/OctoKeights/zstd_nrp#3ebd1e6cad5829748068efaaa9d2e64db4a3e3e2"
+version = "0.2.1"
+source = "git+https://github.com/OctoKeights/zstd_nrp#7b04028f3c60ec2171bb4dfc5354aaacdb6d1f31"

@@ -61,7 +61,7 @@ dumps=${4:-bc7decomp unpack bc1 bc345 bc7enc bc7block ert rdo bc7e_presets bc7e_
 tmp=${TMPDIR:-/tmp}/rustbcx-compare
 mkdir -p "$tmp" || exit 2
 
-(cd "$here" && cargo build --release -q --example dump) || exit 2
+(cd "$here" && cargo build --release -q --ignore-rust-version --example dump) || exit 2
 rust=$(cd "$here" && cargo metadata --format-version 1 --no-deps 2>/dev/null | sed 's/.*"target_directory":"\([^"]*\)".*/\1/')/release/examples/dump
 
 built_cpp=0

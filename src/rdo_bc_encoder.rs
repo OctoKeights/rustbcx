@@ -1,5 +1,5 @@
 //! Whole images to blocks, with the rate-distortion pass: the port of `rdo_bc_encoder.cpp` and
-//! `rdo_bc_encoder.h` (Richard Geldreich, Jr.), bc7enc_rdo's own encoder of images.
+//! `rdo_bc_encoder.h` (Richard Geldreich, Jr.), `bc7enc_rdo`'s own encoder of images.
 //!
 //! [`RdoBcEncoder`] takes an [`Image`], pads it to whole blocks, packs every block as BC1, BC3,
 //! BC4, BC5 or BC7 (and BC2, which the C++ does not have: see [`BlockFormat::Bc2`])
@@ -50,6 +50,7 @@ pub enum BlockFormat {
 
 impl BlockFormat {
     /// The bytes of a block.
+    #[must_use]
     pub fn bytes_per_block(self) -> u32 {
         match self {
             BlockFormat::Bc1 | BlockFormat::Bc4 => 8,
@@ -58,6 +59,7 @@ impl BlockFormat {
     }
 
     /// The format's number in DXGI (`DXGI_FORMAT_BC1_UNORM` and the rest).
+    #[must_use]
     pub fn dxgi_format(self) -> u32 {
         match self {
             BlockFormat::Bc1 => 71,
@@ -71,6 +73,8 @@ impl BlockFormat {
 }
 
 /// The settings of [`RdoBcEncoder`]: `rdo_bc_params`.
+// (The original's switches, each independent of the others.)
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct RdoBcParams {
     /// How hard the BC7 encoder tries: 0 to 4 for bc7enc; for bc7e, its seven profiles from
@@ -106,7 +110,7 @@ pub struct RdoBcParams {
     pub custom_rdo_smooth_block_error_scale: bool,
     /// The bytes the rate-distortion pass looks back for matches.
     pub lookback_window_size: u32,
-    /// (Set by bc7enc_rdo's command line when the window is given; the encoder does not read
+    /// (Set by `bc7enc_rdo`'s command line when the window is given; the encoder does not read
     /// it.)
     pub custom_lookback_window_size: bool,
     /// With `bc7enc_reduce_entropy`: quantize mode 6's endpoints.
@@ -141,7 +145,7 @@ pub struct RdoBcParams {
     pub use_bc7e: bool,
     /// The number of strips an image of 4,096 blocks or more is cut into for the
     /// rate-distortion pass, each done on its own. It changes the blocks: a strip cannot copy
-    /// from the one before. (bc7enc_rdo's command line sets it from the machine's cores; left
+    /// from the one before. (`bc7enc_rdo`'s command line sets it from the machine's cores; left
     /// alone it is 128 everywhere.)
     pub rdo_max_threads: u32,
     /// The threads to work on, 0 for all the machine has. It does not change the blocks. (The
@@ -157,6 +161,7 @@ impl Default for RdoBcParams {
 
 impl RdoBcParams {
     /// The C++'s defaults, as built with bc7e.
+    #[must_use]
     pub fn new() -> Self {
         RdoBcParams {
             bc7_uber_level: 6,
@@ -232,7 +237,7 @@ fn max_f(a: f32, b: f32) -> f32 {
 }
 
 /// `color_quad_u8::get_luma`, with REC 709's weights.
-fn luma(pixel: &ColorRgba) -> u32 {
+fn luma(pixel: ColorRgba) -> u32 {
     (13938 * u32::from(pixel[0]) + 46869 * u32::from(pixel[1]) + 4729 * u32::from(pixel[2]) + 32768)
         >> 16
 }
@@ -341,6 +346,8 @@ impl BlockMask {
 
 /// For each block, the scale the rate-distortion pass gives its error when the block lies in a
 /// large, very smooth region of the image (120), or -1 for the pass to work one out.
+// (One pass, step for step as the original's, its state shared throughout.)
+#[allow(clippy::too_many_lines)]
 fn compute_block_mse_scales(
     source_image: &Image,
     blocks_x: u32,
@@ -367,7 +374,7 @@ fn compute_block_mse_scales(
             let (mut y_num, mut y_total) = (0u32, 0u64);
             for pixel in &block_pixels {
                 y_num += 1;
-                y_total += u64::from(luma(pixel));
+                y_total += u64::from(luma(*pixel));
             }
 
             let max_std_dev = ert::compute_block_max_std_dev(&block_pixels, 4, 4, 3);
@@ -487,7 +494,7 @@ struct UnpackerFuncs {
 }
 
 impl UnpackerFuncs {
-    fn unpack_bc1_block(&self, block: &[u8], pixels: &mut [ColorRgba]) -> bool {
+    fn unpack_bc1_block(self, block: &[u8], pixels: &mut [ColorRgba]) -> bool {
         let block: &[u8; 8] = block.try_into().expect("a BC1 block");
         let used_3color_mode = rgbcx::unpack_bc1(
             block,
@@ -544,6 +551,27 @@ impl UnpackerFuncs {
     }
 }
 
+/// Why [`RdoBcEncoder::encode`] could not pack an image.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum EncodeError {
+    /// There is no image, or it has no blocks.
+    NoImage,
+    /// The BC7 settings leave no mode that can pack a block.
+    NoMode,
+}
+
+impl std::fmt::Display for EncodeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            EncodeError::NoImage => "there is no image to pack, or it has no blocks",
+            EncodeError::NoMode => "the BC7 settings leave no mode that can pack a block",
+        })
+    }
+}
+
+impl std::error::Error for EncodeError {}
+
 /// The encoder of an image: `rdo_bc_encoder`. [`RdoBcEncoder::init`] it with an image and
 /// settings, [`RdoBcEncoder::encode`], and take the [`RdoBcEncoder::blocks`].
 pub struct RdoBcEncoder {
@@ -579,6 +607,7 @@ impl Default for RdoBcEncoder {
 
 impl RdoBcEncoder {
     /// An encoder with nothing in it yet.
+    #[must_use]
     pub fn new() -> Self {
         let params = RdoBcParams::new();
         RdoBcEncoder {
@@ -627,7 +656,7 @@ impl RdoBcEncoder {
 
     /// Takes an image (a copy of it) and the settings. The image is turned upside down if the
     /// settings say so and padded to whole blocks by repeating its last column and row.
-    pub fn init(&mut self, src_image: &Image, params: &RdoBcParams) -> bool {
+    pub fn init(&mut self, src_image: &Image, params: &RdoBcParams) {
         self.clear();
 
         self.params = *params;
@@ -637,93 +666,107 @@ impl RdoBcEncoder {
             self.rgbcx_encoder = Rgbcx::new(self.params.bc1_mode);
         }
 
-        self.init_source_image(src_image)
+        self.init_source_image(src_image);
     }
 
-    /// Packs the image, then runs the rate-distortion pass if lambda is above 0. False when
-    /// there is no image or it has no blocks, or when the BC7 settings leave no mode that can
-    /// pack a block.
-    pub fn encode(&mut self) -> bool {
+    /// Packs the image, then runs the rate-distortion pass if lambda is above 0.
+    ///
+    /// # Errors
+    ///
+    /// [`EncodeError::NoImage`] when there is no image or it has no blocks, and
+    /// [`EncodeError::NoMode`] when the BC7 settings leave no mode that can pack a block.
+    pub fn encode(&mut self) -> Result<(), EncodeError> {
         if self.packed_image.is_empty() {
-            return false;
+            return Err(EncodeError::NoImage);
         }
 
         self.init_encoder_params();
-        if !self.encode_texture() {
-            return false;
-        }
+        self.encode_texture()?;
         self.postprocess_rdo();
-
-        true
+        Ok(())
     }
 
     /// The settings, as the encoder holds them (it switches `perceptual` off for BC7 with the
     /// rate-distortion pass).
+    #[must_use]
     pub fn params(&self) -> &RdoBcParams {
         &self.params
     }
 
     /// The image as packed: turned and padded.
+    #[must_use]
     pub fn source_image(&self) -> &Image {
         &self.source_image
     }
 
     /// The blocks as they were before the rate-distortion pass.
+    #[must_use]
     pub fn prerdo_blocks(&self) -> &[u8] {
         &self.prerdo_packed_image
     }
 
     /// The packed blocks, in rows from the top.
+    #[must_use]
     pub fn blocks(&self) -> &[u8] {
         &self.packed_image
     }
 
     /// The format packed.
+    #[must_use]
     pub fn format(&self) -> BlockFormat {
         self.params.format
     }
 
     /// The width of the image given, before padding.
+    #[must_use]
     pub fn orig_width(&self) -> u32 {
         self.orig_width
     }
 
     /// The height of the image given, before padding.
+    #[must_use]
     pub fn orig_height(&self) -> u32 {
         self.orig_height
     }
 
     /// How many blocks the image is across.
+    #[must_use]
     pub fn blocks_x(&self) -> u32 {
         self.blocks_x
     }
 
     /// How many blocks the image is down.
+    #[must_use]
     pub fn blocks_y(&self) -> u32 {
         self.blocks_y
     }
 
     /// How many blocks the image has.
+    #[must_use]
     pub fn total_blocks(&self) -> u32 {
         self.total_blocks
     }
 
     /// The size of all the blocks in bytes.
+    #[must_use]
     pub fn total_blocks_size_in_bytes(&self) -> u32 {
         self.total_blocks * self.bytes_per_block
     }
 
     /// The size of a block in bytes: 8 or 16.
+    #[must_use]
     pub fn bytes_per_block(&self) -> u32 {
         self.bytes_per_block
     }
 
     /// Bits for each pixel: 4 or 8.
+    #[must_use]
     pub fn pixel_format_bpp(&self) -> u32 {
         self.pixel_format_bpp
     }
 
     /// How many pixels the blocks cover, padding included.
+    #[must_use]
     pub fn total_texels(&self) -> u32 {
         self.total_texels
     }
@@ -731,15 +774,17 @@ impl RdoBcEncoder {
     /// How many blocks the rate-distortion pass changed. For BC3 the colour halves and then the
     /// alpha halves; for BC5 the first channel's halves and then the second's; for the others
     /// the blocks, and 0.
+    #[must_use]
     pub fn total_modified(&self) -> [u32; 2] {
         self.total_modified
     }
 
     /// For BC7, how many of the blocks are of each mode.
+    #[must_use]
     pub fn bc7_mode_histogram(&self) -> [u32; 8] {
         let mut hist = [0u32; 8];
         if self.params.format == BlockFormat::Bc7 {
-            for block in self.packed_image.as_chunks::<16>().0.iter() {
+            for block in self.packed_image.as_chunks::<16>().0 {
                 let mode = block[0].trailing_zeros();
                 if mode < 8 {
                     hist[mode as usize] += 1;
@@ -816,7 +861,7 @@ impl RdoBcEncoder {
         };
     }
 
-    fn init_source_image(&mut self, orig_source_image: &Image) -> bool {
+    fn init_source_image(&mut self, orig_source_image: &Image) {
         self.pixel_format_bpp = self.params.format.bytes_per_block() / 2;
         self.bytes_per_block = (16 * self.pixel_format_bpp) / 8;
 
@@ -840,15 +885,14 @@ impl RdoBcEncoder {
         self.total_texels = self.total_blocks * 16;
 
         self.packed_image = vec![0u8; self.total_blocks as usize * self.bytes_per_block as usize];
-
-        true
     }
 
-    /// Packs every block; false if a block could not be packed with the settings.
-    fn encode_texture(&mut self) -> bool {
+    /// Packs every block; [`EncodeError::NoMode`] if a block could not be packed with the
+    /// settings.
+    fn encode_texture(&mut self) -> Result<(), EncodeError> {
         let row_bytes = self.blocks_x as usize * self.bytes_per_block as usize;
         if row_bytes == 0 {
-            return true;
+            return Ok(());
         }
         let threads = parallel::worker_count(self.params.threads);
         let mut packed_image = std::mem::take(&mut self.packed_image);
@@ -860,16 +904,21 @@ impl RdoBcEncoder {
             .collect();
         let failed = std::sync::atomic::AtomicBool::new(false);
         parallel::for_each(rows, threads, |(by, row)| {
-            if !this.encode_row(by, row) {
+            if this.encode_row(by, row).is_err() {
                 failed.store(true, std::sync::atomic::Ordering::Relaxed);
             }
         });
         self.packed_image = packed_image;
-        !failed.into_inner()
+        if failed.into_inner() {
+            Err(EncodeError::NoMode)
+        } else {
+            Ok(())
+        }
     }
 
-    /// Packs a row of blocks; false if a block could not be packed with the settings.
-    fn encode_row(&self, by: u32, row: &mut [u8]) -> bool {
+    /// Packs a row of blocks; [`EncodeError::NoMode`] if a block could not be packed with the
+    /// settings.
+    fn encode_row(&self, by: u32, row: &mut [u8]) -> Result<(), EncodeError> {
         let params = &self.params;
         for (bx, block) in row
             .chunks_exact_mut(self.bytes_per_block as usize)
@@ -959,15 +1008,38 @@ impl RdoBcEncoder {
                         .compress_block(block, &pixels, &self.bc7enc_pack_params)
                         .is_err()
                     {
-                        return false;
+                        return Err(EncodeError::NoMode);
                     }
                 }
             }
         }
-        true
+        Ok(())
     }
 
+    // (One pass, step for step as the original's, its state shared throughout.)
+    #[allow(clippy::too_many_lines)]
     fn postprocess_rdo(&mut self) {
+        // What each strip does: the passes over it, each with its settings, where in a block it
+        // starts and how many bytes it goes over, the channels, the pixels, the unpacker, and
+        // whether it gets the smooth-block scales.
+        struct Pass<'a> {
+            offset: usize,
+            size: u32,
+            num_comps: u32,
+            pixels: &'a [ColorRgba],
+            params: ReduceEntropyParams,
+            unpacker: Unpacker,
+            use_scales: bool,
+            counter: usize,
+        }
+        #[derive(Clone, Copy)]
+        enum Unpacker {
+            Bc1,
+            Bc2Alpha,
+            Bc4,
+            Bc7,
+        }
+        const MIN_RDO_MULTITHREADING_BLOCKS: u32 = 4096;
         self.prerdo_packed_image = self.packed_image.clone();
         self.total_modified = [0; 2];
 
@@ -979,7 +1051,6 @@ impl RdoBcEncoder {
         let params = self.params;
         let total_blocks = self.total_blocks;
 
-        const MIN_RDO_MULTITHREADING_BLOCKS: u32 = 4096;
         let rdo_total_threads = if params.rdo_multithreading
             && params.rdo_max_threads > 1
             && total_blocks >= MIN_RDO_MULTITHREADING_BLOCKS
@@ -1046,27 +1117,6 @@ impl RdoBcEncoder {
                 }
             }
         };
-
-        // What each strip does: the passes over it, each with its settings, where in a block it
-        // starts and how many bytes it goes over, the channels, the pixels, the unpacker, and
-        // whether it gets the smooth-block scales.
-        struct Pass<'a> {
-            offset: usize,
-            size: u32,
-            num_comps: u32,
-            pixels: &'a [ColorRgba],
-            params: ReduceEntropyParams,
-            unpacker: Unpacker,
-            use_scales: bool,
-            counter: usize,
-        }
-        #[derive(Clone, Copy)]
-        enum Unpacker {
-            Bc1,
-            Bc2Alpha,
-            Bc4,
-            Bc7,
-        }
 
         let single_channel = |channel: usize| -> Vec<ColorRgba> {
             block_pixels
@@ -1349,6 +1399,7 @@ impl RdoBcEncoder {
 
     /// Unpacks the blocks to an image of whole blocks. None when a BC7 block is of no mode,
     /// which the encoders do not make.
+    #[must_use]
     pub fn unpack_blocks(&self) -> Option<Image> {
         let mut unpacked_image = Image::new(self.blocks_x * 4, self.blocks_y * 4);
         if self.total_blocks == 0 {
@@ -1376,37 +1427,24 @@ impl RdoBcEncoder {
 
                     match format {
                         BlockFormat::Bc1 => {
-                            rgbcx::unpack_bc1(
-                                block.try_into().expect("8 bytes"),
-                                &mut unpacked_pixels,
-                                true,
-                                mode,
-                            );
+                            rgbcx::unpack_bc1(as_block(block), &mut unpacked_pixels, true, mode);
                         }
                         BlockFormat::Bc2 => {
-                            bc2::unpack_bc2(
-                                block.try_into().expect("16 bytes"),
-                                &mut unpacked_pixels,
-                                mode,
-                            );
+                            bc2::unpack_bc2(as_block(block), &mut unpacked_pixels, mode);
                         }
                         BlockFormat::Bc3 => {
-                            rgbcx::unpack_bc3(
-                                block.try_into().expect("16 bytes"),
-                                &mut unpacked_pixels,
-                                mode,
-                            );
+                            rgbcx::unpack_bc3(as_block(block), &mut unpacked_pixels, mode);
                         }
                         BlockFormat::Bc4 => {
                             rgbcx::unpack_bc4(
-                                block.try_into().expect("8 bytes"),
+                                as_block(block),
                                 unpacked_pixels.as_flattened_mut(),
                                 4,
                             );
                         }
                         BlockFormat::Bc5 => {
                             rgbcx::unpack_bc5(
-                                block.try_into().expect("16 bytes"),
+                                as_block(block),
                                 unpacked_pixels.as_flattened_mut(),
                                 0,
                                 1,
@@ -1414,10 +1452,7 @@ impl RdoBcEncoder {
                             );
                         }
                         BlockFormat::Bc7 => {
-                            if !bc7decomp::unpack_bc7(
-                                block.try_into().expect("16 bytes"),
-                                &mut unpacked_pixels,
-                            ) {
+                            if !bc7decomp::unpack_bc7(as_block(block), &mut unpacked_pixels) {
                                 unpack_failed.store(1, Ordering::Relaxed);
                             }
                         }
@@ -1437,6 +1472,11 @@ impl RdoBcEncoder {
     }
 }
 
+/// A block of `N` bytes, out of the image's blocks cut to the size of the format's.
+fn as_block<const N: usize>(bytes: &[u8]) -> &[u8; N] {
+    bytes.try_into().expect("a chunk the size of a block")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1447,7 +1487,7 @@ mod tests {
         let mut state = 12345u32;
         for y in 0..50u32 {
             for x in 0..70u32 {
-                state = state.wrapping_mul(1664525).wrapping_add(1013904223);
+                state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
                 let noisy = (20..40).contains(&x) && (10..30).contains(&y);
                 let value = if noisy {
                     (state >> 24) as u8
@@ -1463,8 +1503,8 @@ mod tests {
 
     fn encode(params: &RdoBcParams) -> RdoBcEncoder {
         let mut encoder = RdoBcEncoder::new();
-        assert!(encoder.init(&image(), params));
-        assert!(encoder.encode());
+        encoder.init(&image(), params);
+        encoder.encode().unwrap();
         encoder
     }
 
@@ -1605,12 +1645,14 @@ mod tests {
     #[test]
     fn an_image_of_nothing_is_refused() {
         let mut encoder = RdoBcEncoder::new();
-        assert!(!encoder.encode());
-        assert!(encoder.init(&Image::new(0, 0), &RdoBcParams::new()));
-        assert!(!encoder.encode());
+        assert_eq!(encoder.encode(), Err(EncodeError::NoImage));
+        encoder.init(&Image::new(0, 0), &RdoBcParams::new());
+        assert_eq!(encoder.encode(), Err(EncodeError::NoImage));
         assert_eq!(encoder.unpack_blocks().unwrap().pixels.len(), 0);
     }
 
+    // (A count in a test, without a dependency for it.)
+    #[allow(clippy::naive_bytecount)]
     #[test]
     fn a_region_is_filled_and_counted() {
         // A 5 by 4 mask with a region of six, one of two, and walls between.

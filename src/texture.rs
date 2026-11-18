@@ -4,7 +4,7 @@
 //! A texture is one image with its mip levels, or several that go together: the layers of a
 //! texture array, the six faces of a cube map, the slices of a volume texture.
 //!
-//! (The crate's own: bc7enc_rdo stops at the blocks of one image.)
+//! (The crate's own: `bc7enc_rdo` stops at the blocks of one image.)
 
 use crate::bc2;
 use crate::bc6h::{self, Bc6hEncSettings};
@@ -40,6 +40,7 @@ pub enum TextureFormat {
 
 impl TextureFormat {
     /// The bytes of a block.
+    #[must_use]
     pub fn bytes_per_block(self) -> usize {
         match self {
             TextureFormat::Bc1 | TextureFormat::Bc4 => 8,
@@ -48,6 +49,7 @@ impl TextureFormat {
     }
 
     /// Whether a file can mark the format as sRGB: BC1, BC2, BC3 and BC7.
+    #[must_use]
     pub fn can_be_srgb(self) -> bool {
         matches!(
             self,
@@ -130,6 +132,7 @@ pub struct Texture {
 }
 
 /// The most levels a size can have: down to one pixel.
+#[must_use]
 pub fn max_levels(width: u32, height: u32) -> u32 {
     32 - width.max(height).max(1).leading_zeros()
 }
@@ -137,6 +140,7 @@ pub fn max_levels(width: u32, height: u32) -> u32 {
 impl Texture {
     /// A texture of one image with its mip levels, largest first: not sRGB, not a volume, not
     /// an array, not a cube map.
+    #[must_use]
     pub fn new(format: TextureFormat, width: u32, height: u32, levels: Vec<Vec<u8>>) -> Texture {
         Texture {
             format,
@@ -151,17 +155,20 @@ impl Texture {
     }
 
     /// The size in pixels of a level.
+    #[must_use]
     pub fn level_size(&self, level: usize) -> (u32, u32) {
         (shifted(self.width, level), shifted(self.height, level))
     }
 
     /// The slices a level has: the depth of a volume texture halved for each level, and 1 for
     /// any other texture.
+    #[must_use]
     pub fn level_depth(&self, level: usize) -> u32 {
         shifted(self.depth, level)
     }
 
     /// The images a level holds: a layer's faces for each layer, or a volume's slices.
+    #[must_use]
     pub fn images_per_level(&self, level: usize) -> usize {
         self.layers.max(1) as usize
             * if self.cube { 6 } else { 1 }
@@ -169,16 +176,19 @@ impl Texture {
     }
 
     /// The bytes one image of a level takes.
+    #[must_use]
     pub fn image_bytes(&self, level: usize) -> usize {
         level_bytes(self.format, self.width, self.height, level)
     }
 
     /// The bytes a level of this texture has to hold: all its images.
+    #[must_use]
     pub fn level_bytes(&self, level: usize) -> usize {
         self.image_bytes(level) * self.images_per_level(level)
     }
 
     /// The most levels the texture can have: down to one pixel each way.
+    #[must_use]
     pub fn max_levels(&self) -> u32 {
         max_levels(self.width.max(self.depth), self.height)
     }
@@ -186,6 +196,7 @@ impl Texture {
     /// The blocks of one image of a level. `index` counts the level's images in the order they
     /// are held: for an array, `layer` (and for an array of cube maps `layer * 6 + face`); for
     /// a cube map, the face; for a volume texture, the slice. None when it is not there.
+    #[must_use]
     pub fn image(&self, level: usize, index: usize) -> Option<&[u8]> {
         if index >= self.images_per_level(level) {
             return None;
@@ -199,6 +210,7 @@ impl Texture {
     /// Whether the texture is whole: a size, at least one level and no more than the size
     /// allows, each holding the bytes it should; a cube map square; a volume texture neither
     /// an array nor a cube map.
+    #[must_use]
     pub fn is_valid(&self) -> bool {
         self.width != 0
             && self.height != 0
@@ -215,6 +227,11 @@ impl Texture {
 
     /// Reads a texture from the bytes of a `.dds`, `.ktx` or `.ktx2` file, told apart by how
     /// they begin.
+    ///
+    /// # Errors
+    ///
+    /// [`TextureError::Invalid`] for a file that is none of them, and what [`dds::read`],
+    /// [`ktx::read_ktx1`] and [`ktx::read_ktx2`] refuse.
     pub fn from_file_bytes(file: &[u8]) -> Result<Texture, TextureError> {
         if file.starts_with(b"DDS ") {
             dds::read(file)
@@ -229,17 +246,24 @@ impl Texture {
         }
     }
 
-    /// Reads a `.dds`, `.ktx` or `.ktx2` file from disk. A file that is not a texture this
-    /// crate reads comes back as an error of the kind `InvalidData`, with the
-    /// [`TextureError`] inside.
+    /// Reads a `.dds`, `.ktx` or `.ktx2` file from disk.
+    ///
+    /// # Errors
+    ///
+    /// The error reading the file; or, for a file that is not a texture this crate reads, an
+    /// error of the kind `InvalidData` with the [`TextureError`] inside.
     pub fn load(path: impl AsRef<Path>) -> std::io::Result<Texture> {
         Texture::from_file_bytes(&std::fs::read(path)?)
             .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
     }
 
     /// Writes the texture to disk as the file its name ends in says: `.dds` (with the old
-    /// header where the format allows), `.ktx` or `.ktx2`. Any other ending, and a texture
-    /// that is not whole, is an error of the kind `InvalidInput`.
+    /// header where the format allows), `.ktx` or `.ktx2`.
+    ///
+    /// # Errors
+    ///
+    /// Any other ending, and a texture that is not whole, as an error of the kind
+    /// `InvalidInput`; and the error writing the file.
     pub fn save(&self, path: impl AsRef<Path>) -> std::io::Result<()> {
         let path = path.as_ref();
         let extension = path
@@ -267,8 +291,12 @@ impl Texture {
     }
 
     /// Writes the texture to disk as a `.ktx2` file with its levels supercompressed as asked,
-    /// whatever the name ends in. A texture that is not whole is an error of the kind
-    /// `InvalidInput`, and so is a Zstandard level the compressor does not take.
+    /// whatever the name ends in.
+    ///
+    /// # Errors
+    ///
+    /// A texture that is not whole, and a Zstandard level the compressor does not take, as an
+    /// error of the kind `InvalidInput`; and the error writing the file.
     pub fn save_ktx2(
         &self,
         path: impl AsRef<Path>,
@@ -291,6 +319,7 @@ impl Texture {
     /// first image of the level, for a texture with several ([`Texture::unpack_image_hdr`]
     /// for the others). None for the other formats and for a level that is not there or not
     /// whole.
+    #[must_use]
     pub fn unpack_level_hdr(&self, level: usize) -> Option<HdrImage> {
         self.unpack_image_hdr(level, 0)
     }
@@ -298,6 +327,7 @@ impl Texture {
     /// Unpacks one image of a level of a BC6H texture ([`Texture::image`] says how they are
     /// counted) to an HDR image of its size. None for the other formats and for an image that
     /// is not there.
+    #[must_use]
     pub fn unpack_image_hdr(&self, level: usize, index: usize) -> Option<HdrImage> {
         let is_signed = match self.format {
             TextureFormat::Bc6hUnsigned => false,
@@ -327,6 +357,7 @@ impl Texture {
     /// with several ([`Texture::unpack_image`] for the others). None for the HDR formats (see
     /// [`Texture::unpack_level_hdr`]), for a level that is not there or not whole, and for a BC7
     /// block of no mode. BC4 unpacks to red and BC5 to red and green, on black.
+    #[must_use]
     pub fn unpack_level(&self, level: usize, bc1_mode: Bc1ApproxMode) -> Option<Image> {
         self.unpack_image(level, 0, bc1_mode)
     }
@@ -334,6 +365,7 @@ impl Texture {
     /// Unpacks one image of a level ([`Texture::image`] says how they are counted) to an image
     /// of its size. None for the HDR formats, for an image that is not there, and for a BC7
     /// block of no mode.
+    #[must_use]
     pub fn unpack_image(
         &self,
         level: usize,
@@ -354,16 +386,16 @@ impl Texture {
                     rgbcx::unpack_bc1(block.try_into().ok()?, &mut pixels, true, bc1_mode);
                 }
                 TextureFormat::Bc2 => {
-                    bc2::unpack_bc2(block.try_into().ok()?, &mut pixels, bc1_mode)
+                    bc2::unpack_bc2(block.try_into().ok()?, &mut pixels, bc1_mode);
                 }
                 TextureFormat::Bc3 => {
                     rgbcx::unpack_bc3(block.try_into().ok()?, &mut pixels, bc1_mode);
                 }
                 TextureFormat::Bc4 => {
-                    rgbcx::unpack_bc4(block.try_into().ok()?, pixels.as_flattened_mut(), 4)
+                    rgbcx::unpack_bc4(block.try_into().ok()?, pixels.as_flattened_mut(), 4);
                 }
                 TextureFormat::Bc5 => {
-                    rgbcx::unpack_bc5(block.try_into().ok()?, pixels.as_flattened_mut(), 0, 1, 4)
+                    rgbcx::unpack_bc5(block.try_into().ok()?, pixels.as_flattened_mut(), 0, 1, 4);
                 }
                 TextureFormat::Bc7 => {
                     if !bc7decomp::unpack_bc7(block.try_into().ok()?, &mut pixels) {
@@ -425,6 +457,7 @@ fn shape_of(layout: Layout, count: usize, width: u32, height: u32) -> Option<(u3
 /// quality, the rate-distortion pass and the threads are all in the settings. With `mipmaps`,
 /// every level down to one pixel is made from the one before by averaging and packed the same
 /// way. None for an image with no pixels.
+#[must_use]
 pub fn compress(image: &Image, params: &RdoBcParams, mipmaps: bool) -> Option<Texture> {
     if image.width == 0
         || image.height == 0
@@ -437,9 +470,8 @@ pub fn compress(image: &Image, params: &RdoBcParams, mipmaps: bool) -> Option<Te
     let mut level_image;
     let mut current = image;
     loop {
-        if !encoder.init(current, params) || !encoder.encode() {
-            return None;
-        }
+        encoder.init(current, params);
+        encoder.encode().ok()?;
         levels.push(encoder.blocks().to_vec());
         if !mipmaps || (current.width == 1 && current.height == 1) {
             break;
@@ -487,9 +519,8 @@ pub fn compress_many(
     loop {
         let mut level = Vec::new();
         for image in &current {
-            if !encoder.init(image, params) || !encoder.encode() {
-                return None;
-            }
+            encoder.init(image, params);
+            encoder.encode().ok()?;
             level.extend_from_slice(encoder.blocks());
         }
         levels.push(level);
@@ -523,7 +554,7 @@ pub fn compress_many(
 enum HdrPacker<'a> {
     /// Unsigned, by the port of Intel's encoder.
     Unsigned(&'a Bc6hEncSettings),
-    /// Signed, by the port of bc6h_enc.
+    /// Signed, by the port of `bc6h_enc`.
     Signed,
 }
 
@@ -541,7 +572,7 @@ fn pack_hdr_image(image: &HdrImage, packer: HdrPacker, threads: u32) -> Vec<u8> 
             let pixels = image.get_block(bx as u32, by);
             match packer {
                 HdrPacker::Unsigned(settings) => {
-                    bc6h::compress_block_bc6h(block, &pixels, settings)
+                    bc6h::compress_block_bc6h(block, &pixels, settings);
                 }
                 HdrPacker::Signed => {
                     let floats = pixels.map(|pixel| {
@@ -643,6 +674,7 @@ fn compress_hdr_with(
 ///
 /// A pixel value the format cannot hold is brought into range first: a negative half becomes
 /// 0, and infinity and not-a-number the largest half. None for an image with no pixels.
+#[must_use]
 pub fn compress_hdr(
     image: &HdrImage,
     settings: &Bc6hEncSettings,
@@ -661,6 +693,7 @@ pub fn compress_hdr(
 /// Packs several HDR images of one size into one unsigned BC6H texture: the layers of an array,
 /// the faces of a cube map or the slices of a volume texture, as `layout` says. Each image is
 /// packed as [`compress_hdr`] packs one. None as for [`compress_many`].
+#[must_use]
 pub fn compress_hdr_many(
     images: &[HdrImage],
     layout: Layout,
@@ -683,6 +716,7 @@ pub fn compress_hdr_many(
 ///
 /// Infinity and not-a-number are packed as the largest half of their sign. None for an image
 /// with no pixels.
+#[must_use]
 pub fn compress_hdr_signed(image: &HdrImage, mipmaps: bool, threads: u32) -> Option<Texture> {
     compress_hdr_with(
         std::slice::from_ref(image),
@@ -695,6 +729,7 @@ pub fn compress_hdr_signed(image: &HdrImage, mipmaps: bool, threads: u32) -> Opt
 
 /// Packs several HDR images of one size into one signed BC6H texture, as `layout` says. Each
 /// image is packed as [`compress_hdr_signed`] packs one. None as for [`compress_many`].
+#[must_use]
 pub fn compress_hdr_many_signed(
     images: &[HdrImage],
     layout: Layout,
@@ -844,6 +879,8 @@ mod tests {
         (0..3).all(|c| (i32::from(a[c]) - i32::from(b[c])).abs() <= 8)
     }
 
+    // (One test of every way of packing several images, each checked in turn.)
+    #[allow(clippy::too_many_lines)]
     #[test]
     fn several_images_pack_to_an_array_a_cube_map_or_a_volume() {
         let colours: Vec<[u8; 3]> = (0..12u8)

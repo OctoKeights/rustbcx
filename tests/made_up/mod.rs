@@ -10,6 +10,8 @@
     dead_code
 )]
 
+use std::fmt::Write;
+
 use rustbcx::bc2;
 use rustbcx::bc6h::{self, Bc6hEncSettings};
 use rustbcx::bc7decomp;
@@ -31,8 +33,8 @@ impl Random {
     pub fn next(&mut self) -> u32 {
         self.state = self
             .state
-            .wrapping_mul(6364136223846793005)
-            .wrapping_add(1442695040888963407);
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
         (self.state >> 32) as u32
     }
 }
@@ -45,14 +47,14 @@ pub struct Hash {
 impl Hash {
     pub fn new() -> Hash {
         Hash {
-            value: 14695981039346656037,
+            value: 14_695_981_039_346_656_037,
         }
     }
 
     pub fn add(&mut self, data: &[u8]) {
         for &byte in data {
             self.value ^= u64::from(byte);
-            self.value = self.value.wrapping_mul(1099511628211);
+            self.value = self.value.wrapping_mul(1_099_511_628_211);
         }
     }
 }
@@ -152,7 +154,10 @@ pub fn make_pixels(random: &mut Random) -> [[u8; 4]; 16] {
 /// The `ert` dump: runs of made-up blocks, many of them near copies of the blocks before,
 /// packed in one of five formats and put through the entropy reduction transform with its
 /// settings varied. What `compare/dump.cpp` prints for the same seed and count.
+// (Written step for step as the C side, `compare/dump.cpp`, has it.)
+#[allow(clippy::too_many_lines)]
 pub fn ert(seed: u64, blocks: u32) -> String {
+    const WINDOWS: [u32; 6] = [16, 48, 128, 256, 1024, 4096];
     let mut random = Random { state: seed };
     let mut hash = Hash::new();
     let rgbcx_encoder = Rgbcx::new(Bc1ApproxMode::Ideal);
@@ -192,7 +197,6 @@ pub fn ert(seed: u64, blocks: u32) -> String {
 
         let mut p = ReduceEntropyParams::new();
         p.lambda = (random.next() % 2000) as f32 / 100.0 + 0.01;
-        const WINDOWS: [u32; 6] = [16, 48, 128, 256, 1024, 4096];
         p.lookback_window_size = WINDOWS[(random.next() % 6) as usize];
         p.max_allowed_rms_increase_ratio = 1.0 + (random.next() % 1000) as f32 / 100.0;
         p.max_smooth_block_std_dev = 1.0 + (random.next() % 40) as f32;
@@ -389,6 +393,8 @@ pub fn ert(seed: u64, blocks: u32) -> String {
 
 /// A made-up image: noise, a ramp, flat boxes, a repeated tile, a very smooth field, or half a
 /// ramp and half noise; opaque, with noise for alpha, or with a ramp of alpha.
+// (Written step for step as the C side, `compare/dump.cpp`, has it.)
+#[allow(clippy::many_single_char_names)]
 pub fn make_image(random: &mut Random, w: u32, h: u32) -> Image {
     let mut image = Image::new(w, h);
     let kind = random.next() % 6;
@@ -469,7 +475,17 @@ pub fn make_image(random: &mut Random, w: u32, h: u32) -> Image {
 /// whole by the image encoder in each of its formats, with and without the rate-distortion
 /// pass, every setting varied, and the `.dds` file for each. What `compare/dump.cpp` prints for
 /// the same seed and count.
+// (Written step for step as the C side, `compare/dump.cpp`, has it.)
+#[allow(clippy::too_many_lines)]
 pub fn rdo(seed: u64, blocks: u32, with_bc7e: bool) -> String {
+    const FORMATS: [BlockFormat; 5] = [
+        BlockFormat::Bc1,
+        BlockFormat::Bc3,
+        BlockFormat::Bc4,
+        BlockFormat::Bc5,
+        BlockFormat::Bc7,
+    ];
+    const WINDOWS: [u32; 6] = [8, 16, 64, 128, 256, 1024];
     const MODES: [Bc1ApproxMode; 4] = [
         Bc1ApproxMode::Ideal,
         Bc1ApproxMode::NVidia,
@@ -495,13 +511,6 @@ pub fn rdo(seed: u64, blocks: u32, with_bc7e: bool) -> String {
         let image = make_image(&mut random, w, h);
 
         let mut p = RdoBcParams::new();
-        const FORMATS: [BlockFormat; 5] = [
-            BlockFormat::Bc1,
-            BlockFormat::Bc3,
-            BlockFormat::Bc4,
-            BlockFormat::Bc5,
-            BlockFormat::Bc7,
-        ];
         p.format = FORMATS[(random.next() % 5) as usize];
         let level = random.next();
         p.bc1_quality_level = if big { level % 3 } else { level % 11 };
@@ -539,7 +548,6 @@ pub fn rdo(seed: u64, blocks: u32, with_bc7e: bool) -> String {
         } else {
             0.0
         };
-        const WINDOWS: [u32; 6] = [8, 16, 64, 128, 256, 1024];
         p.lookback_window_size = WINDOWS[(random.next() % 6) as usize];
         p.custom_rdo_smooth_block_error_scale = random.next() % 2 != 0;
         p.rdo_smooth_block_error_scale = 1.0 + (random.next() % 40) as f32;
@@ -553,7 +561,8 @@ pub fn rdo(seed: u64, blocks: u32, with_bc7e: bool) -> String {
         // (The number of threads does not change the blocks: all the cores, one, three.)
         p.threads = [0, 1, 3][(images % 3) as usize];
 
-        let mut ok = encoder.init(&image, &p) && encoder.encode();
+        encoder.init(&image, &p);
+        let mut ok = encoder.encode().is_ok();
         let unpacked = if ok { encoder.unpack_blocks() } else { None };
         ok = ok && unpacked.is_some();
 
@@ -657,7 +666,7 @@ pub fn bc2(seed: u64, blocks: u32) -> String {
         three += first_not_larger(&block);
 
         if (i + 1) % 20000 == 0 || i + 1 == blocks {
-            out += &format!("bc2 {} {:016x}\n", i + 1, hash.value);
+            writeln!(out, "bc2 {} {:016x}", i + 1, hash.value).unwrap();
         }
     }
     out + &format!("bc2 blocks packed with the first colour not the larger: {three}\n")
@@ -813,7 +822,7 @@ pub fn bc6h_pack(seed: u64, blocks: u32) -> String {
                 .position(|&mode_bits| mode_bits == bits)
                 .unwrap_or(14)] += 1;
         }
-        printed += &format!("{name} {:016x}\n", hash.value);
+        writeln!(printed, "{name} {:016x}", hash.value).unwrap();
     }
     printed
         + &format!(
@@ -853,8 +862,8 @@ pub fn make_float_block(r: &mut Random) -> [[f32; 4]; 16] {
                         b[k]
                     }
                 }
-                4 => spread(r, 100000),
-                5 => spread(r, 1000) * 0.000001,
+                4 => spread(r, 100_000),
+                5 => spread(r, 1000) * 0.000_001,
                 6 => a[k] + (i % 4) as f32 * c[k] + (i / 4) as f32 * (c[k] * 0.5),
                 _ => (if a[k] < 0.0 { -a[k] } else { a[k] }) + 0.25 + i as f32 * 0.03125,
             };
@@ -878,7 +887,7 @@ fn bc6h_mode(block: &[u8; 16]) -> usize {
 }
 
 /// The `bc6h_enc` dump: made-up pixels of eight kinds, of both signs, packed as signed and as
-/// unsigned BC6H by the port of bc6h_enc.
+/// unsigned BC6H by the port of `bc6h_enc`.
 pub fn bc6h_enc(seed: u64, blocks: u32) -> String {
     let mut random = Random { state: seed };
     let mut hash = Hash::new();
@@ -895,13 +904,13 @@ pub fn bc6h_enc(seed: u64, blocks: u32) -> String {
         hash.add(&block);
         modes[1][bc6h_mode(&block)] += 1;
         if (i + 1) % 2000 == 0 || i + 1 == blocks {
-            out += &format!("bc6h_enc {} {:016x}\n", i + 1, hash.value);
+            writeln!(out, "bc6h_enc {} {:016x}", i + 1, hash.value).unwrap();
         }
     }
     for (s, name) in ["signed", "unsigned"].iter().enumerate() {
-        out += &format!("bc6h_enc {name} blocks by mode:");
+        write!(out, "bc6h_enc {name} blocks by mode:").unwrap();
         for count in modes[s] {
-            out += &format!(" {count}");
+            write!(out, " {count}").unwrap();
         }
         out += "\n";
     }

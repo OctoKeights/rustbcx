@@ -1,5 +1,5 @@
 //! The tables of [`crate::bc6h_enc`]: where each bit of each of the fourteen modes' headers
-//! comes from, the two-region shapes and their fix-up indices. Written out from bc6h_enc.h by
+//! comes from, the two-region shapes and their fix-up indices. Written out from `bc6h_enc.h` by
 //! a script, so that no digit was copied by hand.
 
 /// What a bit of a block's header holds: `EField`.
@@ -23,6 +23,8 @@ pub(crate) mod field {
     pub const BY: u8 = 13;
     pub const BZ: u8 = 14;
 }
+// (The tables are written in the fields' names, as the original's are.)
+#[allow(clippy::wildcard_imports)]
 use field::*;
 
 /// For each mode, the field and the bit of it that each of the first 82 bits of a block holds:

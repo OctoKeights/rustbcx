@@ -1,7 +1,7 @@
 //! BC2 against results recorded from the originals it is made of, so that a change shows
 //! without a C++ compiler at hand.
 //!
-//! `tests/data/bc2_expected.txt` is what `compare/dump.cpp`, built against bc7enc_rdo and
+//! `tests/data/bc2_expected.txt` is what `compare/dump.cpp`, built against `bc7enc_rdo` and
 //! bcdec together (see `compare/compare.sh`), prints for `bc2 6 20000` and `bc2 13 20000`: a
 //! hash of what made-up BC2 blocks unpack to (the alphas by bcdec, the colours by rgbcx) and
 //! of the blocks made-up pixels pack to. `compare/compare.sh` is the full comparison.

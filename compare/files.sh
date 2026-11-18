@@ -43,7 +43,7 @@ rm -rf "$tmp"
 mkdir -p "$tmp/out" "$tmp/tinydds" || exit 2
 bad=0
 
-(cd "$here" && cargo build --release -q --example files) || exit 2
+(cd "$here" && cargo build --release -q --ignore-rust-version --example files) || exit 2
 rust=$(cd "$here" && cargo metadata --format-version 1 --no-deps 2>/dev/null | sed 's/.*"target_directory":"\([^"]*\)".*/\1/')/release/examples/files
 "$rust" "$tmp/out" > "$tmp/expected.txt" || exit 2
 names=$(grep " layers " "$tmp/expected.txt" | cut -d' ' -f1 | tr '\n' ' ')

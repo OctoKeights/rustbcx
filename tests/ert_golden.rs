@@ -1,7 +1,7 @@
 //! The port of the entropy reduction transform against results recorded from the C++, so that
 //! a change shows without a C++ compiler at hand.
 //!
-//! `tests/data/ert_expected.txt` is what `compare/dump.cpp`, built against bc7enc_rdo (see
+//! `tests/data/ert_expected.txt` is what `compare/dump.cpp`, built against `bc7enc_rdo` (see
 //! `compare/compare.sh`), prints for `ert 3 1200`, `ert 7 600` and `ert 12 900`: a hash of the
 //! blocks after the transform and how many it changed. `compare/compare.sh` is the full
 //! comparison.

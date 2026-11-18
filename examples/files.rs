@@ -27,10 +27,10 @@ use rustbcx::ktx::Supercompression;
 use rustbcx::texture::{Texture, TextureFormat};
 
 fn fnv(data: &[u8]) -> u64 {
-    let mut h = 14695981039346656037u64;
+    let mut h = 14_695_981_039_346_656_037_u64;
     for &b in data {
         h ^= u64::from(b);
-        h = h.wrapping_mul(1099511628211);
+        h = h.wrapping_mul(1_099_511_628_211);
     }
     h
 }
@@ -57,6 +57,8 @@ fn describe(name: &str, t: &Texture) {
 }
 
 /// The `.exr` files, and beside each what the crate reads of it.
+// (Every kind of `.exr` file the comparison reads, written in turn.)
+#[allow(clippy::too_many_lines)]
 fn exr(out: &str) {
     use rustbcx::tinyexr::{self, Box2i, ChannelData, ChannelInfo, ExrHeader, ExrImage, ExrTile};
     let compressions = [
@@ -119,7 +121,7 @@ fn exr(out: &str) {
                     };
                     image.images = vec![channel(2), channel(1), channel(0)];
                 } else {
-                    header.tiled = 1;
+                    header.tiled = true;
                     header.tile_size_x = tile;
                     header.tile_size_y = tile;
                     let level = tinyexr::tile_levels(&header).expect("levels")[0];
@@ -178,6 +180,8 @@ fn exr(out: &str) {
     }
 }
 
+// (Every format and shape of texture, written in turn.)
+#[allow(clippy::too_many_lines)]
 fn main() {
     let Some(out) = std::env::args().nth(1) else {
         eprintln!(
@@ -271,8 +275,8 @@ fn main() {
                         let mut bytes = vec![0u8; t.level_bytes(level)];
                         for b in &mut bytes {
                             state = state
-                                .wrapping_mul(6364136223846793005)
-                                .wrapping_add(1442695040888963407);
+                                .wrapping_mul(6_364_136_223_846_793_005)
+                                .wrapping_add(1_442_695_040_888_963_407);
                             *b = (state >> 40) as u8;
                         }
                         // Textures with all their levels are made of a few blocks over and over,
@@ -282,8 +286,8 @@ fn main() {
                             for i in 8 * size..bytes.len() {
                                 if i % size == 0 {
                                     state = state
-                                        .wrapping_mul(6364136223846793005)
-                                        .wrapping_add(1442695040888963407);
+                                        .wrapping_mul(6_364_136_223_846_793_005)
+                                        .wrapping_add(1_442_695_040_888_963_407);
                                 }
                                 bytes[i] = bytes[((state >> 40) % 8) as usize * size + i % size];
                             }

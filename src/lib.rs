@@ -129,3 +129,24 @@ struct ReadmeDoctests;
 #[cfg(doctest)]
 #[doc = include_str!("../docs/examples.md")]
 struct ExamplesDoctests;
+
+/// The two halves of a 16-byte block: for BC2 and BC3 its alpha and its colour, for BC5 its two
+/// channels.
+#[inline]
+pub(crate) fn halves(block: &[u8; 16]) -> (&[u8; 8], &[u8; 8]) {
+    let (first, second) = block.split_at(8);
+    (
+        first.try_into().expect("8 bytes"),
+        second.try_into().expect("8 bytes"),
+    )
+}
+
+/// [`halves`], to write.
+#[inline]
+pub(crate) fn halves_mut(block: &mut [u8; 16]) -> (&mut [u8; 8], &mut [u8; 8]) {
+    let (first, second) = block.split_at_mut(8);
+    (
+        first.try_into().expect("8 bytes"),
+        second.try_into().expect("8 bytes"),
+    )
+}

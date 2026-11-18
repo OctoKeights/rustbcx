@@ -44,7 +44,7 @@ output exactly with no external toolchain.
 
 ```toml
 [dependencies]
-rustbcx = "0.6"
+rustbcx = "0.7"
 ```
 
 Build with `--release`: the encoders are many times slower without optimisation.

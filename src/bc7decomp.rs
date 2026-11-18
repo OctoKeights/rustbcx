@@ -499,10 +499,8 @@ fn unpack_bc7_mode6(data_chunks: &[u64; 2], pixels: &mut [ColorRgba; 16]) -> boo
 /// all zero) for a block that is of no mode.
 pub fn unpack_bc7(block: &[u8; 16], pixels: &mut [ColorRgba; 16]) -> bool {
     let mode = FIRST_BYTE_TO_MODE[usize::from(block[0])];
-    let data_chunks = [
-        u64::from_le_bytes(block[..8].try_into().unwrap()),
-        u64::from_le_bytes(block[8..].try_into().unwrap()),
-    ];
+    let bits = u128::from_le_bytes(*block);
+    let data_chunks = [bits as u64, (bits >> 64) as u64];
     match mode {
         0 | 2 => unpack_bc7_mode0_2(u32::from(mode), &data_chunks, pixels),
         1 | 3 | 7 => unpack_bc7_mode1_3_7(u32::from(mode), &data_chunks, pixels),

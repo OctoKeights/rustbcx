@@ -7,6 +7,8 @@
 //! error measure, and one for 3,000 blocks packed with 94 made-up settings.
 //! `compare/compare.sh` is the full comparison.
 
+use std::fmt::Write;
+
 mod bc7e_made_up;
 
 use bc7e_made_up::{PROFILES, Random, hash, make_blocks, make_settings};
@@ -27,17 +29,21 @@ fn packs_as_the_ispc_encoder_does() {
             encoder
                 .compress_blocks(&mut packed, &pixels, &profile(perceptual))
                 .expect("a block for each sixteen pixels");
-            printed += &format!(
-                "{name} {} {:016x}\n",
+            writeln!(
+                printed,
+                "{name} {} {:016x}",
                 if perceptual { "perceptual" } else { "linear" },
                 hash(&packed, &mut modes)
-            );
+            )
+            .unwrap();
         }
     }
-    printed += &format!(
-        "blocks by mode:{}\n",
+    writeln!(
+        printed,
+        "blocks by mode:{}",
         modes.map(|count| format!(" {count}")).concat()
-    );
+    )
+    .unwrap();
 
     // bc7e_settings 1 3000
     let mut random = Random { state: 1 };
@@ -49,11 +55,13 @@ fn packs_as_the_ispc_encoder_does() {
             .compress_blocks(packed, pixels, &make_settings(&mut random))
             .expect("a block for each sixteen pixels");
     }
-    printed += &format!("settings {:016x}\n", hash(&packed, &mut modes));
-    printed += &format!(
-        "blocks by mode:{}\n",
+    writeln!(printed, "settings {:016x}", hash(&packed, &mut modes)).unwrap();
+    writeln!(
+        printed,
+        "blocks by mode:{}",
         modes.map(|count| format!(" {count}")).concat()
-    );
+    )
+    .unwrap();
 
     let expected = include_str!("data/bc7e_expected.txt");
     for (line, (ours, theirs)) in printed.lines().zip(expected.lines()).enumerate() {

@@ -73,7 +73,7 @@ fn main() {
     )
     .expect("an image");
     let blocks = f64::from(size.div_ceil(4) * size.div_ceil(4));
-    let threads = std::thread::available_parallelism().map_or(1, |count| count.get());
+    let threads = std::thread::available_parallelism().map_or(1, std::num::NonZero::get);
     println!("{size} x {size} pixels, {blocks} blocks, {threads} threads");
     println!(
         "{:<34} {:>9} {:>9} {:>10} {:>10}",
@@ -89,7 +89,7 @@ fn main() {
             "{name:<34} {one:>8.2}s {all:>8.2}s {:>10.1} {:>10.1}",
             blocks / one / 1000.0,
             blocks / all / 1000.0
-        )
+        );
     };
 
     let ldr = |name: &str, change: &dyn Fn(&mut RdoBcParams)| {
@@ -107,28 +107,28 @@ fn main() {
     };
 
     ldr("BC1, level 5", &|p| {
-        (p.format, p.bc1_quality_level) = (BlockFormat::Bc1, 5)
+        (p.format, p.bc1_quality_level) = (BlockFormat::Bc1, 5);
     });
     ldr("BC1, level 18", &|p| p.format = BlockFormat::Bc1);
     ldr("BC3, level 10", &|p| {
-        (p.format, p.bc1_quality_level) = (BlockFormat::Bc3, 10)
+        (p.format, p.bc1_quality_level) = (BlockFormat::Bc3, 10);
     });
     ldr("BC4", &|p| p.format = BlockFormat::Bc4);
     ldr("BC5", &|p| p.format = BlockFormat::Bc5);
     ldr("BC7, bc7enc, uber 0", &|p| {
-        (p.use_bc7e, p.bc7_uber_level) = (false, 0)
+        (p.use_bc7e, p.bc7_uber_level) = (false, 0);
     });
     ldr("BC7, bc7enc, uber 4", &|p| {
-        (p.use_bc7e, p.bc7_uber_level) = (false, 4)
+        (p.use_bc7e, p.bc7_uber_level) = (false, 4);
     });
     ldr("BC7, bc7e, ultrafast", &|p| p.bc7_uber_level = 0);
     ldr("BC7, bc7e, basic", &|p| p.bc7_uber_level = 3);
     ldr("BC7, bc7e, slowest", &|p| p.bc7_uber_level = 6);
     ldr("BC7, bc7e basic, RDO lambda 1", &|p| {
-        (p.bc7_uber_level, p.rdo_lambda) = (3, 1.0)
+        (p.bc7_uber_level, p.rdo_lambda) = (3, 1.0);
     });
     ldr("BC1 level 5, RDO lambda 1", &|p| {
-        (p.format, p.bc1_quality_level, p.rdo_lambda) = (BlockFormat::Bc1, 5, 1.0)
+        (p.format, p.bc1_quality_level, p.rdo_lambda) = (BlockFormat::Bc1, 5, 1.0);
     });
 
     for (name, settings) in [
